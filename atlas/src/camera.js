@@ -14,7 +14,7 @@
     this.svg.interrupt();
     const x = camera.x + (this.width - (camera.width || this.width)) / 2;
     const y = camera.y + (this.height - (camera.height || this.height)) / 2;
-    this.semanticReadyAt = Date.now() + 450;
+    this.semanticReadyAt = Date.now() + 250;
     this.svg.call(this.zoom.transform, d3.zoomIdentity.translate(x, y).scale(camera.k));
     return this;
   };
@@ -26,6 +26,8 @@
     if (!event || this.semantic.busy || Date.now() < this.semanticReadyAt || !this.isSkyLayout) return;
     const touch = event.type.startsWith('touch');
     if (touch && (!event.touches || event.touches.length < 2)) return;
+    // A pinch must change the scale deliberately before it travels anywhere.
+    if (touch && Number.isFinite(this.pinchStartScale) && scale > this.pinchStartScale * .8 && scale < this.pinchStartScale * 1.25) return;
     if (!touch && event.type !== 'wheel' && event.type !== 'toolbar') return;
     const change = scale - previous;
     const direction = event.type === 'toolbar' ? -Math.sign(event.deltaY) :
@@ -74,7 +76,7 @@
       if (finished) return;
       finished = true;
       this.semantic.busy = false;
-      this.semanticReadyAt = Date.now() + 450;
+      this.semanticReadyAt = Date.now() + 250;
       if (arrived) complete(parentCamera);
       this.options.onSettled?.();
     };
@@ -82,7 +84,7 @@
       this.svg.call(this.zoom.transform, destination);
       settle(true);
     } else {
-      this.svg.transition().duration(direction === 'in' ? 650 : 420)
+      this.svg.transition().duration(direction === 'in' ? 280 : 220)
         .ease(d3.easeCubicInOut).call(this.zoom.transform, destination)
         .on('end.cosmic', () => settle(true))
         .on('interrupt.cosmic', () => settle(false));
@@ -117,7 +119,7 @@
     if (graph.semantic.busy) return graph;
     const check = () => graph.handleSemanticZoom({ type: 'toolbar', deltaY: factor > 1 ? -1 : 1 });
     if (reducedMotion()) { graph.svg.call(graph.zoom.scaleBy, factor); check(); }
-    else graph.svg.transition().duration(180).call(graph.zoom.scaleBy, factor).on('end.semantic', check);
+    else graph.svg.transition().duration(120).call(graph.zoom.scaleBy, factor).on('end.semantic', check);
     return graph;
   }
   Graph.prototype.zoomIn = function () { return zoomFromControl(this, 1.4); };

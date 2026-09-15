@@ -6,6 +6,7 @@ ROOT=Path(tempfile.mkdtemp(prefix='tauceti-browser-'))
 url=next((arg for arg in sys.argv[1:] if not arg.startswith('--')),(REPO/'index.html').as_uri())
 desktop_only='--desktop-only' in sys.argv[1:]
 references_only='--references-only' in sys.argv[1:]
+overview_only='--overview-only' in sys.argv[1:]
 FORMULA_PLANET='EllipticKTheory:E.2::landmark:k-0-x-xrightarrow-sim-mathbb-z-oplus-opera-e9le4x'
 results=[];errors=[];requests=[]
 def record(name,value=True):
@@ -115,6 +116,189 @@ def headings_clear_controls(page):
   window.__tauTestCaptionCollisions=collisions;
   return headings.length===TauExplorer.graph.debugState().constellationSubjects&&!collisions.length;
  }""")
+def galaxy_labels_are_unique(page):
+ # A galaxy shows at most one name, the selected galaxy exactly one, and any
+ # name that is shown must be large enough to read. Names too small to read
+ # are withheld rather than drawn as noise.
+ return page.evaluate("""() => {
+  const nodes=Array.from(document.querySelectorAll('.tau-galaxy-node')),selected=TauExplorer.graph.debugState().selectedId;
+  const visible=e=>e&&getComputedStyle(e).display!=='none'&&getComputedStyle(e).visibility!=='hidden'&&e.getBoundingClientRect().width>0;
+  const legible=e=>{const t=e.querySelector('text'),m=t&&t.getScreenCTM();return !!m&&Math.hypot(m.c,m.d)*parseFloat(getComputedStyle(t).fontSize)>=8;};
+  const failures=nodes.map(node=>({id:node.getAttribute('data-node-id'),labels:Array.from(node.querySelectorAll('.tau-galaxy-name,.tau-star-node-label')).filter(visible)}))
+   .filter(node=>node.labels.length>1||(node.id===selected&&node.labels.length!==1)||node.labels.some(label=>!label.textContent.trim()||!legible(label)));
+  window.__tauTestCaptionCollisions=failures.map(node=>({id:node.id,visibleNames:node.labels.length}));
+  return nodes.length>0&&!failures.length;
+ }""")
+def overview_names_clear_headings(page):
+ return page.evaluate("""() => {
+  const chart=document.querySelector('#graph').getBoundingClientRect(),tools=document.querySelector('.graph-tools').getBoundingClientRect();
+  const visible=e=>getComputedStyle(e).display!=='none'&&getComputedStyle(e).visibility!=='hidden'&&e.getBoundingClientRect().width>0;
+  const names=Array.from(document.querySelectorAll('.tau-galaxy-name,.tau-star-node-label')).filter(visible).map(e=>({id:e.closest('[data-node-id]').getAttribute('data-node-id'),box:e.querySelector('text').getBoundingClientRect(),text:e.querySelector('text')}));
+  const headings=Array.from(document.querySelectorAll('.tau-constellation-subject text')).filter(visible).map(e=>({id:e.textContent,box:e.getBoundingClientRect()}));
+  const overlap=(a,b)=>Math.min(a.right,b.right)-Math.max(a.left,b.left)>.6&&Math.min(a.bottom,b.bottom)-Math.max(a.top,b.top)>.6;
+  const collisions=[];
+  for(let i=0;i<names.length;i++){
+   const a=names[i],matrix=a.text.getScreenCTM();
+   if(!matrix||Math.hypot(matrix.c,matrix.d)*parseFloat(getComputedStyle(a.text).fontSize)<8)collisions.push({first:a.id,second:'Illegible name'});
+   if(a.box.left<chart.left-1||a.box.right>chart.right+1||a.box.top<chart.top-1||a.box.bottom>chart.bottom+1)collisions.push({first:a.id,second:'Chart boundary'});
+   if(overlap(a.box,tools))collisions.push({first:a.id,second:'Chart controls'});
+   for(const b of [...names.slice(i+1),...headings])if(overlap(a.box,b.box))collisions.push({first:a.id,second:b.id});
+  }
+  window.__tauTestCaptionCollisions=collisions;
+  return names.length<=TauExplorer.getGraph().nodes.length&&!collisions.length;
+ }""")
+def close_range_names_are_complete(page):
+ # Zoomed in on one area, every galaxy in view must show exactly one legible
+ # name; hidden names are only permitted where they could not be read.
+ # Names are packed in chart space; a short landscape chart packs them small,
+ # so the zoom used here is whatever legal scale makes that packing legible.
+ page.evaluate("""() => {
+  const g=TauExplorer.graph,s=g.debugState(),subject=s.subjects.find(x=>/^Classical/.test(x.label))||s.subjects[0];
+  const members=s.positions.filter(n=>n.galaxyNameFont&&TauExplorer.getGraph().nodes.find(x=>x.id===n.id)?.group===subject.label);
+  const smallest=Math.min(...members.map(n=>n.galaxyNameFont)),k=Math.min(8,Math.max(s.semantic.fitScale*6,9.5/smallest));
+  g.svg.interrupt();g.svg.call(g.zoom.transform,d3.zoomIdentity.translate(g.width/2-subject.x*k,g.height/2-subject.y*k).scale(k));
+ }""")
+ page.wait_for_timeout(300)
+ result=page.evaluate("""() => {
+  const g=TauExplorer.graph,state=g.debugState(),chart=document.querySelector('#graph').getBoundingClientRect(),t=state.transform;
+  const visible=e=>e&&getComputedStyle(e).display!=='none'&&getComputedStyle(e).visibility!=='hidden'&&e.getBoundingClientRect().width>0;
+  const inView=state.positions.filter(n=>{const x=n.x*t.k+t.x,y=n.y*t.k+t.y;return x>40&&x<state.width-40&&y>40&&y<state.height-40&&document.querySelector('[data-node-id="'+CSS.escape(n.id)+'"]')?.classList.contains('tau-galaxy-node');});
+  const failures=inView.filter(n=>{const node=document.querySelector('[data-node-id="'+CSS.escape(n.id)+'"]');const labels=Array.from(node.querySelectorAll('.tau-galaxy-name,.tau-star-node-label')).filter(visible);return labels.length!==1||!n.galaxyNameScreenFont||n.galaxyNameScreenFont<8.5;});
+  window.__tauTestCaptionCollisions=failures.map(n=>({id:n.id,screenFont:n.galaxyNameScreenFont}));
+  return inView.length>=3&&!failures.length;
+ }""")
+ page.locator('#fit-graph').click();page.wait_for_timeout(400)
+ return result
+def overview_regions_are_irregular(page):
+ # Detect row/column snapping without prescribing the artist's coordinates.
+ # A phone chart is narrow enough that some stacking is unavoidable.
+ return page.evaluate("""() => {
+  const state=TauExplorer.graph.debugState(),subjects=state.subjects,scale=state.transform.k,need=state.width<600?.45:.6;
+  if(subjects.length<10)return false;
+  const centers=subjects.map(s=>({x:(s.x??s.sector.x+s.sector.w/2)*scale,y:(s.y??s.sector.y+s.sector.h/2)*scale}));
+  const distinct=axis=>{const values=centers.map(s=>s[axis]).sort((a,b)=>a-b),bands=[];for(const value of values)if(!bands.length||value-bands[bands.length-1]>.35)bands.push(value);return bands.length;};
+  return centers.every(s=>Number.isFinite(s.x)&&Number.isFinite(s.y))&&distinct('x')>subjects.length*need&&distinct('y')>subjects.length*need;
+ }""")
+def legend_matches_map_encoding(page):
+ # Colour encodes recorded progress only. A roadmap without any recorded
+ # status is drawn as an open ring, never coloured as though it were planned.
+ return page.evaluate("""() => {
+  const beacon=id=>document.querySelector('[data-node-id="'+CSS.escape(id)+'"] .tau-survey-beacon');
+  const blank=beacon('AnalyticNumberTheory'),done=beacon('tauceti:Completed/EffectiveBounds');
+  const positions=TauExplorer.graph.debugState().positions,blankNode=positions.find(n=>n.id==='AnalyticNumberTheory'),doneNode=positions.find(n=>n.id==='tauceti:Completed/EffectiveBounds');
+  const legend=document.querySelector('.progress-legend'),keys=Array.from(legend.querySelectorAll('span')).map(e=>e.textContent.trim());
+  const groupColours=TauExplorer.data.groups.map(g=>g.color.toLowerCase());
+  return !!blank&&!!done&&blankNode.hasProgress===false&&doneNode.progress===100&&blank.getAttribute('fill')==='#0b1016'&&blank.getAttribute('stroke')==='#6f7f8c'&&done.getAttribute('fill')===doneNode.accent&&doneNode.accent==='#67af8c'
+   &&keys.includes('No progress data')&&keys.includes('Not started')&&keys.includes('Complete')&&!!legend.querySelector('.none')&&positions.filter(n=>!n.hasProgress).every(n=>!groupColours.includes(n.accent.toLowerCase()));
+ }""")
+def pinch_gesture(page, session, selector, scale):
+ # One two-finger gesture on the chosen object, without any expectation.
+ target=page.locator(selector).first.bounding_box();chart=page.locator('#graph').bounding_box()
+ if target is None or chart is None:return False
+ x=target['x']+target['width']/2;y=target['y']+target['height']/2
+ room=min(x-chart['x'],chart['x']+chart['width']-x,60)-3
+ if room<4:return False
+ radius=min(28,room/scale) if scale>1 else min(45,room)
+ def fingers(r):return touch_points([(x-r,y),(x+r,y)])
+ session.send('Input.dispatchTouchEvent',{'type':'touchStart','touchPoints':fingers(radius)})
+ for step in range(1,13):
+  r=radius*(1+(scale-1)*step/12)
+  session.send('Input.dispatchTouchEvent',{'type':'touchMove','touchPoints':fingers(r)})
+  page.wait_for_timeout(20)
+ session.send('Input.dispatchTouchEvent',{'type':'touchEnd','touchPoints':[]})
+ page.wait_for_timeout(400)
+ return True
+def sector_routes_are_curved(page):
+ return page.evaluate(r"""() => {
+  const paths=Array.from(document.querySelectorAll('.tau-sector-route'));
+  let bent=0;
+  const failures=paths.filter(path=>{
+   const d=path.getAttribute('d')||'',length=path.getTotalLength();
+   if(!/[CQ]/i.test(d)||/[LHV]/i.test(d)||!Number.isFinite(length)||length<=0)return true;
+   const a=path.getPointAtLength(0),b=path.getPointAtLength(length),chord=Math.hypot(b.x-a.x,b.y-a.y);
+   let deviation=0;
+   for(let step=1;step<12;step++){const p=path.getPointAtLength(length*step/12);if(!Number.isFinite(p.x)||!Number.isFinite(p.y))return true;deviation=Math.max(deviation,Math.abs((b.x-a.x)*(p.y-a.y)-(b.y-a.y)*(p.x-a.x))/Math.max(.001,chord));}
+   if(deviation>.005)bent++;
+   return false;
+  });
+  window.__tauTestCaptionCollisions=failures.map(e=>({route:[e.dataset.sourceArea,e.dataset.targetArea],path:e.getAttribute('d')}));
+  return paths.length>0&&!failures.length&&bent>=paths.length*.8;
+ }""")
+def check_overview_layout(page,scope):
+ page.wait_for_timeout(500)
+ record(scope+' overview uses irregular mathematical area positions',overview_regions_are_irregular(page))
+ record(scope+' overview routes curve between areas without right-angle segments',sector_routes_are_curved(page))
+ record(scope+' overview retains every real cross-area dependency',sector_routes_match_dependencies(page))
+ record(scope+' overview shows at most one legible name per galaxy',galaxy_labels_are_unique(page))
+ record(scope+' galaxy names clear other names, headings and chart controls',overview_names_clear_headings(page))
+ record(scope+' close range shows every galaxy in view with one legible name',close_range_names_are_complete(page))
+ record(scope+' legend colours match the map encoding',legend_matches_map_encoding(page))
+def check_catalogue_galaxy_name(page,scope,touch=False):
+ # Reproduce the reported left-hand catalogue path, including the subsequent
+ # pointer preview. Calling graph.select alone would miss the real UI regression.
+ title=page.evaluate("TauExplorer.data.roadmaps.find(r=>r.id==='AnalyticNumberTheory').title")
+ if touch:page.locator('#catalogue-button').tap()
+ # Catalogue spelling may retain a source prefix, so its original title is the
+ # stable discriminator rather than an abbreviated visible caption.
+ item=page.locator('#catalogue .catalogue-item[title='+json.dumps(title)+']')
+ group=item.locator('xpath=..')
+ def reach_with_touch(target):
+  # Landscape scrolls the entire index; portrait keeps its catalogue scrollable.
+  # Native swipes verify that a user can reach the item without auto-scroll.
+  catalogue=page.locator('#catalogue');sidebar=page.locator('.sidebar')
+  panel=catalogue if catalogue.evaluate("e=>/auto|scroll/.test(getComputedStyle(e).overflowY)&&e.scrollHeight>e.clientHeight") else sidebar
+  session=page.context.new_cdp_session(page)
+  for _ in range(12):
+   box=target.bounding_box();bounds=panel.bounding_box();outer=sidebar.bounding_box()
+   top=max(bounds['y'],outer['y']);bottom=min(bounds['y']+bounds['height'],outer['y']+outer['height'])
+   if box and box['y']>=top and box['y']+box['height']<=bottom:return True
+   x=bounds['x']+bounds['width']/2
+   missing=top-box['y'] if box and box['y']<top else box['y']+box['height']-bottom if box else 70
+   distance=min(90,bottom-top-45,max(35,missing+25))
+   start=(x,bottom-20);end=(x,bottom-20-distance)
+   if box and box['y']<top:start,end=(x,top+20),(x,top+20+distance)
+   touch_swipe(page,session,start,end)
+  return False
+ if touch:record(scope+' Browse reaches its subject using touch scrolling',reach_with_touch(group.locator('summary')))
+ if not group.evaluate('(e)=>e.open'):
+  if touch:group.locator('summary').tap()
+  else:group.locator('summary').click()
+ if touch:
+  record(scope+' Browse reaches its roadmap using touch scrolling',reach_with_touch(item))
+  item.tap()
+ else:item.click()
+ page.wait_for_function("TauExplorer.getState().selected==='AnalyticNumberTheory'&&TauExplorer.getState().view==='group'")
+ page.wait_for_timeout(600)
+ record(scope+' catalogue selection gives its galaxy one visible name',galaxy_labels_are_unique(page))
+ if not touch:
+  page.locator('[data-node-id="AnalyticNumberTheory"] .tau-star-hit').hover()
+  page.wait_for_timeout(150)
+  record(scope+' hovering a catalogue-selected galaxy does not duplicate its name',galaxy_labels_are_unique(page))
+ page.screenshot(path=str(ROOT/('preview-'+scope.lower().replace(' ','-')+'-catalogue-selection.png')),animations='disabled')
+ page.evaluate("TauExplorer.navigate({view:'all',id:null,layer:null,selected:null,origin:'all',activity:'all',unmapped:true,outside:false,references:false})")
+ page.locator('#fit-graph').click();page.wait_for_timeout(500)
+def run_overview_checks(page,browser):
+ global mp
+ page.locator('#fit-graph').click();page.wait_for_timeout(500)
+ page.screenshot(path=str(ROOT/'preview-desktop-organic-overview.png'),animations='disabled')
+ check_overview_layout(page,'Desktop')
+ record('Desktop overview headings clear each other and controls',headings_clear_controls(page))
+ check_catalogue_galaxy_name(page,'Desktop')
+ if desktop_only:return
+ mobile=browser.new_context(viewport={'width':390,'height':844},device_scale_factor=2,is_mobile=True,has_touch=True)
+ mp=mobile.new_page();mp.on('pageerror',lambda e:errors.append('mobile overview: '+str(e)))
+ if url.startswith('file:'):
+  mp.route('http://**/*',lambda route:(requests.append(route.request.url),route.abort()))
+  mp.route('https://**/*',lambda route:(requests.append(route.request.url),route.abort()))
+ mp.goto(url,wait_until='load');mp.wait_for_function('!!window.TauExplorer')
+ for scope,width,height in [('Phone',390,844),('Narrow phone',375,812),('Landscape phone',844,390)]:
+  mp.set_viewport_size({'width':width,'height':height});mp.locator('#fit-graph').tap();mp.wait_for_timeout(600)
+  mp.screenshot(path=str(ROOT/('preview-'+scope.lower().replace(' ','-')+'-organic-overview.png')),animations='disabled')
+  check_overview_layout(mp,scope)
+  record(scope+' overview headings clear each other and controls',headings_clear_controls(mp))
+  record(scope+' overview remains within the viewport',mp.evaluate('document.documentElement.scrollWidth<=innerWidth+1'))
+  check_catalogue_galaxy_name(mp,scope,touch=True)
+ mobile.close()
 def reference_sources_are_exact(page, planet_id):
  return page.evaluate(r"""id => {
   const item=TauExplorer.landmarks.find(x=>x.id===id),entries=Object.values(TauExplorer.references.forLandmark(item)).flat();
@@ -209,6 +393,13 @@ with sync_playwright() as p:
   page.route('http://**/*',lambda route:(requests.append(route.request.url),route.abort()))
   page.route('https://**/*',lambda route:(requests.append(route.request.url),route.abort()))
  page.goto(url,wait_until='load');page.wait_for_function('!!window.TauExplorer',timeout=15000)
+ if overview_only:
+  run_overview_checks(page,browser)
+  record('No application exceptions',not errors)
+  if url.startswith('file:'):record('No network requests needed',not requests)
+  browser.close()
+  write_report('overview desktop' if desktop_only else 'overview desktop and mobile')
+  sys.exit(0)
  if references_only:
   run_reference_checks(page,browser)
   record('No application exceptions',not errors)
@@ -219,11 +410,14 @@ with sync_playwright() as p:
  record('Native offline mathematics renders',page.evaluate("() => {const d=TauMarkdown.render('$x^2$');return !!d.querySelector('math')}"))
  record('180 roadmap and 1604 stage records',page.evaluate('TauExplorer.data.roadmaps.length===180 && TauExplorer.data.stages.length===1604'))
  page.screenshot(path=str(ROOT/'preview-overview.png'),animations='disabled')
+ check_overview_layout(page,'Desktop')
+ check_catalogue_galaxy_name(page,'Desktop')
  record('16 unmapped areas are separate from 180 roadmaps',page.evaluate('TauExplorer.data.opportunities.areas.length===16 && TauExplorer.getGraph().nodes.filter(n=>n.unmapped).length===16'))
  record('Unmapped regions have outlined galaxy symbols',page.locator('.tau-unmapped-node').count()==16)
  record('Outer atlas contains 180 roadmap galaxies and 16 unmapped areas',page.evaluate("TauExplorer.getGraph().nodes.filter(n=>n.type==='roadmap').length===180 && TauExplorer.getGraph().nodes.length===196"))
- record('Every roadmap galaxy has a persistent mathematical name',page.evaluate("() => {const ids=TauExplorer.getGraph().nodes.filter(n=>n.type==='roadmap').map(n=>n.id),elements=new Map(Array.from(document.querySelectorAll('.tau-galaxy-node')).map(e=>[e.getAttribute('data-node-id'),e]));return ids.length===180 && ids.every(id=>{const label=elements.get(id)?.querySelector('.tau-galaxy-name');return label&&label.textContent.trim().length>0&&getComputedStyle(label).display!=='none'&&getComputedStyle(label).visibility!=='hidden'})}"))
- record('Real prerequisite sector routes are visible on arrival',page.evaluate("() => {const routes=Array.from(document.querySelectorAll('.tau-sector-route')),data=TauExplorer.graph.debugState().sectorRoutes;return TauExplorer.getGraph().edges.filter(e=>e.kind!=='reference'&&e.kind!=='contains').length===1011 && routes.length>0 && routes.length===data.length && routes.every(e=>Number(getComputedStyle(e).opacity)>0 && getComputedStyle(e).display!=='none' && e.getAttribute('data-source-area') && e.getAttribute('data-target-area'));}"))
+ record('Every roadmap galaxy carries a mathematical name for close range',page.evaluate("() => {const ids=TauExplorer.getGraph().nodes.filter(n=>n.type==='roadmap').map(n=>n.id),elements=new Map(Array.from(document.querySelectorAll('.tau-galaxy-node')).map(e=>[e.getAttribute('data-node-id'),e]));return ids.length===180 && ids.every(id=>{const label=elements.get(id)?.querySelector('.tau-galaxy-name');return label&&label.textContent.trim().length>0})}"))
+ record('Strong sector routes are visible on arrival and every route stays in the data',page.evaluate("() => {const routes=Array.from(document.querySelectorAll('.tau-sector-route')),data=TauExplorer.graph.debugState().sectorRoutes,strong=routes.filter(e=>e.dataset.strong==='true');return TauExplorer.getGraph().edges.filter(e=>e.kind!=='reference'&&e.kind!=='contains').length===1011 && routes.length>0 && routes.length===data.length && strong.length>0 && strong.length<routes.length && strong.every(e=>Number(getComputedStyle(e).opacity)>0) && routes.every(e=>getComputedStyle(e).display!=='none' && e.getAttribute('data-source-area') && e.getAttribute('data-target-area'));}"))
+ record('Hovering an area reveals its own routes and quietens the rest',page.evaluate("() => {const g=TauExplorer.graph,subject=g.debugState().subjects[0].label;g.hoveredSubject=subject;g.updateConstellationLabels();const routes=Array.from(document.querySelectorAll('.tau-sector-route'));const own=routes.filter(e=>e.dataset.sourceArea===subject||e.dataset.targetArea===subject),other=routes.filter(e=>!own.includes(e));const ok=own.length>0&&own.every(e=>Number(e.getAttribute('opacity'))>=.5)&&other.every(e=>Number(e.getAttribute('opacity'))<.1);g.hoveredSubject=null;g.updateConstellationLabels();return ok;}"))
  record('A roadmap without status data has a blank progress indicator',page.evaluate("() => {const id='AnalyticNumberTheory',status=TauExplorer.progress.roadmap(id),node=TauExplorer.getGraph().nodes.find(n=>n.id===id);return status.total>0 && status.unknown===status.total && node.progress===null && node.progressLabel===''}"))
  page.evaluate("TauExplorer.navigate({view:'subjects',id:null,selected:null})")
  record('Roadmap-free regions do not imply zero percent completion',page.evaluate("TauExplorer.getGraph().nodes.filter(n=>['geometry','combinatorics','computation','logic'].includes(n.id)).every(n=>n.progress===null)"))
@@ -232,7 +426,7 @@ with sync_playwright() as p:
  page.evaluate("TauExplorer.navigate({references:false})")
  gap=page.evaluate('TauExplorer.data.opportunities.areas[0].id')
  page.locator('[data-node-id="'+gap+'"]').click()
- record('Unmapped area explains missing plan without fake progress',page.locator('#selection-kind').inner_text()=='UNMAPPED MATHEMATICS' and page.locator('.progress-summary').count()==0)
+ record('Unmapped area explains missing plan without fake progress',page.locator('#selection-kind').inner_text()=='Unmapped area' and page.locator('.progress-summary').count()==0)
  page.locator('#show-unmapped').uncheck()
  record('Unmapped areas can be hidden',page.evaluate('TauExplorer.getGraph().nodes.length===180'))
  page.locator('#source-filter').select_option('tauceti')
@@ -413,6 +607,8 @@ with sync_playwright() as p:
   record('Phone uses touch input at a real mobile viewport',mp.evaluate('navigator.maxTouchPoints>0 && innerWidth===390'))
   record('Phone overview headings do not overlap each other or controls',headings_clear_controls(mp))
   mp.screenshot(path=str(ROOT/'preview-phone-overview.png'),animations='disabled')
+  check_overview_layout(mp,'Phone')
+  check_catalogue_galaxy_name(mp,'Phone',touch=True)
   box=mp.locator('#graph').bounding_box()
   before=mp.evaluate('TauExplorer.getState().view')
   touch_swipe(mp,touch,(box['x']+20,box['y']+25),(box['x']+65,box['y']+65))
@@ -426,6 +622,10 @@ with sync_playwright() as p:
   mp.wait_for_function("TauExplorer.getState().layer==='AnalyticNumberTheory:AN.0'")
   record('Phone tap enters a layer solar system',mp.evaluate("TauExplorer.graph.debugState().layout==='solar-system'"))
   planet=mp.evaluate("TauExplorer.getGraph().nodes.find(n=>n.type==='landmark').id")
+  # A gentle pinch over a planet is a camera gesture, not a tap on the planet.
+  pinch_gesture(mp,touch,'[data-node-id="'+planet+'"] .tau-star-hit',1.12)
+  record('Phone pinch over a planet does not open it',mp.evaluate("TauExplorer.getState().selected==='AnalyticNumberTheory:AN.0' && TauExplorer.graph.debugState().layout==='solar-system'"))
+  mp.wait_for_timeout(800)
   mp.locator('[data-node-id="'+planet+'"] .tau-star-hit').tap()
   record('Phone tap opens mathematical planet details',mp.locator('.landmark-description').is_visible())
   record('Phone reading pane leaves graph and back navigation visible',mp.locator('.cosmic-back').is_visible() and mp.evaluate("() => {const g=document.querySelector('#graph').getBoundingClientRect(),i=document.querySelector('#inspector').getBoundingClientRect();return g.height>80 && i.height>150 && g.bottom<=i.top+2 && i.bottom<=innerHeight+2}"))
@@ -448,6 +648,7 @@ with sync_playwright() as p:
   mp.set_viewport_size({'width':375,'height':812});mp.locator('#fit-graph').tap()
   record('Narrow phone overview headings do not overlap each other or controls',headings_clear_controls(mp))
   mp.screenshot(path=str(ROOT/'preview-phone-narrow-overview.png'),animations='disabled')
+  check_overview_layout(mp,'Narrow phone')
   record('Two-finger pinch enters a galaxy on a narrow phone',pinch_until(mp,touch,'[data-node-id="AnalyticNumberTheory"] .tau-star-hit',3,"TauExplorer.getState().id==='AnalyticNumberTheory' && TauExplorer.getState().view==='roadmap' && !TauExplorer.getState().layer"))
   record('Two-finger pinch enters a layer on a narrow phone',pinch_until(mp,touch,'[data-node-id="AnalyticNumberTheory:AN.0"] .tau-star-hit',3,"TauExplorer.getState().layer==='AnalyticNumberTheory:AN.0' && TauExplorer.graph.debugState().layout==='solar-system'"))
   record('Narrow phone solar system stays finite and readable',finite_chart(mp) and mp.locator('.cosmic-back').is_visible())
@@ -460,6 +661,8 @@ with sync_playwright() as p:
   mp.set_viewport_size({'width':844,'height':390});mp.locator('#fit-graph').tap();mp.wait_for_timeout(900)
   record('Landscape phone overview headings do not overlap each other or controls',headings_clear_controls(mp))
   mp.screenshot(path=str(ROOT/'preview-phone-landscape-overview.png'),animations='disabled')
+  check_overview_layout(mp,'Landscape phone')
+  check_catalogue_galaxy_name(mp,'Landscape phone',touch=True)
   mp.locator('[data-node-id="AnalyticNumberTheory"] .tau-star-hit').tap()
   mp.wait_for_function("TauExplorer.getState().view==='roadmap' && !TauExplorer.getState().layer");mp.wait_for_timeout(500)
   mp.locator('[data-node-id="AnalyticNumberTheory:AN.0"] .tau-star-hit').tap()

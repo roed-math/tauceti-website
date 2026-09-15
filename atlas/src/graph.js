@@ -10,16 +10,20 @@
     return typeof value === 'number' && Number.isFinite(value) ? Math.max(0, Math.min(100, value)) : null;
   }
 
+  // Progress is the only thing colour encodes on the map. Red, amber and green
+  // are recorded states; an object without recorded status has no colour.
+  const NO_PROGRESS = '#6f7f8c', BACKGROUND = '#0b1016', ACCENT = '#dfc186';
   function progressColor(value) {
     const progress = progressValue(value);
     if (progress === null) return null;
-    const stops = [[194, 65, 65], [183, 121, 6], [22, 128, 82]];
+    const stops = [[217, 108, 96], [212, 165, 79], [103, 175, 140]];
     const index = progress <= 50 ? 0 : 1;
     const fraction = progress <= 50 ? progress / 50 : (progress - 50) / 50;
     return '#' + stops[index].map((channel, i) => Math.round(channel + (stops[index + 1][i] - channel) * fraction).toString(16).padStart(2, '0')).join('');
   }
 
-  function nodeAccent(node) { return progressColor(node.progress) || node.color || '#557bb5'; }
+  function hasProgress(node) { return progressValue(node.progress) !== null; }
+  function nodeAccent(node) { return progressColor(node.progress) || NO_PROGRESS; }
   function progressLabel(node) {
     if (typeof node.progressLabel === 'string' && node.progressLabel.trim()) return node.progressLabel.trim();
     const value = progressValue(node.progress);
@@ -105,67 +109,49 @@
         .attr('width', '100%').attr('height', '100%')
         .attr('role', 'group').attr('aria-label', 'Interactive roadmap graph. Tab to a node and press Enter to select it, or Shift Enter to open it.')
         .style('display', 'block').style('width', '100%').style('height', '100%')
-        .style('background', '#f8fafc').style('touch-action', 'none');
+        .style('background', BACKGROUND).style('touch-action', 'none');
+      // Every mark is flat: solid fills, thin strokes, no gradients or glows.
       this.svg.append('style').text(`
         .tau-graph .tau-node { cursor: pointer; outline: none; }
-        .tau-graph .tau-card { fill: var(--tau-progress-fill, #ffffff); stroke: #c9d4e1; stroke-width: 1.2; }
-        .tau-graph .tau-node:hover .tau-card { stroke: #334b6b; stroke-width: 2; }
-        .tau-graph .tau-node:focus .tau-card { stroke: #155eef; stroke-width: 3; }
-        .tau-graph .tau-node.is-selected .tau-card { fill: var(--tau-progress-fill, #eff6ff); stroke: #145dc0; stroke-width: 3; }
-        .tau-graph .tau-node.is-neighbor .tau-card { stroke: #597392; stroke-width: 1.8; }
-        .tau-graph text { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; pointer-events: none; }
-        .tau-graph .tau-node-title { fill: #152c46; font-weight: 600; }
-        .tau-graph .tau-node-subtitle { fill: #61728a; font-size: 11px; }
-        .tau-graph .tau-node-progress { font-size: 11px; font-weight: 700; }
+        .tau-graph .tau-card { fill: #131a22; stroke: #2a3541; stroke-width: 1; }
+        .tau-graph .tau-node:hover .tau-card { stroke: #4a5866; }
+        .tau-graph .tau-node:focus .tau-card { stroke: ${ACCENT}; }
+        .tau-graph .tau-node.is-selected .tau-card { stroke: ${ACCENT}; stroke-width: 1.5; }
+        .tau-graph .tau-node.is-neighbor .tau-card { stroke: #4a5866; }
+        .tau-graph text { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif; pointer-events: none; }
+        .tau-graph .tau-node-title { fill: #e2e6eb; font-weight: 500; }
+        .tau-graph .tau-node-subtitle { fill: #8391a0; font-size: 11px; }
+        .tau-graph .tau-node-progress { font-size: 11px; font-weight: 600; }
         .tau-graph .tau-edge { fill: none; stroke-linecap: round; pointer-events: none; }
-        .tau-graph .tau-cluster { fill: #ffffff; fill-opacity: .3; stroke: #dde5ee; stroke-dasharray: 5 5; }
+        .tau-graph .tau-cluster { fill: none; stroke: #222c37; stroke-dasharray: 4 6; }
+        .tau-graph .tau-cluster-title { fill: #8391a0; font-size: 13px; font-weight: 500; }
         .tau-graph .tau-constellation-link, .tau-graph .tau-chart-field { pointer-events: none; }
         .tau-graph .tau-constellation-subject { cursor: pointer; outline: none; }
-        .tau-graph .tau-constellation-subject:hover rect, .tau-graph .tau-constellation-subject:focus rect { stroke: #bda06c; stroke-width: 1; }
-        .tau-graph .tau-star-halo, .tau-graph .tau-star-ring, .tau-graph .tau-star-core, .tau-graph .tau-star-spark, .tau-graph .tau-space-art, .tau-graph .tau-orbit-path { pointer-events: none; }
+        .tau-graph .tau-constellation-subject text { fill: #b3bec9; font-weight: 500; letter-spacing: .2px; }
+        .tau-graph .tau-constellation-subject:hover text, .tau-graph .tau-constellation-subject:focus text, .tau-graph .tau-constellation-subject.is-focused text { fill: #e2e6eb; }
+        .tau-graph .tau-star-ring, .tau-graph .tau-space-art, .tau-graph .tau-orbit-path, .tau-graph .tau-survey-beacon { pointer-events: none; }
         .tau-graph .tau-space-art * { pointer-events: none; }
-        .tau-graph .tau-galaxy-core, .tau-graph .tau-stellar-core, .tau-graph .tau-planet-body { stroke: none; }
-        .tau-graph .tau-orbit-path { fill:none; stroke:#71849c; stroke-width:.8; opacity:.29; }
-        .tau-graph .tau-planet-node .tau-star-ring { opacity:.18; }
-        .tau-graph .tau-planet-node.is-selected .tau-star-ring { opacity:1; }
-        .tau-graph .tau-star-core { stroke: #eddfd2; stroke-width: .45; }
-        .tau-graph .tau-star-halo { opacity: .13; }
-        .tau-graph .tau-star-spark { fill: #fff4dc; opacity: .9; }
-        .tau-graph .tau-node.is-selected .tau-star-ring, .tau-graph .tau-node.is-hovered .tau-star-ring, .tau-graph .tau-node:focus .tau-star-ring { stroke: #dfc48e; stroke-width: 1.7; opacity: 1; }
-        .tau-graph .tau-star-ring { fill: none; stroke-width: .7; opacity: .5; }
+        .tau-graph .tau-orbit-path { fill: none; stroke: #3a4652; stroke-width: .8; opacity: .8; }
+        .tau-graph .tau-star-ring { fill: none; stroke-width: 1.4; }
         .tau-graph .tau-planet-node .tau-star-ring { opacity: 0; }
+        .tau-graph .tau-node.is-selected .tau-star-ring, .tau-graph .tau-node.is-hovered .tau-star-ring, .tau-graph .tau-node:focus .tau-star-ring { stroke: ${ACCENT} !important; stroke-width: 1.8; opacity: 1 !important; stroke-dasharray: none; }
         .tau-graph .tau-star-hit { fill: transparent; pointer-events: all; }
         .tau-graph .tau-star-node-label { pointer-events: none; }
         .tau-graph .tau-stage-label rect { pointer-events: all; cursor: pointer; }
-        .tau-graph .tau-caption-leader, .tau-graph .tau-node-label-leader { fill: none; stroke: #8396a8; opacity: .45; pointer-events: none; }
+        .tau-graph .tau-caption-leader, .tau-graph .tau-node-label-leader { fill: none; stroke: #5b6875; opacity: .7; pointer-events: none; }
         .tau-graph .tau-reference-edge { stroke-dasharray: 2 6; }
-        .tau-graph .tau-star-node-label text { fill: #e5e5dc; font-size: 12px; font-weight: 600; }
-        .tau-graph .tau-cluster-title { fill: #61728a; font-size: 15px; font-weight: 600; }
+        .tau-graph .tau-star-node-label rect { fill: transparent; stroke: none; }
+        .tau-graph .tau-star-node-label text { fill: #e2e6eb; font-size: 12px; font-weight: 500; paint-order: stroke fill; stroke: ${BACKGROUND}; stroke-width: 3px; stroke-linejoin: round; }
+        .tau-graph .tau-galaxy-name text { fill: #c9d2da; font-weight: 400; paint-order: stroke fill; stroke: ${BACKGROUND}; stroke-linejoin: round; }
+        .tau-graph .tau-node.is-selected .tau-galaxy-name text, .tau-graph .tau-node.is-hovered .tau-galaxy-name text { fill: #f0e4c8; }
       `);
       const defs = this.svg.append('defs');
-      const radial=(name,stops,extra={})=>{
-        const gradient=defs.append('radialGradient').attr('id',this.id+'-'+name);
-        Object.entries(extra).forEach(([key,value])=>gradient.attr(key,value));
-        stops.forEach(([offset,color,opacity])=>gradient.append('stop').attr('offset',offset).attr('stop-color',color).attr('stop-opacity',opacity));
-      };
-      radial('galaxy-glow',[[0,'#dce2ec',.38],[.24,'#bac5d7',.26],[.58,'#778cab',.11],[1,'#425671',0]]);
-      radial('galaxy-cloud',[[0,'#f2e8da',.73],[.22,'#d9d1ca',.54],[.52,'#a4adbd',.24],[.8,'#66809f',.06],[1,'#425671',0]]);
-      radial('galaxy-cloud-cool',[[0,'#e8eafa',.73],[.22,'#c5d2e8',.54],[.52,'#8c9fc3',.24],[.8,'#496f9e',.06],[1,'#334768',0]]);
-      radial('galaxy-cloud-warm',[[0,'#f4e5cc',.73],[.22,'#dfc9b2',.54],[.52,'#b39c99',.24],[.8,'#876b81',.06],[1,'#59465b',0]]);
-      radial('stellar-light',[[0,'#fffdf4',1],[.22,'#fff6d3',1],[.48,'#f0c884',.82],[1,'#b97742',.14]]);
-      radial('stellar-glow',[[0,'#fff3d0',.65],[.12,'#eacb95',.26],[.4,'#cf9b62',.07],[1,'#a27e5d',0]]);
-      radial('nebula-blue',[[0,'#46688d',.19],[.35,'#29496a',.08],[1,'#112034',0]]);
-      radial('nebula-dust',[[0,'#9a7763',.13],[.5,'#67556a',.035],[1,'#142132',0]]);
-      radial('planet-definition',[[0,'#e0eee3',1],[.3,'#90bdbe',1],[.68,'#446d83',1],[1,'#16233b',1]],{cx:'29%',cy:'26%',r:'75%'});
-      radial('planet-theorem',[[0,'#f4dcc0',1],[.32,'#cfa084',1],[.7,'#87595b',1],[1,'#281d31',1]],{cx:'29%',cy:'26%',r:'75%'});
-      radial('planet-construction',[[0,'#e0e8f4',1],[.33,'#91aaca',1],[.7,'#4b658e',1],[1,'#1d2947',1]],{cx:'29%',cy:'26%',r:'75%'});
-
       ['normal', 'highlight'].forEach(kind => {
         defs.append('marker').attr('id', this.id + '-arrow-' + kind)
           .attr('viewBox', '0 -4 9 8').attr('refX', 8).attr('refY', 0)
           .attr('markerWidth', kind === 'normal' ? 7 : 9).attr('markerHeight', kind === 'normal' ? 7 : 9)
           .attr('orient', 'auto').attr('markerUnits', 'userSpaceOnUse')
-          .append('path').attr('d', 'M0,-3.5L8,0L0,3.5Z').attr('fill', kind === 'normal' ? '#8497ae' : '#2668ad');
+          .append('path').attr('d', 'M0,-3.5L8,0L0,3.5Z').attr('fill', kind === 'normal' ? '#7d8a99' : ACCENT);
       });
       this.viewport = this.svg.append('g').attr('class', 'tau-viewport');
       this.clusterLayer = this.viewport.append('g');
@@ -183,6 +169,24 @@
       this.svg.on('click.background', () => {
         if (d3.event.target === this.svg.node()) this.select(null);
       });
+      // A pinch is a camera gesture. Browsers still synthesise a click for a
+      // finger that barely moved, which used to open whatever lay beneath it.
+      // While two fingers are down, and briefly after they lift, clicks are
+      // ignored; the pinch also records its starting scale so a dive needs a
+      // deliberate change of scale rather than a wobble across the threshold.
+      this.gestureTouches = 0; this.suppressClicksUntil = 0; this.pinchStartScale = null;
+      const svgNode = this.svg.node();
+      const gestureEnded = event => {
+        if (event.touches && event.touches.length) return;
+        if (this.gestureTouches >= 2) this.suppressClicksUntil = Date.now() + 700;
+        this.gestureTouches = 0; this.pinchStartScale = null;
+      };
+      svgNode.addEventListener('touchstart', event => {
+        this.gestureTouches = Math.max(this.gestureTouches, event.touches.length);
+        if (event.touches.length >= 2) { this.suppressClicksUntil = Infinity; if (this.pinchStartScale === null) this.pinchStartScale = this.transform.k; }
+      }, { passive: true, capture: true });
+      svgNode.addEventListener('touchend', gestureEnded, { passive: true, capture: true });
+      svgNode.addEventListener('touchcancel', gestureEnded, { passive: true, capture: true });
       this.resize = () => {
         if (this.destroyed) return;
         const box = this.container.getBoundingClientRect();
@@ -192,7 +196,7 @@
         this.svg.attr('viewBox', '0 0 ' + this.width + ' ' + this.height);
         this.zoom.extent([[0, 0], [this.width, this.height]]);
         if (this.awaitingFit && box.width > 0 && box.height > 0) { this.awaitingFit = false; this.fit(false); }
-        else if(this.nodes.length&&!this.semantic.busy&&previousWidth&&previousHeight&&(Math.abs(this.width/previousWidth-1)>.2||Math.abs(this.height/previousHeight-1)>.2)){
+        else if(this.nodes.length&&!this.semantic.busy&&previousWidth&&previousHeight&&(Math.abs(this.width/previousWidth-1)>(this.layout==='constellations'?.02:.2)||Math.abs(this.height/previousHeight-1)>(this.layout==='constellations'?.02:.2))){
           if(this.layout==='constellations'){this.layoutConstellations();this.draw();this.applyEmphasis();}
           this.fit(false);
         }
@@ -224,12 +228,12 @@
       this.relatedEdges = (data.relatedEdges || []).map(edge => ({ source: this.nodeMap.get(edge.source), target: this.nodeMap.get(edge.target), kind: 'reference', weight: .2 })).filter(edge => edge.source && edge.target);
       this.groupConnections = [];this.sectorRoutes=[];this.sectorRouteSelection=null;
       this.clusters = [];
-      this.constellationLinks = []; this.constellationSubjects = []; this.constellationBounds = null; this.hoveredId = null; this.subjectLeaders = null;
+      this.constellationLinks = []; this.constellationSubjects = []; this.constellationBounds = null; this.hoveredId = null; this.hoveredSubject = null; this.hoveredRoute = null; this.subjectLeaders = null;
       this.isSkyLayout = ['constellations', 'layer-constellations', 'solar-system'].includes(this.layout);
       this.svg.classed('tau-constellations-layout', this.layout === 'constellations')
         .classed('tau-layer-constellations-layout', this.layout === 'layer-constellations')
         .classed('tau-solar-system-layout',this.layout==='solar-system').attr('data-layout', this.layout)
-        .style('background', this.isSkyLayout ? '#050a14' : '#f8fafc');
+        .style('background', BACKGROUND);
       if (this.layout === 'constellations') this.layoutConstellations();
       else if (this.layout === 'layer-constellations') this.layoutLayerConstellations();
       else if (this.layout === 'solar-system') this.layoutSolarSystem();
@@ -254,23 +258,23 @@
       // Fixed chart coordinates preserve a subject's location when filters change.
       // Their asymmetric arrangement leaves clear spaces between constellations.
       const sectors = {
-        'Shared foundations': [-940, -240],
-        'Classical, analytic and computational number theory': [-505, -370],
-        'Arithmetic geometry and Diophantine methods': [-70, -310],
-        'Modular, Shimura and Galois theory': [380, -195],
-        'General automorphic theory': [835, -340],
-        'Diamonds and geometric Langlands': [760, 100],
-        'Cohomology and nonarchimedean geometry': [-235, 70],
-        'K-theory, motives, periods and Habiro': [225, 205],
-        'Iwasawa, Euler systems and BSD': [680, 515],
-        'Function fields and higher local fields': [-20, 505],
+        'Shared foundations': [-420, -35],
+        'Classical, analytic and computational number theory': [-505, -470],
+        'Arithmetic geometry and Diophantine methods': [-55, -310],
+        'Modular, Shimura and Galois theory': [395, -170],
+        'General automorphic theory': [850, -360],
+        'Diamonds and geometric Langlands': [720, 240],
+        'Cohomology and nonarchimedean geometry': [-80, 135],
+        'K-theory, motives, periods and Habiro': [90, 545],
+        'Iwasawa, Euler systems and BSD': [440, 520],
+        'Function fields and higher local fields': [740, 800],
         'Analysis, probability and PDE': [-995, 350],
-        'Topology, manifolds and Floer theory': [-530, 475],
-        'Algebra, representation theory and Lie groups': [-680, 105],
-        'Differential and complex geometry': [-1100, 650],
-        'Combinatorics and discrete structures': [-650, -650],
-        'Computation, optimization and control': [-1320, 50],
-        'Logic and foundations': [-1100, -550]
+        'Topology, manifolds and Floer theory': [-460, 515],
+        'Algebra, representation theory and Lie groups': [-760, 105],
+        'Differential and complex geometry': [-1050, 745],
+        'Combinatorics and discrete structures': [-850, -565],
+        'Computation, optimization and control': [-1380, 10],
+        'Logic and foundations': [-1310, -400]
       };
       const hash = text => Array.from(text).reduce((seed, character) => ((seed * 31 + character.charCodeAt(0)) >>> 0), 7);
       const subjects = Array.from(grouped, ([label, nodes]) => ({ label, nodes: nodes.sort((a, b) => a.id.localeCompare(b.id)) }));
@@ -289,51 +293,75 @@
       this.groupConnections = Array.from(connections.values());
       this.constellationLinks=[];this.constellationSubjects=[];this.sectorRoutes=[];
       if(!subjects.length){this.constellationBounds=null;return;}
-      // The area map is a cartographic index. Separate survey sectors reserve
-      // space for their names; their contents remain organic galaxy clusters.
-      // Semantic coordinates determine the assignment, rather than alphabetic
-      // ordering or the progress score of a roadmap.
+      // Mathematical neighbourhoods are anchored in an irregular sky, then
+      // separated radially. Population controls the area of each cloud; there
+      // are no grid cells or shared rows for either galaxies or area headings.
       const small=this.width<600,bottomReserve=small||this.height<300?60:0;
       const usableHeight=Math.max(70,this.height-bottomReserve),shortWide=!small&&this.width/usableHeight>3.6;
-      const cols=Math.min(subjects.length,subjects.length===1?1:small?3:shortWide?Math.ceil(subjects.length/2):5);
-      const rows=Math.ceil(subjects.length/cols),unit=4;
+      const unit=4;
       const chartW=subjects.length===1?Math.max(650,Math.sqrt(this.nodes.length)*190):Math.max(200,(this.width-44)*unit-60);
       const chartH=subjects.length===1?Math.max(510,chartW*.63):Math.max(100,(usableHeight-44)*unit-60);
-      const cellW=chartW/cols,cellH=chartH/rows,gap=shortWide?14:small?26:46;
-      const slots=Array.from({length:cols*rows},(_,index)=>({col:index%cols,row:Math.floor(index/cols),
-        x:(index%cols+.5)*cellW-chartW/2,y:(Math.floor(index/cols)+.5)*cellH-chartH/2}));
-      const seedValues=subjects.map((subject,index)=>sectors[subject.label]||[index*170,0]);
+      const gap=shortWide?28:small?42:74;
+      const meanCount=this.nodes.length/subjects.length;
+      subjects.forEach(subject=>{subject.areaWeight=.42+.58*Math.sqrt(subject.nodes.length/meanCount);});
+      const totalWeight=subjects.reduce((total,subject)=>total+subject.areaWeight,0);
+      const seedValues=subjects.map((subject,index)=>sectors[subject.label]||[Math.cos(index*2.4)*900,Math.sin(index*2.4)*650]);
       const minX=Math.min(...seedValues.map(p=>p[0])),maxX=Math.max(...seedValues.map(p=>p[0]));
       const minY=Math.min(...seedValues.map(p=>p[1])),maxY=Math.max(...seedValues.map(p=>p[1]));
-      subjects.forEach((subject,index)=>{const seed=seedValues[index];
-        subject.seedX=((seed[0]-minX)/Math.max(1,maxX-minX)-.5)*(chartW-cellW);
-        subject.seedY=((seed[1]-minY)/Math.max(1,maxY-minY)-.5)*(chartH-cellH);
+      subjects.forEach((subject,index)=>{
+        const seed=seedValues[index],variation=.9+(hash(subject.label)%101)/500;
+        const area=chartW*chartH*.46*subject.areaWeight/totalWeight;
+        const shape=(shortWide?4.2:small?.96:1.32)*variation;
+        subject.w=subjects.length===1?chartW:Math.max(small?265:shortWide?360:430,Math.sqrt(area*shape));
+        subject.h=subjects.length===1?chartH:Math.max(shortWide?125:small?180:270,area/subject.w);
+        subject.seedX=((seed[0]-minX)/Math.max(1,maxX-minX)-.5)*chartW*.78;
+        subject.seedY=((seed[1]-minY)/Math.max(1,maxY-minY)-.5)*chartH*.78;
+        // A deterministic offset keeps a narrow chart from settling into rows.
+        subject.seedX+=((hash(subject.label+'|x')%1000)/1000-.5)*subject.w*(small?.5:.2);
+        subject.seedY+=((hash(subject.label+'|y')%1000)/1000-.5)*subject.h*(small?.5:.2);
+        subject.x=subject.seedX;subject.y=subject.seedY;
       });
-      const available=new Set(slots),assignment=new Map();
-      subjects.slice().sort((a,b)=>Math.hypot(b.seedX/chartW,b.seedY/chartH)-Math.hypot(a.seedX/chartW,a.seedY/chartH)||a.label.localeCompare(b.label)).forEach(subject=>{
-        const slot=Array.from(available).sort((a,b)=>Math.hypot((a.x-subject.seedX)/chartW,(a.y-subject.seedY)/chartH)-Math.hypot((b.x-subject.seedX)/chartW,(b.y-subject.seedY)/chartH))[0];
-        assignment.set(subject.label,slot);available.delete(slot);
-      });
-      const assignmentCost=()=>{
-        let cost=0;subjects.forEach(subject=>{const slot=assignment.get(subject.label);cost+=Math.pow((slot.x-subject.seedX)/chartW,2)+Math.pow((slot.y-subject.seedY)/chartH,2);});
-        this.groupConnections.forEach(link=>{const a=assignment.get(link.source),b=assignment.get(link.target);
-          cost+=Math.log1p(link.weight)*.008*Math.hypot((a.x-b.x)/chartW,(a.y-b.y)/chartH);});
-        return cost;
-      };
-      // Small deterministic swaps keep strongly linked areas nearby without
-      // letting an attractive force collapse their separate plotting regions.
-      for(let pass=0;pass<5;pass++){
-        let improved=false;subjects.forEach((a,index)=>subjects.slice(index+1).forEach(b=>{
-          const before=assignmentCost(),sa=assignment.get(a.label),sb=assignment.get(b.label);
-          assignment.set(a.label,sb);assignment.set(b.label,sa);
-          if(assignmentCost()<before-1e-8)improved=true;else{assignment.set(a.label,sa);assignment.set(b.label,sb);}
-        }));if(!improved)break;
+      const links=this.groupConnections.filter(link=>link.dependencies>0);
+      const degree=new Map(subjects.map(subject=>[subject.label,0]));
+      links.forEach(link=>{const weight=Math.log1p(link.weight);degree.set(link.source,degree.get(link.source)+weight);degree.set(link.target,degree.get(link.target)+weight);});
+      for(let pass=0;pass<240;pass++){
+        // A small attraction follows the recorded prerequisite network. The
+        // semantic anchors remain stronger, so unrelated topics cannot migrate
+        // through the atlas just because another area contains more roadmaps.
+        if(pass<170){
+          subjects.forEach(subject=>{subject.x+=(subject.seedX-subject.x)*.025;subject.y+=(subject.seedY-subject.y)*.025;});
+          links.forEach(link=>{
+            const a=subjectMap.get(link.source),b=subjectMap.get(link.target),weight=Math.log1p(link.weight);
+            const dx=b.x-a.x,dy=b.y-a.y;
+            const strength=.016*weight/Math.max(1,degree.get(a.label),degree.get(b.label));
+            a.x+=dx*strength;a.y+=dy*strength;b.x-=dx*strength;b.y-=dy*strength;
+          });
+        }
+        let moved=false;
+        subjects.forEach((a,index)=>subjects.slice(index+1).forEach(b=>{
+          let dx=b.x-a.x,dy=b.y-a.y;
+          const width=(a.w+b.w)/2+gap,height=(a.h+b.h)/2+gap;
+          if(Math.abs(dx)>=width||Math.abs(dy)>=height)return;
+          if(Math.hypot(dx,dy)<.001){const angle=(hash(a.label+b.label)%360)*Math.PI/180;dx=Math.cos(angle);dy=Math.sin(angle);}
+          const separation=Math.max(Math.abs(dx)/width,Math.abs(dy)/height);
+          const distance=(1/Math.max(.001,separation)-1)*.505;
+          a.x-=dx*distance;a.y-=dy*distance;b.x+=dx*distance;b.y+=dy*distance;moved=true;
+        }));
+        if(pass>=170&&!moved)break;
       }
+      const left=Math.min(...subjects.map(subject=>subject.x-subject.w/2)),top=Math.min(...subjects.map(subject=>subject.y-subject.h/2));
+      this.constellationBounds={x:left,y:top,w:Math.max(...subjects.map(subject=>subject.x+subject.w/2))-left,h:Math.max(...subjects.map(subject=>subject.y+subject.h/2))-top};
+      const expectedScale=Math.max(.025,Math.min(1.15,(this.width-36)/(this.constellationBounds.w+60),(usableHeight-36)/(this.constellationBounds.h+60)));
       const adjacency=new Set();this.edges.forEach(edge=>{if(!/reference|contains/.test(edge.kind))adjacency.add([edge.source.id,edge.target.id].sort().join('\n'));});
       subjects.forEach(subject=>{
-        const slot=assignment.get(subject.label),seed=hash(subject.label);
-        const header=shortWide?Math.min(72,cellH-gap-18):Math.min(cellH*.46,small?92:196),left=slot.x-cellW/2+gap/2,top=slot.y-cellH/2+gap/2;
-        const w=cellW-gap,h=cellH-gap,cx=slot.x,cy=top+header+(h-header)/2;
+        const seed=hash(subject.label),w=subject.w,h=subject.h;
+        const ordinaryHeader=shortWide?Math.min(66,h*.36):Math.min(h*.38,small?92:144);
+        // A short landscape chart still needs the same readable heading in
+        // screen pixels. Reserve it before packing its roadmap names below.
+        const shortHeadingFont=w*expectedScale-12<85?9.5:w*expectedScale-12<125?10.5:11.5;
+        const header=shortWide?Math.min(h-18,Math.max(ordinaryHeader,(shortHeadingFont+8)/expectedScale)):ordinaryHeader;
+        const left=subject.x-w/2,top=subject.y-h/2;
+        const cx=subject.x,cy=top+header+(h-header)/2;
         const rx=Math.max(25,w/2-(shortWide?14:42)),ry=Math.max(9,(h-header)/2-(shortWide?5:small?8:32)),rotation=(seed%360)*Math.PI/180;
         // Golden-angle packing has no artificial row or prerequisite direction.
         // A roadmap's real links are represented in the edge layer below.
@@ -350,8 +378,13 @@
             if(distance<minimum){minimum=distance;nearest={source,target,group:subject.label,sourceEdge};}}));
           this.constellationLinks.push(nearest);connected.add(nearest.target);pending.delete(nearest.target);
         }
-        this.constellationSubjects.push({label:subject.label,x:cx,y:slot.y,labelX:cx,labelY:top+(shortWide?2:8),
-          sector:{x:left,y:top,w,h,header,col:slot.col,row:slot.row},radius:Math.max(rx,ry),count:subject.nodes.length,color:subject.nodes[0].color||'#9aabc1'});
+        // A sparse area's heading sits just above its galaxies rather than at
+        // the top of a mostly empty cloud. The reserve is measured in screen
+        // pixels at the expected fit, so the heading never touches a core.
+        const dotsTop=Math.min(...subject.nodes.map(node=>node.y));
+        const labelY=Math.max(top+(shortWide?2:8),Math.min(dotsTop-(shortWide?36:small?46:58)/expectedScale,top+h-40));
+        this.constellationSubjects.push({label:subject.label,x:cx,y:cy,labelX:cx,labelY,gap,
+          sector:{x:left,y:top,w,h,header},radius:Math.max(rx,ry),count:subject.nodes.length,color:subject.nodes[0].color||'#9aabc1'});
       });
       const regionMap=new Map(this.constellationSubjects.map(subject=>[subject.label,subject])),routes=new Map();
       this.edges.forEach(edge=>{
@@ -362,16 +395,42 @@
         const route=routes.get(key);route.dependencies++;route.witnesses.push({source:edge.source.id,target:edge.target.id,kind:edge.kind});
       });
       this.sectorRoutes=Array.from(routes.values()).map(route=>{
-        const a=regionMap.get(route.source),b=regionMap.get(route.target),ar=a.sector,br=b.sector;
-        // Rectilinear routes connect the reserved spaces between subject clusters.
-        const dx=b.x-a.x,dy=b.y-a.y;
-        let points;
-        if(ar.row===br.row){const sign=Math.sign(dx),sx=a.x+sign*ar.w/2,tx=b.x-sign*br.w/2;points=[[sx,a.y],[tx,b.y]];}
-        else if(ar.col===br.col){const sign=Math.sign(dy),sy=a.y+sign*ar.h/2,ty=b.y-sign*br.h/2;points=[[a.x,sy],[b.x,ty]];}
-        else{const sign=Math.sign(dy),sy=a.y+sign*ar.h/2,ty=b.y-sign*br.h/2,corridor=sy+sign*gap/2;points=[[a.x,sy],[a.x,corridor],[b.x,corridor],[b.x,ty]];}
-        return {...route,points};
+        const a=regionMap.get(route.source),b=regionMap.get(route.target);
+        const dx=b.x-a.x,dy=b.y-a.y,length=Math.max(1,Math.hypot(dx,dy)),nx=-dy/length,ny=dx/length;
+        let points=null,bestCost=Infinity;
+        // Try gentle arcs on both sides of the direct connection. The route
+        // with the clearest passage between other areas wins deterministically.
+        [.10,-.10,.22,-.22,.38,-.38].forEach(bend=>{
+          const direction=Math.sign(bend),bounds=this.constellationBounds;
+          const c1={x:a.x+dx*.3,y:a.y+dy*.3},c2={x:a.x+dx*.7,y:a.y+dy*.7};
+          let clearance=Infinity;
+          [c1,c2].forEach(point=>{
+            [[point.x,nx*direction,bounds.x+8,bounds.x+bounds.w-8],[point.y,ny*direction,bounds.y+8,bounds.y+bounds.h-8]].forEach(([origin,normal,low,high])=>{
+              if(Math.abs(normal)>.0001)clearance=Math.min(clearance,Math.max(0,((normal>0?high:low)-origin)/normal));
+            });
+          });
+          // Keep Bézier controls inside the chart: their convex hull then
+          // contains the whole arc, even on a very wide phone viewport.
+          const offset=Math.min(length*.42,Math.max(gap*1.4,length*Math.abs(bend)),clearance*.85)*direction;
+          c1.x+=nx*offset;c1.y+=ny*offset;c2.x+=nx*offset;c2.y+=ny*offset;
+          const samples=Array.from({length:81},(_,index)=>{
+            const t=index/80,u=1-t;
+            return [u*u*u*a.x+3*u*u*t*c1.x+3*u*t*t*c2.x+t*t*t*b.x,u*u*u*a.y+3*u*u*t*c1.y+3*u*t*t*c2.y+t*t*t*b.y];
+          });
+          const obscured=samples.filter(point=>this.constellationSubjects.some(subject=>{
+            if(subject===a||subject===b)return false;const box=subject.sector;
+            return point[0]>box.x-8&&point[0]<box.x+box.w+8&&point[1]>box.y-8&&point[1]<box.y+box.h+8;
+          })).length;
+          const cost=obscured*100+Math.abs(offset)/length;
+          if(cost<bestCost){bestCost=cost;points=samples;}
+        });
+        return {...route,points,shape:'curve'};
       });
-      this.constellationBounds={x:-chartW/2,y:-chartH/2,w:chartW,h:chartH};
+      // Only the strongest routes carry ink at rest. Every route stays in the
+      // data and appears when its area or a member roadmap is active.
+      const counts=this.sectorRoutes.map(route=>route.dependencies).sort((a,b)=>a-b);
+      const threshold=counts.length?Math.max(3,counts[Math.floor(counts.length*.65)]):Infinity;
+      this.sectorRoutes.forEach(route=>{route.strong=route.dependencies>=threshold;});
       this.layoutGalaxyNames();
     }
 
@@ -415,47 +474,44 @@
     }
 
     sectorRoutePath(route) {
-      // Keep aggregate routes in the open corridors. These bounds are used
-      // only for clipping; no enclosure or masking shape is drawn or exported.
-      const paths=[],epsilon=1e-8;
-      for(let index=1;index<route.points.length;index++){
-        const a=route.points[index-1],b=route.points[index],dx=b[0]-a[0],dy=b[1]-a[1];
-        if(Math.hypot(dx,dy)<epsilon)continue;
-        const hidden=[];
-        this.constellationSubjects.forEach(subject=>{
-          const box=subject.sector;if(!box)return;
-          let enter=0,leave=1;
-          for(const [origin,delta,min,max] of [[a[0],dx,box.x,box.x+box.w],[a[1],dy,box.y,box.y+box.h]]){
-            if(Math.abs(delta)<epsilon){if(origin<=min||origin>=max)return;continue;}
-            const first=(min-origin)/delta,last=(max-origin)/delta;
-            enter=Math.max(enter,Math.min(first,last));leave=Math.min(leave,Math.max(first,last));
-            if(leave-enter<=epsilon)return;
-          }
-          hidden.push([enter,leave]);
+      // Clip only the curved ink, not a visible enclosure, around the clouds
+      // and their labels. Cubic segments replace the former horizontal routes.
+      const fragments=[];let current=[];
+      const finish=()=>{if(current.length>2)fragments.push(current);current=[];};
+      (route.points||[]).forEach(point=>{
+        const hidden=this.constellationSubjects.some(subject=>{
+          const box=subject.sector;
+          return point[0]>box.x&&point[0]<box.x+box.w&&point[1]>box.y&&point[1]<box.y+box.h;
         });
-        hidden.sort((x,y)=>x[0]-y[0]);
-        const append=(start,end)=>{if(end-start>epsilon)paths.push(`M${a[0]+dx*start},${a[1]+dy*start}L${a[0]+dx*end},${a[1]+dy*end}`);};
-        let cursor=0;
-        hidden.forEach(([start,end])=>{append(cursor,start);cursor=Math.max(cursor,end);});
-        append(cursor,1);
-      }
-      return paths.join('');
+        if(hidden)finish();else current.push(point);
+      });
+      finish();
+      // Bézier interpolation of sampled points keeps even a short visible
+      // fragment curved, with no right-angle corridor or horizontal separator.
+      return fragments.map(points=>{
+        let path=`M${points[0][0]},${points[0][1]}`;
+        for(let index=1;index<points.length;index++){
+          const before=points[Math.max(0,index-2)],a=points[index-1],b=points[index],after=points[Math.min(points.length-1,index+1)];
+          path+=`C${a[0]+(b[0]-before[0])/6},${a[1]+(b[1]-before[1])/6} ${b[0]-(after[0]-a[0])/6},${b[1]-(after[1]-a[1])/6} ${b[0]},${b[1]}`;
+        }
+        return path;
+      }).join('');
     }
 
     drawConstellations() {
       const routes=this.clusterLayer.append('g').attr('class','tau-sector-routes');
       this.sectorRouteSelection=routes.selectAll('path').data(this.sectorRoutes||[]).enter().append('path')
-        .attr('class','tau-sector-route').attr('data-source-area',route=>route.source).attr('data-target-area',route=>route.target)
-        .attr('d',route=>this.sectorRoutePath(route)).attr('fill','none')
-        .attr('stroke','#7e9cb1').attr('stroke-width',route=>.7+Math.min(1.4,Math.log1p(route.dependencies)*.25))
-        .attr('vector-effect','non-scaling-stroke').attr('stroke-linejoin','round').attr('opacity',.42)
+        .attr('class',route=>'tau-sector-route'+(route.strong?' is-strong':' is-quiet')).attr('data-source-area',route=>route.source).attr('data-target-area',route=>route.target)
+        .attr('data-strong',route=>String(!!route.strong)).attr('d',route=>this.sectorRoutePath(route)).attr('fill','none')
+        .attr('stroke','#6f8496').attr('stroke-width',route=>.6+Math.min(.9,Math.log1p(route.dependencies)*.16))
+        .attr('vector-effect','non-scaling-stroke').attr('stroke-linejoin','round').attr('opacity',route=>route.strong?.16:0)
         .attr('role','img').attr('aria-label',route=>`Connections between ${route.source} and ${route.target}: ${route.dependencies} roadmap prerequisite links`)
-        .attr('pointer-events','stroke').on('mouseenter',route=>this.highlightSectorRoute(route)).on('mouseleave',()=>this.highlightSectorRoute(null));
-      this.sectorRouteSelection.append('title').text(route=>`Connections between ${route.source} and ${route.target}\n${route.dependencies} real roadmap prerequisite links. Select a roadmap to inspect their direction.`);
+        .attr('pointer-events',route=>route.strong?'stroke':'none').on('mouseenter',route=>this.highlightSectorRoute(route)).on('mouseleave',()=>this.highlightSectorRoute(null));
+      this.sectorRouteSelection.append('title').text(route=>`${route.source} ↔ ${route.target}\n${route.dependencies} roadmap prerequisite links. Select a roadmap to see their direction.`);
       this.constellationSelection=this.clusterLayer.selectAll('path.tau-constellation-link').data(this.constellationLinks).enter().append('path')
         .attr('class',link=>'tau-constellation-link'+(link.sourceEdge?' is-mathematical':' is-grouping'))
         .attr('data-source-edge',link=>String(link.sourceEdge)).attr('d',link=>this.constellationPath(link))
-        .attr('fill','none').attr('stroke','#688697').attr('stroke-width',.7).attr('vector-effect','non-scaling-stroke').attr('opacity',link=>link.sourceEdge?.28:0);
+        .attr('fill','none').attr('stroke','#4f5f6d').attr('stroke-width',.7).attr('vector-effect','non-scaling-stroke').attr('opacity',link=>link.sourceEdge?.22:0);
       const captions = {
         'Shared foundations': ['Shared foundations'],
         'Classical, analytic and computational number theory': ['Classical & analytic', 'number theory'],
@@ -483,6 +539,10 @@
           d3.event.stopPropagation();
           if (this.options.onGroupSelect) this.options.onGroupSelect(subject.label);
         })
+        .on('mouseenter', subject => { this.hoveredSubject = subject.label; this.updateConstellationLabels(); })
+        .on('mouseleave', () => { this.hoveredSubject = null; this.updateConstellationLabels(); })
+        .on('focus', subject => { this.hoveredSubject = subject.label; this.updateConstellationLabels(); })
+        .on('blur', () => { this.hoveredSubject = null; this.updateConstellationLabels(); })
         .on('keydown', subject => {
           if (d3.event.key !== 'Enter' && d3.event.key !== ' ') return;
           d3.event.preventDefault(); d3.event.stopPropagation();
@@ -496,21 +556,25 @@
         const g = d3.select(this).attr('aria-label', `Open ${subject.label}: ${subject.captionCount}`);
         const width = Math.max(...lines.map(line => line.length)) * 6 + 18;
         g.append('rect').attr('x', -width/2).attr('y', -lines.length*13+1).attr('width', width)
-          .attr('height', lines.length*13+18).attr('rx', 3).attr('fill', '#0d1728').attr('fill-opacity', .88);
-        const title = g.append('text').attr('text-anchor', 'middle').attr('fill', '#e1dfd3').attr('font-size', 11).attr('font-weight', 600);
+          .attr('height', lines.length*13+18).attr('fill', BACKGROUND).attr('fill-opacity', 0);
+        const title = g.append('text').attr('text-anchor', 'middle').attr('font-size', 11);
         lines.forEach((line, index) => title.append('tspan').attr('x', 0).attr('y', -(lines.length - 1 - index)*13).text(line));
-        g.append('text').attr('class', 'tau-constellation-count').attr('text-anchor', 'middle').attr('y', 13)
-          .attr('fill', '#8c9db3').attr('font-size', 8.5).text(subject.captionCount || subject.count + ' roadmaps');
-        g.append('title').text(subject.label + '\n' + subject.captionCount + ' — click to explore');
+        g.append('title').text(subject.label + '\n' + subject.captionCount + ' — click to open');
       });
     }
 
     highlightSectorRoute(route) {
       if(this.layout!=='constellations')return;
-      this.clusterLayer.selectAll('.tau-constellation-subject').select('text')
-        .attr('fill',subject=>route&&(subject.label===route.source||subject.label===route.target)?'#e0c48c':'#e1dfd3');
-      if(this.sectorRouteSelection)this.sectorRouteSelection.attr('stroke',item=>item===route?'#e0c48c':'#7e9cb1')
-        .attr('opacity',item=>route?(item===route?.9:.13):.42);
+      this.hoveredRoute=route||null;
+      this.updateConstellationLabels();
+    }
+
+    // The ink a route receives at rest, or while an area, a roadmap or the
+    // route itself has the reader's attention. Hidden ink is still data.
+    routeOpacity(route, focusGroup, detail) {
+      if (this.hoveredRoute) return route === this.hoveredRoute ? .75 : .03;
+      if (focusGroup) return route.source === focusGroup || route.target === focusGroup ? .6 : .03;
+      return route.strong ? .16 * (1 - detail * .8) : 0;
     }
 
     labelPlacement(preferred, occupied, exhaustive) {
@@ -527,20 +591,27 @@
         [[0,-dy],[-dx,0],[dx,0],[0,dy],[-dx,-dy],[dx,-dy],[-dx,dy],[dx,dy]].forEach(([x,y])=>add(x,y));
       }
       if (exhaustive) {
-        for (let y=margin; y+preferred.h<=this.height-margin; y+=preferred.h+gap) {
-          for (let x=margin; x+preferred.w<=this.width-margin; x+=Math.max(35,preferred.w*.5)) candidates.push({...preferred,x,y});
+        const stepX=Math.max(24,preferred.w*.3), stepY=Math.max(18,preferred.h*.6);
+        for (let y=margin; y+preferred.h<=this.height-margin; y+=stepY) {
+          for (let x=margin; x+preferred.w<=this.width-margin; x+=stepX) candidates.push({...preferred,x,y});
         }
       }
-      let best=null, score=Infinity;
-      candidates.forEach(box => {
-        // Captions must never cover a node's clickable core, even when the
-        // available space forces a compromise between two text labels.
-        if(occupied.some(other=>other.core&&overlap(box,other)>0))return;
-        const overlaps=occupied.reduce((sum,other)=>sum+overlap(box,other),0);
-        const distance=Math.hypot(box.x-preferred.x,box.y-preferred.y);
-        const value=overlaps*1000+distance;
-        if(value<score){score=value;best={...box,overlap:overlaps};}
-      });
+      // First look for a spot clear of every core. A caption that must be
+      // shown may then cover the fewest small cores, but never a heading,
+      // another caption or the chart controls.
+      const evaluate = strict => {
+        let best=null, score=Infinity;
+        candidates.forEach(box => {
+          if(occupied.some(other=>other.core&&(strict||other.hard)&&overlap(box,other)>0))return;
+          const soft=strict?0:occupied.reduce((sum,other)=>sum+(other.core&&!other.hard?overlap(box,other):0),0);
+          const overlaps=occupied.reduce((sum,other)=>sum+(other.core?0:overlap(box,other)),0);
+          const distance=Math.hypot(box.x-preferred.x,box.y-preferred.y);
+          const value=soft*4000+overlaps*1000+distance;
+          if(value<score){score=value;best={...box,overlap:overlaps};}
+        });
+        return best;
+      };
+      const best = evaluate(true) || (exhaustive ? evaluate(false) : null);
       return best && (exhaustive || best.overlap===0) ? best : null;
     }
 
@@ -562,7 +633,7 @@
       const smallChart=this.width<600||this.height<300;
       const compactSystem=this.layout==='solar-system'&&smallChart;
       // Leave the mobile zoom controls and their bottom margin unobstructed.
-      if(smallChart)occupied.push({x:0,y:Math.max(0,this.height-60),w:this.width,h:60,core:true});
+      if(smallChart)occupied.push({x:0,y:Math.max(0,this.height-60),w:this.width,h:60,core:true,hard:true});
       const compact = this.width < 760;
       const shortNames = {
         'Shared foundations':'Foundations',
@@ -598,38 +669,58 @@
       this.clusterLayer.selectAll('.tau-constellation-subject').each(function(subject) {
         const g=d3.select(this),sector=subject.sector;
         if(!sector)return;
-        const availableWidth=sector.w*scale-12,headerHeight=sector.header*scale;
+        // A phone chart is narrow: headings keep a readable size and may use
+        // the clear gap beside their own area rather than shrinking away.
+        const smallHeading=graph.width<600||graph.height<300;
+        const availableWidth=sector.w*scale-12+(smallHeading?Math.min(40,(subject.gap||0)*scale):0),headerHeight=sector.header*scale;
         const mode=availableWidth<135?'compact':'full';
         const names=mode==='compact'?shortNames:null;
-        const lines=graph.width<600||headerHeight<30?[smallNames[subject.label]||subject.captionLines[0]]:mode==='compact'?wrapText(names[subject.label]||smallNames[subject.label]||subject.label,Math.max(12,Math.floor(availableWidth/5.4)),2):subject.captionLines;
-        const font=availableWidth<85?9.5:availableWidth<125?10.5:11.5;
-        const showCount=availableWidth>115&&headerHeight>44;
-        const lineHeight=font+2,h=lines.length*lineHeight+(showCount?11:0)+2;
-        const width=Math.min(Math.max(54,availableWidth),Math.max(...lines.map(line=>line.length))*font*.57+16);
+        let lines=graph.width<600||headerHeight<30?[smallNames[subject.label]||subject.captionLines[0]]:mode==='compact'?wrapText(names[subject.label]||smallNames[subject.label]||subject.label,Math.max(12,Math.floor(availableWidth/5.4)),2):subject.captionLines;
+        const preferredFont=availableWidth<85?9.5:availableWidth<125?10.5:11;
+        // Fit the ink as well as the hit box. A heading must not extend into
+        // its neighbour when a narrow viewport is fitted after navigation.
+        if(mode==='compact'&&headerHeight>=31&&lines.length===1&&lines[0].length*preferredFont*.57+10>availableWidth){
+          const words=lines[0].replace('/', ' / ').split(/\s+/);
+          if(words.length>1)lines=wrapText(words.join(' '),Math.max(7,Math.floor((availableWidth-10)/(preferredFont*.57))),2);
+        }
+        let longest=Math.max(...lines.map(line=>line.length));
+        let font=Math.max(smallHeading?9:1,Math.min(preferredFont,Math.max(1,availableWidth-10)/(longest*.62)));
+        if(smallHeading&&lines.length===1&&longest*font*.6+16>sector.w*scale+(subject.gap||0)*scale*.45){
+          // Rather than run into the neighbouring heading, a long phone
+          // heading breaks onto a second line; a single long word shrinks.
+          const words=lines[0].replace('/',' / ').split(/\s+/);
+          if(words.length>1)lines=wrapText(words.join(' '),Math.max(6,Math.ceil(longest/2)+1),2);
+          longest=Math.max(...lines.map(line=>line.length));
+          font=Math.max(8,Math.min(font,(sector.w*scale+(subject.gap||0)*scale*.45-16)/(longest*.6)));
+        }
+        const lineHeight=font+2,h=lines.length*lineHeight+2;
+        const width=Math.max(54,longest*font*.6+16);
         const anchor={x:subject.labelX*scale+tx,y:subject.labelY*scale+ty};
         const box={x:anchor.x-width/2,y:anchor.y+2,w:width,h};
-        // At fit every label belongs to a disjoint header band. During zoom,
-        // headings leave the viewport with their sector instead of drifting
-        // onto other areas or covering their roadmap cores.
+        // Each independent cloud reserves room above its own galaxies. During
+        // zoom the heading leaves the viewport with its cloud, rather than
+        // drifting onto another area or covering a roadmap core.
         const visible=box.x+box.w>0&&box.x<graph.width&&box.y+box.h>0&&box.y<graph.height;
         subject.screenCaption=visible?box:null;g.attr('display',visible?null:'none');if(!visible)return;
         const title=g.select('text');title.selectAll('*').remove();
         lines.forEach((line,index)=>title.append('tspan').attr('x',0).attr('y',font+index*lineHeight).text(line));
-        title.attr('font-size',font).style('font-family',"-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif").style('font-weight','500');
-        g.select('.tau-constellation-count').attr('x',0).attr('y',h-3).attr('display',showCount?null:'none').attr('font-size',8);
-        g.select('rect').attr('x',-width/2).attr('y',0).attr('width',width).attr('height',h).attr('fill','#08121d').attr('fill-opacity',0).attr('rx',0);
-        g.attr('data-caption-compact',String(mode==='compact')).attr('transform',`translate(${(anchor.x-tx)/scale},${(box.y-ty)/scale}) scale(${1/scale})`);
-        occupied.push({...box,core:true});subject.captionMode=mode;
+        title.attr('font-size',font);
+        g.select('rect').attr('x',-width/2).attr('y',0).attr('width',width).attr('height',h);
+        g.classed('is-focused',subject.label===graph.hoveredSubject||(active&&graph.nodeMap.get(active)?.group===subject.label))
+          .attr('data-caption-compact',String(mode==='compact')).attr('transform',`translate(${(anchor.x-tx)/scale},${(box.y-ty)/scale}) scale(${1/scale})`);
+        occupied.push({...box,core:true,hard:true});subject.captionMode=mode;
       });
       if(this.subjectLeaders)this.subjectLeaders.attr('display','none');
       if(this.layout==='constellations'){
         const relative=scale/Math.max(.001,this.semantic.fitScale),detail=Math.max(0,Math.min(1,(relative-1.35)/1.2));
-        this.nodeSelection.select('.tau-space-art').attr('opacity',node=>.48+.52*detail)
+        const focusGroup=active?graph.nodeMap.get(active)?.group:this.hoveredSubject;
+        this.nodeSelection.select('.tau-space-art').attr('opacity',node=>.4+.6*detail)
           .attr('transform',node=>`scale(${node.surveySize+(1-node.surveySize)*detail})`);
-        this.nodeSelection.select('.tau-survey-beacon').attr('opacity',1-detail).attr('r',node=>node.surveyMarkerRadius/scale).attr('stroke-width',.75/scale);
-        if(this.sectorRouteSelection)this.sectorRouteSelection.attr('opacity',route=>active?((route.source===graph.nodeMap.get(active)?.group||route.target===graph.nodeMap.get(active)?.group)?.55:.08):.42*(1-detail*.8));
-        if(this.constellationSelection)this.constellationSelection.attr('opacity',link=>link.sourceEdge?.26*(1-detail):0);
-        this.edgeSelection.attr('opacity',edge=>active?((edge.source.id===active||edge.target.id===active)?.85:.025):edge.kind==='reference'?.12:detail*.17)
+        this.nodeSelection.select('.tau-survey-beacon').attr('opacity',1-detail).attr('r',node=>node.surveyMarkerRadius/scale).attr('stroke-width',.9/scale);
+        if(this.sectorRouteSelection)this.sectorRouteSelection.attr('opacity',route=>this.routeOpacity(route,focusGroup,detail))
+          .attr('stroke',route=>route===this.hoveredRoute?ACCENT:'#6f8496');
+        if(this.constellationSelection)this.constellationSelection.attr('opacity',link=>link.sourceEdge?.2*(1-detail):0);
+        this.edgeSelection.attr('opacity',edge=>active?((edge.source.id===active||edge.target.id===active)?.85:.02):edge.kind==='reference'?.12:detail*.15)
           .attr('stroke-width',edge=>(edge.source.id===active||edge.target.id===active?1.65:1)/scale);
       }
       this.nodeSelection.select('.tau-star-hit').attr('r',node=>node.screenHitRadius/scale);
@@ -637,9 +728,19 @@
         const name=d3.select(this).select('.tau-galaxy-name'),box=node.galaxyNameBox;
         if(!box)return;
         const font=Math.min(node.galaxyNameFont,12/scale);
+        node.galaxyNameScreenFont=font*scale;
+        // Text that would render smaller than about eight pixels is noise, not
+        // a name. It stays hidden until the reader zooms close enough to read it.
+        if(node.galaxyNameScreenFont<8.5){name.attr('display','none');node.galaxyNameVisible=false;return;}
         name.attr('transform',`translate(${box.x+box.w/2-node.x},${box.y-node.y})`).attr('display',null);
-        name.select('text').attr('font-size',font).attr('stroke-width',Math.min(font*.16,1.5/scale));
+        name.select('text').attr('font-size',font).attr('stroke-width',Math.min(font*.18,2/scale));
         name.selectAll('tspan').attr('y',function(){return font*1.18+Number(this.getAttribute('data-line'))*font*1.22;});
+        node.galaxyNameVisible=true;
+        // Give the active full title real space among the persistent names.
+        if(node.id!==active){
+          const nameBox={x:(box.x+box.w/2)*scale+tx-Math.max(...node.galaxyNameLines.map(line=>line.length))*font*.34*scale,y:box.y*scale+ty,w:Math.max(...node.galaxyNameLines.map(line=>line.length))*font*.68*scale,h:node.galaxyNameLines.length*font*1.22*scale,core:true,hard:true};
+          if(nameBox.x+nameBox.w>0&&nameBox.x<graph.width&&nameBox.y+nameBox.h>0&&nameBox.y<graph.height)occupied.push(nameBox);
+        }
       });
       // Layer titles retain their space before transient landmark previews.
       const ordered=this.nodes.slice().sort((a,b)=>(b.type==='stage')-(a.type==='stage')||(b.id===active)-(a.id===active));
@@ -648,7 +749,7 @@
         const g=d3.select(elements.get(node.id)), label=g.select('.tau-star-node-label');
         if(label.empty())return;
         const isActive=node.id===active, stage=node.type==='stage';
-        const eligible=compactSystem ? (node.type==='landmark'&&isActive) : isActive || stage || graph.layout==='solar-system' || scale>(node.type==='landmark'?.68:.88);
+        const eligible=graph.layout==='constellations'?isActive:compactSystem ? (node.type==='landmark'&&isActive) : isActive || stage || graph.layout==='solar-system' || scale>(node.type==='landmark'?.68:.88);
         const x=node.x*scale+tx,y=node.y*scale+ty;
         if(!eligible || !isActive && (x < -160 || x>graph.width+160 || y < -90 || y>graph.height+90)) {
           label.attr('display','none');g.select('.tau-node-label-leader').attr('display','none');node.screenCaption=null;return;
@@ -659,9 +760,12 @@
         if(!box||box.overlap>0) {label.attr('display','none');g.select('.tau-node-label-leader').attr('display','none');node.screenCaption=null;return;}
         const chosen=box;
         occupied.push(chosen);node.screenCaption=chosen;
+        if(graph.layout==='constellations'){g.select('.tau-galaxy-name').attr('display','none');node.galaxyNameVisible=false;}
         label.attr('display',null).attr('transform',`translate(${(chosen.x-x+6)/scale},${(chosen.y-y+15)/scale}) scale(${1/scale})`);
+        // A caption that had to move away from its object keeps a thin leader
+        // back to it, so a displaced name is never mistaken for a neighbour's.
         const moved=Math.hypot(chosen.x-preferred.x,chosen.y-preferred.y)>10;
-        g.select('.tau-node-label-leader').attr('display',stage&&moved?null:'none')
+        g.select('.tau-node-label-leader').attr('display',moved?null:'none')
           .attr('d',`M0,0L${(Math.max(chosen.x,Math.min(chosen.x+chosen.w,x))-x)/scale},${(Math.max(chosen.y,Math.min(chosen.y+chosen.h,y))-y)/scale}`)
           .attr('stroke-width',.65/scale);
       });
@@ -751,17 +855,13 @@
     drawDeepSpace() {
       if(!this.nodes.length)return;
       const bounds=this.bounds(),field=this.clusterLayer.insert('g',':first-child').attr('class','tau-deep-space tau-space-art').attr('aria-hidden','true');
-      const cx=bounds.x+bounds.w/2,cy=bounds.y+bounds.h/2;
-      const washes=[{x:cx-bounds.w*.17,y:cy-bounds.h*.07,rx:bounds.w*.54,ry:bounds.h*.32,angle:-24,paint:'nebula-blue'},
-        {x:cx+bounds.w*.21,y:cy+bounds.h*.15,rx:bounds.w*.42,ry:bounds.h*.23,angle:31,paint:'nebula-dust'}];
-      field.selectAll('ellipse').data(this.layout==='constellations'?[]:washes).enter().append('ellipse').attr('class','tau-nebula-wash')
-        .attr('cx',d=>d.x).attr('cy',d=>d.y).attr('rx',d=>d.rx).attr('ry',d=>d.ry)
-        .attr('transform',d=>`rotate(${d.angle} ${d.x} ${d.y})`).attr('fill',d=>`url(#${this.id}-${d.paint})`);
-      const stars=Array.from({length:this.layout==='constellations'?70:145},(_,index)=>({
+      // A sparse field of flat points gives the sky depth without washes,
+      // gradients or anything that could be mistaken for data.
+      const stars=Array.from({length:this.layout==='constellations'?48:90},(_,index)=>({
         x:bounds.x+(((index*619+89)%2017)/2017)*bounds.w,y:bounds.y+(((index*383+53)%1877)/1877)*bounds.h,
-        r:index%23===0?1.5:index%7===0?.85:.43,opacity:index%11===0?.67:index%3===0?.3:.15}));
+        r:index%23===0?1.2:index%7===0?.8:.45,opacity:index%11===0?.4:index%3===0?.22:.12}));
       field.selectAll('circle').data(stars).enter().append('circle').attr('class','tau-distant-star')
-        .attr('cx',d=>d.x).attr('cy',d=>d.y).attr('r',d=>d.r).attr('fill','#d9e8f5').attr('opacity',d=>d.opacity);
+        .attr('cx',d=>d.x).attr('cy',d=>d.y).attr('r',d=>d.r).attr('fill','#c7d3df').attr('opacity',d=>d.opacity);
       if(this.layout==='solar-system')this.clusterLayer.append('g').attr('aria-hidden','true').selectAll('ellipse').data(this.orbits).enter().append('ellipse')
         .attr('class','tau-orbit-path tau-solar-orbit').attr('cx',0).attr('cy',0).attr('rx',d=>d.rx).attr('ry',d=>d.ry)
         .attr('transform',d=>`rotate(${d.rotation})`).attr('data-planet-id',d=>d.id);
@@ -769,39 +869,37 @@
 
     drawSpaceNode(element,node) {
       const art=d3.select(element).append('g').attr('class','tau-space-art');
-      const paint=name=>`url(#${this.id}-${name})`;
       const hash=Array.from(node.id).reduce((n,c)=>(n*31+c.charCodeAt(0))>>>0,7);
       if(node.type==='roadmap'||node.type==='unmapped'){
-        const size=.72+((hash>>>7)%53)/100,tilt=(hash%170)-85;
-        const flatten=.58+((hash>>>6)%7)*.055;
-        const cloud=paint((hash>>>4)%3===0?'galaxy-cloud-cool':(hash>>>4)%3===1?'galaxy-cloud-warm':'galaxy-cloud');
+        // A galaxy is a soft flat disc with a small core. The core carries the
+        // progress colour; without recorded progress it is an open ring.
+        const size=.72+((hash>>>7)%53)/100,tilt=(hash%170)-85,flatten=.6+((hash>>>6)%7)*.05;
         const body=art.append('g').attr('class','tau-galaxy-morphology-diffuse')
-          .attr('transform',`rotate(${tilt}) scale(${size})`).attr('opacity',node.unmapped?.28:1);
+          .attr('transform',`rotate(${tilt}) scale(${size})`).attr('opacity',node.unmapped?.4:1);
         d3.select(element).attr('data-morphology','diffuse');
         node.visualMorphology='diffuse';
-        body.append('ellipse').attr('class','tau-galaxy-glow').attr('rx',62).attr('ry',49*flatten).attr('fill',paint('galaxy-glow'));
-        body.append('ellipse').attr('class','tau-galaxy-cloud').attr('rx',46).attr('ry',35*flatten).attr('fill',cloud).attr('opacity',.85);
-        // Overlapping, offset clouds give a soft, irregular envelope without arms.
-        body.append('ellipse').attr('class','tau-galaxy-cloud').attr('cx',-12).attr('cy',4)
-          .attr('rx',33).attr('ry',27*flatten).attr('fill',cloud).attr('opacity',.3);
-        body.append('ellipse').attr('class','tau-galaxy-cloud').attr('cx',13).attr('cy',-5)
-          .attr('rx',28).attr('ry',24*flatten).attr('fill',paint('galaxy-glow')).attr('opacity',.55);
-        if(node.unmapped)art.append('ellipse').attr('class','tau-star-ring').attr('rx',39).attr('ry',29)
-          .attr('stroke','#92a4bd').attr('stroke-dasharray','2 7').attr('opacity',.4);
-        else art.append('path').attr('class','tau-star-ring')
-          .attr('d','M-29,25A39,32 0 0 0 29,25').attr('stroke',nodeAccent(node)).attr('stroke-width',1.05).attr('opacity',.66);
+        body.append('ellipse').attr('class','tau-galaxy-glow').attr('rx',54).attr('ry',42*flatten).attr('fill','#9db3c9').attr('opacity',.09);
+        body.append('ellipse').attr('class','tau-galaxy-cloud').attr('rx',32).attr('ry',25*flatten).attr('fill','#b9cad9').attr('opacity',.15);
+        if(node.unmapped)art.append('ellipse').attr('class','tau-star-ring').attr('rx',36).attr('ry',27)
+          .attr('stroke','#8a99a8').attr('stroke-dasharray','3 6').attr('stroke-width',1).attr('opacity',.8);
+        else{
+          art.append('circle').attr('class','tau-galaxy-core').attr('r',6.5).attr('fill',hasProgress(node)?nodeAccent(node):BACKGROUND)
+            .attr('stroke',hasProgress(node)?nodeAccent(node):NO_PROGRESS).attr('stroke-width',1.6);
+          art.append('circle').attr('class','tau-star-ring').attr('r',11).attr('stroke',ACCENT).attr('opacity',0);
+        }
       }else if(node.type==='landmark'){
+        // Planets are flat discs coloured by kind; the kind is also named in
+        // the label and the reading pane.
         const kind=['definition','theorem'].includes(node.landmarkKind)?node.landmarkKind:'construction',r=node.radius||24;
-        art.append('circle').attr('class','tau-planet-body tau-landmark-core').attr('r',r).attr('fill',paint('planet-'+kind));
+        const fill={definition:'#7fb8bd',theorem:'#dba57f',construction:'#8fa8d0'}[kind];
+        art.append('circle').attr('class','tau-planet-body tau-landmark-core').attr('r',r).attr('fill',fill).attr('stroke',BACKGROUND).attr('stroke-width',1.5);
         art.append('circle').attr('class','tau-star-ring').attr('r',r+5).attr('stroke','#d2dfed');
       }else{
-        const r=node.radius||14,central=this.layout==='solar-system'&&node.solarCentral;
-        art.append('circle').attr('class','tau-stellar-glow').attr('r',r*(central?4.2:4.6)).attr('fill',paint('stellar-glow'));
-        art.append('circle').attr('class','tau-star-corona').attr('r',r*1.65).attr('fill',paint('stellar-light')).attr('opacity',.12);
-        art.append('circle').attr('class','tau-stellar-core tau-star-core').attr('r',r).attr('fill',paint('stellar-light'));
-        art.append('path').attr('class','tau-star-rays').attr('d',`M${-r*2.2},0H${r*2.2}M0,${-r*2.2}V${r*2.2}`)
-          .attr('stroke','#f6e9c9').attr('stroke-width',.7).attr('stroke-opacity',central?.24:.35);
-        art.append('circle').attr('class','tau-star-ring').attr('r',r+7).attr('stroke',nodeAccent(node)).attr('opacity',.7);
+        // A layer star: a flat cream disc with a progress ring around it.
+        const r=node.radius||14;
+        art.append('circle').attr('class','tau-stellar-core tau-star-core').attr('r',r).attr('fill','#e8e4da');
+        art.append('circle').attr('class','tau-star-ring').attr('r',r+5).attr('stroke',nodeAccent(node))
+          .attr('stroke-dasharray',hasProgress(node)?null:'2 3').attr('opacity',hasProgress(node)?.95:.7);
       }
     }
 
@@ -907,6 +1005,7 @@
         .attr('aria-label', node => normalizeText(node.label) + (node.subtitle ? '. ' + node.subtitle : '') + (progressDescription(node) ? '. ' + progressDescription(node) : '') + '. Enter selects; Shift Enter opens.')
         .on('click', node => {
           d3.event.stopPropagation();
+          if (Date.now() < this.suppressClicksUntil) return;
           this.select(node.id);
           if (this.options.onSelect) this.options.onSelect(node);
         })
@@ -931,11 +1030,15 @@
       if (this.isSkyLayout) {
         this.nodeSelection.append('circle').attr('class', 'tau-star-hit').attr('r', 13);
         this.nodeSelection.each((node,index,elements)=>this.drawSpaceNode(elements[index],node));
-        if(this.layout==='constellations')this.nodeSelection.append('circle').attr('class','tau-survey-beacon tau-space-art-marker').attr('fill',node=>node.unmapped?'#08121d':'#d7e2e6').attr('stroke',node=>node.unmapped?'#92a4bd':nodeAccent(node)).attr('pointer-events','none');
+        // At atlas scale each galaxy is a point: filled with its progress
+        // colour, or an open ring when no progress is recorded.
+        if(this.layout==='constellations')this.nodeSelection.append('circle').attr('class','tau-survey-beacon tau-space-art-marker')
+          .attr('fill',node=>!node.unmapped&&hasProgress(node)?nodeAccent(node):BACKGROUND)
+          .attr('stroke',node=>node.unmapped?'#8a99a8':hasProgress(node)?nodeAccent(node):NO_PROGRESS).attr('pointer-events','none');
         if(this.layout==='constellations')this.nodeSelection.each(function(node){
           const name=d3.select(this).append('g').attr('class','tau-galaxy-name').attr('aria-hidden','true').attr('pointer-events','none');
-          const title=name.append('text').attr('fill','#d6dee5').attr('stroke','#060d18').attr('stroke-width',3)
-            .attr('paint-order','stroke fill').attr('stroke-linejoin','round').attr('font-weight',500).attr('text-anchor','middle');
+          const title=name.append('text').attr('stroke',BACKGROUND).attr('stroke-width',2)
+            .attr('paint-order','stroke fill').attr('stroke-linejoin','round').attr('text-anchor','middle');
           (node.galaxyNameLines||wrapText(node.label,19,2)).forEach((line,index)=>title.append('tspan').attr('x',0).attr('data-line',index).text(line));
         });
         this.nodeSelection.each(function(node) {
@@ -943,13 +1046,13 @@
           group.append('path').attr('class','tau-node-label-leader').attr('display','none');
           const label = group.append('g').attr('class', 'tau-star-node-label' + (node.type === 'stage' ? ' tau-stage-label' : node.type === 'landmark' ? ' tau-landmark-label' : ''));
           const lines = wrapText(node.label, 26, 3);
-          node.labelBox={w:184,h:lines.length*15+24};
-          label.append('rect').attr('x', -6).attr('y', -15).attr('width', 184).attr('height', lines.length*15+24)
-            .attr('rx', 4).attr('fill', '#132035').attr('stroke', '#5d6c81').attr('fill-opacity', .98);
+          const labelWidth=Math.max(70,Math.min(184,Math.round(Math.max(...lines.map(line=>line.length))*6.4+16)));
+          node.labelBox={w:labelWidth,h:lines.length*15+24};
+          label.append('rect').attr('x', -6).attr('y', -15).attr('width', labelWidth).attr('height', lines.length*15+24).attr('rx', 3);
           const text = label.append('text');
           lines.forEach((line, i) => text.append('tspan').attr('x', 0).attr('y', i*15).text(line));
           label.append('text').attr('x', 0).attr('y', lines.length*15+7).style('font-size', '10px')
-            .style('fill', nodeAccent(node)).text(node.type === 'landmark' ? (node.landmarkKind || 'Mathematical landmark') : progressDescription(node) || '');
+            .style('fill', hasProgress(node) ? nodeAccent(node) : '#8391a0').text(node.type === 'landmark' ? (node.landmarkKind || 'Mathematical landmark') : progressDescription(node) || '');
           group.append('title').text([normalizeText(node.label),progressDescription(node),'Click to inspect · Double-click to open'].filter(Boolean).join('\n'));
         });
       } else {
@@ -1039,7 +1142,7 @@
         .attr('aria-pressed', node => node.id === this.selectedId ? 'true' : 'false')
         .attr('opacity', node => !selected || node.id === selected || neighbors.has(node.id) ? 1 : this.layout === 'constellations' ? .6 : .48);
       this.edgeSelection.attr('opacity', edge => this.layout==='solar-system'&&edge.kind==='contains'?0:selected ? (edge.source.id === selected || edge.target.id === selected ? .82 : this.layout === 'constellations' ? .035 : .11) : (this.layout === 'constellations' ? (edge.kind==='reference'?.14:.13) : this.edges.length > 150 ? .2 : .47))
-        .attr('stroke', edge => edge.source.id === selected || edge.target.id === selected ? '#d8bb82' : '#92a8be')
+        .attr('stroke', edge => edge.source.id === selected || edge.target.id === selected ? ACCENT : '#7d8a99')
         .attr('stroke-width', edge => edge.source.id === selected || edge.target.id === selected ? 2.1 : this.layout==='constellations'?1.15:1.3)
         .attr('marker-end', edge => /contains|reference/.test(edge.kind) ? null : 'url(#' + this.id + '-arrow-' + (edge.source.id === selected || edge.target.id === selected ? 'highlight' : 'normal') + ')');
       this.edgeSelection.filter(edge => edge.source.id === selected || edge.target.id === selected).raise();
@@ -1049,8 +1152,8 @@
 
     bounds() {
       if (!this.nodes.length) return { x: 0, y: 0, w: 100, h: 100 };
-      // Survey labels are anchored inside their territories. Old free-label
-      // margins would distort the aspect ratio of a short landscape chart.
+      // Each heading travels with its cloud. Bounds include all of the free
+      // positions without reinstating a row or column arrangement.
       if(this.layout==='constellations'&&this.constellationBounds){const b=this.constellationBounds;return {x:b.x-30,y:b.y-30,w:b.w+60,h:b.h+60};}
       let left = Infinity, right = -Infinity, top = Infinity, bottom = -Infinity;
       this.nodes.forEach(node => { left = Math.min(left, node.x - node.w / 2); right = Math.max(right, node.x + node.w / 2); top = Math.min(top, node.y - node.h / 2); bottom = Math.max(bottom, node.y + node.h / 2); });
@@ -1076,7 +1179,7 @@
       const transform = d3.zoomIdentity.translate(this.width / 2 - (box.x + box.w / 2) * scale, usableHeight / 2 - (box.y + box.h / 2) * scale).scale(scale);
       this.semantic.fitScale=scale;this.semantic.diveThreshold=scale*2.35;this.semantic.ascendThreshold=scale*.68;
       this.semanticParentCamera={x:transform.x,y:transform.y,k:transform.k};
-      if (animate) this.svg.transition().duration(260).call(this.zoom.transform, transform);
+      if (animate) this.svg.transition().duration(160).call(this.zoom.transform, transform);
       else this.svg.call(this.zoom.transform, transform);
       return this;
     }
@@ -1087,7 +1190,7 @@
       this.select(id);
       const scale = Math.max(.65, Math.min(1.4, this.transform.k));
       const transform = d3.zoomIdentity.translate(this.width / 2 - node.x * scale, this.height / 2 - node.y * scale).scale(scale);
-      this.svg.transition().duration(280).call(this.zoom.transform, transform);
+      this.svg.transition().duration(180).call(this.zoom.transform, transform);
       return this;
     }
 
@@ -1172,7 +1275,7 @@
         const parts = channels ? channels[1].split(/[, /]+/).filter(Boolean) : [];
         if (color && color !== 'transparent' && (!parts.length || parts.length < 4 || Number(parts[3]) > 0)) background = color;
       }
-      background = background || (this.layout === 'constellations' ? '#0d1728' : '#f8fafc');
+      background = background || BACKGROUND;
       const backdrop = document.createElementNS(SVG_NS, 'rect');
       backdrop.setAttribute('class', 'tau-export-background');
       ['x', 'y'].forEach(key => backdrop.setAttribute(key, box[key]));
@@ -1189,10 +1292,11 @@
     }
 
     debugState() {
-      return { nodes: this.nodes.length, edges: this.edges.length, constellationLinks: this.constellationLinks.length, constellationSubjects: this.constellationSubjects.length, groupConnections: this.groupConnections || [], sectorRoutes:(this.sectorRoutes||[]).map(({source,target,dependencies,witnesses})=>({source,target,dependencies,witnesses})), subjects:this.constellationSubjects.map(subject=>({label:subject.label,sector:subject.sector,caption:subject.screenCaption||null})),
+      return { nodes: this.nodes.length, edges: this.edges.length, constellationLinks: this.constellationLinks.length, constellationSubjects: this.constellationSubjects.length, groupConnections: this.groupConnections || [], sectorRoutes:(this.sectorRoutes||[]).map(({source,target,dependencies,witnesses,shape,strong})=>({source,target,dependencies,witnesses,shape,strong:!!strong})), arrangement:this.layout==='constellations'?'organic':null,subjects:this.constellationSubjects.map(subject=>({label:subject.label,x:subject.x,y:subject.y,sector:subject.sector,caption:subject.screenCaption||null})),
+        clicksSuppressed: Date.now() < this.suppressClicksUntil, hoveredSubject: this.hoveredSubject || null,
         links: this.constellationLinks.map(link => ({group:link.group,sourceEdge:link.sourceEdge,source:{x:link.source.x,y:link.source.y},target:{x:link.target.x,y:link.target.y}})), layout: this.layout, selectedId: this.selectedId, semantic:{...this.semantic,canAscend:this.canAscend},orbits:(this.orbits||[]).length,
         width: this.width, height: this.height, transform: { x: this.transform.x, y: this.transform.y, k: this.transform.k },
-        positions: this.nodes.map(node => ({ id: node.id, x: node.x, y: node.y, w: node.w, h: node.h, rank: node.rank == null ? null : node.rank, dependencyRank: node.rank == null ? null : node.rank, dependencyOrderValid: node.dependencyOrderValid, caption: node.screenCaption || null, galaxyName:node.galaxyName||null,galaxyNameVisible:this.layout==='constellations',galaxyNameFont:node.galaxyNameFont||null,galaxyNameBox:node.galaxyNameBox||null,progress: progressValue(node.progress), accent: nodeAccent(node) })) };
+        positions: this.nodes.map(node => ({ id: node.id, x: node.x, y: node.y, w: node.w, h: node.h, rank: node.rank == null ? null : node.rank, dependencyRank: node.rank == null ? null : node.rank, dependencyOrderValid: node.dependencyOrderValid, caption: node.screenCaption || null, galaxyName:node.galaxyName||null,galaxyNameVisible:this.layout==='constellations'&&node.galaxyNameVisible===true,galaxyNameFont:node.galaxyNameFont||null,galaxyNameScreenFont:node.galaxyNameScreenFont||null,galaxyNameBox:node.galaxyNameBox||null,progress: progressValue(node.progress), hasProgress: hasProgress(node), accent: nodeAccent(node) })) };
     }
 
     destroy() {
