@@ -1,6 +1,6 @@
 # Tau Ceti Explorer
 
-An interactive atlas of mathematical roadmaps: explore mathematical constellations, inspect a roadmap, then open its internal stage layers and dependencies.
+An interactive atlas of mathematical roadmaps: travel from a field of galaxies to constellations of layer stars, then into planetary systems of mathematical targets.
 
 **[Open the interactive atlas](https://cbirkbeck.github.io/tauceti-explorer/)**
 
@@ -8,21 +8,22 @@ The atlas also runs entirely offline. Download `index.html` and open it in a bro
 
 ## Explore
 
-- Click a **roadmap galaxy** to zoom into its **layer constellations**.
-- Click a layer heading to focus it; its **mathematical stars** open definitions, theorem targets and constructions extracted from the source. Stars do not carry independent completion claims.
+- Scroll or pinch toward a **roadmap galaxy** to enter its constellation of **layer stars**. Keep zooming toward a star to discover its **orbiting mathematical planets**.
+- Tap or click a galaxy or star to make the same journey directly. Zoom out or use the back control to return to the previous level.
+- Each planet opens a definition, theorem target or construction extracted from the source. Progress belongs to its layer star; planets do not carry independent completion claims.
 - The details panel explains the mathematics, tracked progress, prerequisites and consumers. The Links tab exposes the actual stage pairs behind dependencies.
 - Outlined galaxies mark **16 areas needing a dedicated roadmap**. They have no stages or completion percentages. Toggle them with Show unmapped areas.
 - Search for a subject, roadmap, or individual stage. Open the full roadmap to read its outline and source text.
-- Scroll to zoom, drag to pan, and use Fit to recover the whole view. Export the current graph as SVG.
+- Drag to pan and use Fit to recover the current scene. Export the current graph as SVG.
 - Open **Mission status** for a progress breakdown by area. Filter the collection by layer activity, and pin roadmaps for your next visit.
-- Use **Browse** on a phone, or **⌘/Ctrl K** on a keyboard to search. View links preserve the current map.
+- Use **Browse** on a phone, or **⌘/Ctrl K** on a keyboard to search. Mobile details share the screen with the chart; pinch, tap and back controls remain available. View links preserve the current roadmap and planetary system.
 - Mathematics is typeset offline with native MathML; hover a formula to see its source.
 
 The outer atlas groups roadmap galaxies by their mathematical subject. Recorded cross-area dependencies influence the distance between regions; stronger connections bring related areas closer. Each roadmap has one primary home, with thematic links to other relevant areas.
 
-Inside a galaxy, layers form constellations. Faint lines attach key mathematical items to their layer. Actual prerequisite arrows point **prerequisite → consumer**; the Links tab provides supporting stage pairs. Dotted links are references to related plans or context for an unmapped area, and carry no prerequisite claim. Chart positions and decorative group lines are visual aids, not astronomical coordinates.
+Real prerequisite paths remain visible between galaxies. Inside a galaxy, layer stars form an irregular constellation shaped by their recorded dependencies. Prerequisite arrows point **prerequisite → consumer**; the Links tab provides supporting stage pairs. Inside a layer, planetary orbits express membership in that layer, not additional prerequisites. Dotted paths are references to related plans or context for an unmapped area, and carry no prerequisite claim. Positions, galaxy shapes and orbits are visual aids, not astronomical coordinates or mathematical measurements.
 
-The interface takes its cues from Tau Ceti and Voyager: a quiet star field, precise chart lines, ivory type, and brass instrument details. Reading panels use the same dark observatory palette. There are no external fonts, image downloads, or animated backgrounds.
+The interface takes its cues from Tau Ceti, Voyager and deep-space imagery: varied luminous galaxies, dust lanes, soft starlight, ivory type and brass instrument details. Scene artwork is generated locally as SVG and remains sharp while zooming. Reading panels use the same dark observatory palette. There are no external fonts or image downloads, and reduced-motion preferences are respected.
 
 ## Included snapshot
 
@@ -32,8 +33,8 @@ The interface takes its cues from Tau Ceti and Voyager: a quiet star field, prec
 | Additional subject regions | 4 |
 | Unmapped areas needing a roadmap | 16 |
 | Roadmaps | 180 |
-| Stage nodes / layer constellations | 1,604 |
-| Source-backed mathematical stars | 3,505 |
+| Stage nodes / layer stars | 1,604 |
+| Source-backed mathematical planets | 3,505 |
 | Terminal targets counted for progress | 1,543 |
 | Roadmap dependency links | 1,011 |
 | Stage dependency links | 3,508 |
@@ -72,6 +73,7 @@ The builder packages the checked-in snapshot. To update the published mathematic
 ### Repository layout
 
 - `src/`: interface, graph, Markdown reader, progress state, and styles.
+- `src/camera.js`: mouse, touch and button navigation between the three spatial levels.
 - `vendor/`: bundled D3, KaTeX, and their licences.
 - `data/atlas.json`: roadmap text, stage hierarchy, and graph relationships.
 - `data/status.json`: explicitly mapped source-status evidence.

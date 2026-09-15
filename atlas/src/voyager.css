@@ -127,7 +127,7 @@ button { transition: background-color .12s, color .12s, border-color .12s; }
 .sidebar-foot { border-color: #2d3a44; color: #b1b5ad; font-size: 9px; letter-spacing: .1px; line-height: 1.85; }
 .sidebar-foot span { color: #899ba8; }
 
-/* The working sky. A calm, fixed chart with room for the mathematics. */
+/* Deep-space canvas. The SVG renderer owns nebulae, stars and planetary light. */
 .main-panel { background: #101b28; }
 .context-bar { border-color: #2a3844; background: #101b27; }
 .breadcrumbs { font-size: 10px; color: #a4afb8; }
@@ -148,102 +148,107 @@ button { transition: background-color .12s, color .12s, border-color .12s; }
 .toggle { color: #b9c3c8; font-size: 10px; }
 .toggle input { accent-color: #c3a16b; }
 .graph-shell {
-  border-color: #36434d;
-  border-top-color: #5e5a4c;
-  border-radius: 3px;
-  background-color: #0b1420;
-  background-image: radial-gradient(ellipse at 44% 42%, #263c5230, transparent 72%);
-  box-shadow: inset 0 0 75px #02070d33;
+  border-color: #2b394b;
+  border-top-color: #4d4e4b;
+  border-radius: 4px;
+  background-color: #050a14;
+  background-image:
+    radial-gradient(ellipse at 32% 55%, #273b5929, transparent 65%),
+    radial-gradient(ellipse at 78% 30%, #352c5123, transparent 55%);
+  background-size: 100% 100%;
+  background-repeat: no-repeat;
+  box-shadow: inset 0 0 100px #02040870, 0 5px 18px #02050a26;
 }
 .tau-graph { background: transparent !important; }
-.tau-graph .tau-cluster { fill: #233d50 !important; fill-opacity: .18 !important; stroke: #526575 !important; }
-.tau-graph .tau-cluster-title { fill: #d5d7ce !important; font-weight: 500 !important; }
-.tau-graph .tau-card { stroke: #8e9799 !important; }
-.tau-graph .tau-node:hover .tau-card { stroke: #d0b57e !important; }
-.tau-graph .tau-node.is-selected .tau-card,
-.tau-graph .tau-node:focus .tau-card { stroke: #d8b77a !important; }
-.tau-graph .tau-node.is-neighbor .tau-card { stroke: #bba574 !important; }
-/* Roadmap and layer cards keep their pale progress tint and dark lettering.
-   The overview uses discrete stars, with text reserved for named constellations. */
-.tau-graph[data-layout="constellations"] .tau-constellation-link {
-  stroke: #8aa9bc !important;
-  stroke-opacity: .34;
+/* Keep labels readable without overriding any astronomical shape, gradient,
+   dust colour, progress ring or dependency line drawn inside the scene. */
+.tau-graph .tau-cluster-title { fill: #d5d7ce; font-weight: 500; }
+.tau-graph .tau-constellation-subject > text:first-of-type,
+.tau-graph .tau-stage-label > text:first-of-type {
+  fill: #ede7d8;
+  font-family: Georgia, "Times New Roman", serif;
+  font-weight: 400;
 }
-.tau-graph[data-layout="constellations"] .tau-constellation-subject text {
-  fill: #e7e1d4 !important;
+.tau-graph .tau-constellation-subject > text:last-of-type,
+.tau-graph .tau-stage-label > text:last-of-type {
+  fill: #b0c3d0;
+  font-family: var(--mono);
+  font-weight: 400;
 }
-.tau-graph[data-layout="constellations"] .tau-constellation-subject > text:first-of-type {
-  font-family: Georgia, "Times New Roman", serif !important;
-  font-weight: 400 !important;
+.tau-graph .tau-constellation-subject:hover text,
+.tau-graph .tau-constellation-subject:focus text { fill: #f1d6a0; }
+.tau-graph .tau-star-node-label text,
+.tau-graph .tau-landmark-label text { fill: #e1eaf0; }
+.graph-tools {
+  background: #09131ee8;
+  border-color: #41556a;
+  border-radius: 4px;
+  box-shadow: 0 4px 18px #02050970;
+  backdrop-filter: blur(10px);
 }
-.tau-graph[data-layout="constellations"] .tau-constellation-subject > text:last-of-type {
-  font-family: var(--mono) !important;
-  fill: #a7b8c5 !important;
+.graph-tools button { color: #ccd8df; }
+.graph-tools button:hover { background: #263949; color: #f0d6aa; }
+.graph-tools span { background: #405269; }
+.graph-hint {
+  color: #c0cbd3;
+  background: #09131de6;
+  border: 1px solid #2c405169;
+  border-radius: 3px;
+  font-size: 9px;
+  line-height: 1.65;
+  padding: 6px 10px;
+  max-width: min(66%, 520px);
 }
-.tau-graph[data-layout="constellations"] .tau-constellation-subject rect {
-  fill: #101b28 !important;
-  fill-opacity: .94 !important;
-  rx: 3px;
+/* The hierarchy rail names where the viewer is; space remains for the scene. */
+.cosmic-navigation {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+  padding: 5px 0;
+  font: 10px/1.5 var(--mono);
 }
-.tau-graph[data-layout="constellations"] .tau-constellation-subject:hover text,
-.tau-graph[data-layout="constellations"] .tau-constellation-subject:focus text {
-  fill: #f1d6a0 !important;
+.cosmic-navigation button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: min(260px, 48vw);
+  min-height: 31px;
+  padding: 6px 10px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #bed0dc;
+  background: #0c1924de;
+  border: 1px solid #3a5165;
+  border-radius: 3px;
+  font: inherit;
 }
-.tau-graph[data-layout="constellations"] .tau-star-node-label rect {
-  fill: #13212e !important;
-  stroke: #647d8c !important;
-  fill-opacity: .98 !important;
-  rx: 3px;
+.cosmic-navigation button:hover { color: #f1dab1; background: #223646; border-color: #8b8067; }
+.cosmic-navigation button[aria-current],
+.cosmic-navigation button.active { color: #f0dbb2; border-color: #af9669; background: #222e35; }
+.cosmic-navigation button:disabled { color: #a8b9c6; opacity: .75; }
+.cosmic-navigation > span:not(.cosmic-depth) { color: #8c9dad; padding: 0 2px; }
+.cosmic-depth {
+  color: #9cb1c0;
+  font: 9px/1.65 var(--mono);
+  letter-spacing: .8px;
+  text-transform: uppercase;
+  white-space: nowrap;
 }
-.tau-graph[data-layout="constellations"] .tau-star-node-label text {
-  fill: #eee6d6 !important;
-  font-weight: 500 !important;
+.cosmic-navigation .cosmic-depth { margin-inline: 7px 4px; }
+.graph-shell #graph { transition: opacity .22s ease, transform .32s ease; transform-origin: 50% 50%; }
+.is-travelling #graph { opacity: .24; transform: scale(1.025); }
+@media (max-width: 900px) {
+  .cosmic-navigation { gap: 4px; }
+  .cosmic-navigation button { padding: 5px 8px; font-size: 9px; max-width: min(210px, 46vw); }
 }
-.tau-graph[data-layout="constellations"] .tau-node.is-selected .tau-star-ring,
-.tau-graph[data-layout="constellations"] .tau-node.is-hovered .tau-star-ring,
-.tau-graph[data-layout="constellations"] .tau-node:focus .tau-star-ring {
-  stroke: #f1d6a0 !important;
+@media (max-width: 600px) {
+  .cosmic-navigation { font-size: 9px; padding-top: 3px; }
+  .cosmic-navigation button { min-height: 32px; max-width: 43vw; }
+  .cosmic-depth { font-size: 8px; letter-spacing: .5px; }
 }
-.tau-graph[data-layout="constellations"] .tau-chart-star { fill: #cadbe7; }
-.tau-graph[data-layout="constellations"] .tau-chart-orbit { stroke: #829bac; }
-/* Each roadmap is a galaxy; its layers are local constellations.
-   Definition/theorem stars stay neutral: completion belongs to their layer. */
-.tau-layer-constellations-layout .tau-stage-label > text:first-of-type {
-  fill: #eee4d1 !important;
-  font-family: Georgia, "Times New Roman", serif !important;
-  font-weight: 400 !important;
-}
-.tau-layer-constellations-layout .tau-stage-label > text:last-of-type {
-  fill: #b9c7cd !important;
-  font-family: var(--mono) !important;
-  font-weight: 400 !important;
-}
-.tau-layer-constellations-layout .tau-stage-label rect,
-.tau-layer-constellations-layout .tau-landmark-label rect {
-  fill: #12212e !important;
-  fill-opacity: .97 !important;
-  stroke: #425d6e !important;
-  rx: 3px;
-}
-.tau-layer-constellations-layout .tau-landmark-label text {
-  fill: #d8e6ec !important;
-}
-.tau-layer-constellations-layout .tau-landmark-core { fill: #dfebf0 !important; }
-.tau-layer-constellations-layout .tau-layer-containment {
-  stroke: #87a2b5 !important;
-  stroke-opacity: .3;
-}
-.tau-layer-constellations-layout .tau-landmark-node.is-selected .tau-landmark-core,
-.tau-layer-constellations-layout .tau-landmark-node.is-hovered .tau-landmark-core,
-.tau-layer-constellations-layout .tau-landmark-node:focus .tau-landmark-core {
-  fill: #f5daad !important;
-  stroke: #f5daad !important;
-}
-.graph-tools { background: #152331; border-color: #46515b; border-radius: 3px; box-shadow: 0 3px 12px #03080e66; }
-.graph-tools button { color: #e4d5b9; }
-.graph-tools button:hover { background: #31404a; }
-.graph-tools span { background: #50606a; }
-.graph-hint { color: #aeb8bb; background: #0d1825e8; border-radius: 2px; font-size: 9px; padding: 6px 9px; }
 .graph-footer { color: #b5bfc3; font-size: 10px; padding-block: 13px; }
 #graph-counts { color: #c7b591; font-family: var(--mono); font-size: 9px; }
 .line-solid, .line-dashed { border-color: #b0b9b7; }
@@ -522,14 +527,248 @@ dialog::backdrop { background: #030914d9; backdrop-filter: blur(3px); }
 }
 
 /* A roadmap galaxy opens into its mathematical contents. */
-.graph-shell.is-entering{transition:filter .28s;filter:brightness(1.12)}
 .connection-card{margin:8px 0;border-bottom:1px solid #304353;padding:8px 0}.connection-card summary{cursor:pointer;font-size:12px;line-height:1.5}.connection-card summary small{display:block;color:#a8b8c8;font:10px var(--mono);margin:4px 0}.connection-witness{display:grid;grid-template-columns:1fr 14px 1fr;align-items:start;gap:5px;padding:9px 0;border-top:1px solid #263848;font-size:11px}.connection-witness button{text-align:left;color:#c3dced;padding:0}.connection-witness button:hover{text-decoration:underline}.region-topics{padding-left:17px;font-size:12px;line-height:1.8;color:#c3d0dc}.topic-link{display:inline-block;padding:4px 7px;margin:3px 4px 3px 0;border:1px solid #3c5163;color:#b9d0e4;font-size:10px;border-radius:3px}.related-subjects{margin:12px 0}.item-link .landmark-kind{font:9px var(--mono);text-transform:uppercase;min-width:64px;color:#bfa981}.landmark-description{margin-top:18px}
 @media(prefers-reduced-motion:reduce){*,*::before,*::after{scroll-behavior:auto!important;transition:none!important}}
 
-.graph-shell{background-size:100% 100%;background-repeat:no-repeat}
-.tau-layer-constellations-layout .tau-stage-label rect{stroke:none!important;fill:#0c1825!important;fill-opacity:.92!important}
-.tau-layer-constellations-layout .tau-layer-containment{stroke:#9db9d0;stroke-opacity:.65}
 .unmapped-toggle{padding:13px 19px 0}.unmapped-toggle input{flex:none}.progress-legend i.unmapped{background:transparent;border:1px dashed #9aafbf}
-.tau-graph .tau-unmapped-node .tau-star-halo{opacity:0}.tau-graph .tau-unmapped-node .tau-star-ring{stroke:#9aaebf!important;stroke-dasharray:3 3;opacity:.8}.tau-graph .tau-unmapped-node .tau-star-core{fill:#0b1420!important;stroke:#9aaebf!important;stroke-width:1.1}.tau-graph .tau-unmapped-node .tau-galaxy-arm{stroke:#9aaebf!important;opacity:.5}.unmapped-index{border-bottom:1px solid #314557;padding-bottom:9px;margin-bottom:10px}
+.unmapped-index{border-bottom:1px solid #314557;padding-bottom:9px;margin-bottom:10px}
 
 .reader-summary{border-bottom:1px solid #395064;padding:8px 0 18px;margin-bottom:20px;font-size:15px;line-height:1.85;color:#dbe4e9}
+
+@media (prefers-reduced-motion: reduce) {
+  .graph-shell #graph { transition: none; }
+  .is-travelling #graph { opacity: 1; transform: none; }
+}
+
+/* Arrival is a short change of scale, with no animation in reduced-motion mode. */
+.scene-arriving #graph, #graph.scene-arriving { animation: cosmic-arrival .34s ease-out both; }
+@keyframes cosmic-arrival {
+  from { opacity: .3; transform: scale(.985); }
+  to { opacity: 1; transform: scale(1); }
+}
+.cosmic-guide { list-style: none; padding-left: 0 !important; counter-reset: cosmic-guide; margin: 25px 0; }
+.cosmic-guide li { position: relative; padding: 0 0 16px 37px; border-bottom: 1px solid #334857; margin: 0 0 15px; }
+.cosmic-guide li:last-child { border-bottom: 0; padding-bottom: 0; }
+.cosmic-guide li::before { counter-increment: cosmic-guide; content: "0" counter(cosmic-guide); position: absolute; top: 3px; left: 0; font: 10px var(--mono); letter-spacing: .7px; color: #cab07d; }
+.cosmic-guide strong { color: #ece3d1; }
+.help-inner h3 { color: #d9cab0; font: 400 20px/1.4 Georgia, "Times New Roman", serif; margin: 24px 0 8px; }
+@media (prefers-reduced-motion: reduce) {
+  .scene-arriving #graph, #graph.scene-arriving { animation: none; }
+}
+
+body.is-system-view #landscape-stats { display: none; }
+@media (max-width: 600px) {
+  /* The inspector becomes a lower reading pane so the chart and its back route
+     stay visible. Closing it returns the full viewport to the sky. */
+  body.has-selection .app-layout {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr) 42dvh;
+  }
+  body.has-selection .main-panel { grid-row: 1; min-height: 0; overflow: hidden; }
+  body.has-selection .inspector {
+    position: relative;
+    grid-row: 2;
+    inset: auto;
+    width: 100%;
+    max-width: 100%;
+    height: 100%;
+    min-height: 0;
+    padding-top: 7px;
+    border-left: 0;
+    border-top: 1px solid #697b87;
+    border-radius: 11px 11px 0 0;
+    box-shadow: 0 -8px 30px #02071070;
+    overflow: hidden;
+  }
+  body.has-selection .inspector::before {
+    content: "";
+    position: absolute;
+    top: 5px;
+    left: calc(50% - 19px);
+    width: 38px;
+    height: 3px;
+    background: #667b89;
+    border-radius: 2px;
+  }
+  .inspector-bar { height: 44px; padding-inline: 15px 8px; }
+  .inspector-bar .icon-button { min-width: 44px; min-height: 44px; }
+  #inspector-content { padding: 17px 20px 28px; overscroll-behavior: contain; }
+  #inspector-content .detail-title { font-size: 23px; }
+  .progress-controls select, .progress-controls textarea { min-height: 44px; font-size: 16px; }
+  .inspector .primary, .inspector .secondary, .inspector .pin-button { min-height: 44px; }
+  body.has-selection #landscape-stats { display: none; }
+  body.has-selection .view-heading .eyebrow,
+  body.has-selection #view-description { display: none; }
+  .view-heading { display: block; padding: 12px 15px 10px; }
+  .view-heading h1 {
+    font-size: 22px;
+    line-height: 1.2;
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    overflow: hidden;
+  }
+  body.has-selection .view-heading h1 { font-size: 19px; margin-bottom: 5px; }
+  .view-heading .eyebrow { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+  .view-actions { display: flex; flex-wrap: wrap; align-items: center; max-width: 100%; gap: 3px 10px; }
+  .view-actions .toggle { min-height: 44px; margin: 0; padding-block: 4px; font-size: 10px; }
+  .view-actions .secondary { min-height: 44px; padding: 7px 10px; }
+  .cosmic-navigation { min-height: 44px; max-width: 100%; padding: 0; }
+  .cosmic-navigation button { min-height: 44px; padding-inline: 11px; font-size: 10px; }
+  .cosmic-navigation .cosmic-depth { margin-left: 7px; font-size: 8px; }
+  .graph-shell, #graph { min-height: 0; }
+  .graph-tools { left: 9px; bottom: 9px; }
+  .graph-tools button { width: 44px; height: 44px; }
+  .graph-footer { padding-block: 7px; }
+  #help { max-height: 90dvh; overflow-y: auto; }
+  .help-inner .icon-button { width: 44px; height: 44px; }
+}
+@media (max-width: 600px) and (max-height: 700px) {
+  body.has-selection .app-layout { grid-template-rows: minmax(0, 1fr) 38dvh; }
+  body.has-selection .context-bar { height: 38px; }
+  body.has-selection .view-heading { padding-block: 7px 5px; }
+  body.has-selection .view-heading h1 { -webkit-line-clamp: 1; font-size: 18px; }
+}
+@media (max-width: 600px) {
+  .header-actions .quiet, .icon-button, .nav-button, .catalogue summary,
+  .catalogue-item, .search-hit, .item-link, .detail-tabs button { min-height: 44px; }
+  .icon-button { min-width: 44px; }
+  .source-filter-wrap select, .search-box, .help-inner .primary { min-height: 44px; }
+  .toggle { min-height: 44px; }
+}
+@media (max-width: 360px) {
+  .header-actions #stats-button { font-size: 0; }
+  .header-actions #stats-button::after { content: "Status"; font-size: 9px; }
+  .app-header { padding-inline: 10px; gap: 5px; }
+  .brand { gap: 9px; }
+  .brand strong { font-size: 9px; letter-spacing: 1.7px; }
+}
+
+/* Tablet and landscape-phone navigation: the reading pane takes its own
+   column, and the catalogue is available through Browse. */
+@media (min-width: 601px) and (max-width: 1000px) and (pointer: coarse),
+       (min-width: 601px) and (max-width: 900px) and (max-height: 600px) {
+  #catalogue-button { display: inline-flex; }
+  .sidebar { display: none; }
+  .catalogue-open .sidebar {
+    display: flex;
+    position: fixed;
+    inset: 76px auto 0 0;
+    width: 286px;
+    max-width: 85vw;
+    z-index: 30;
+    box-shadow: 18px 0 50px #02060c99;
+  }
+  .app-layout { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); }
+  body.has-selection .app-layout {
+    grid-template-columns: minmax(0, 1fr) clamp(280px, 40vw, 390px);
+    grid-template-rows: minmax(0, 1fr);
+  }
+  .main-panel { grid-column: 1; grid-row: 1; min-height: 0; overflow: hidden; }
+  body.has-selection .inspector {
+    position: relative;
+    grid-column: 2;
+    grid-row: 1;
+    inset: auto;
+    width: 100%;
+    height: 100%;
+    max-width: 100%;
+    min-height: 0;
+    border-left: 1px solid #516675;
+    box-shadow: -6px 0 24px #02071045;
+    overflow: hidden;
+  }
+  .inspector-bar { height: 44px; padding-inline: 14px 7px; }
+  #inspector-content { padding: 16px 18px 26px; overscroll-behavior: contain; }
+  .detail-title { font-size: 23px; }
+  .header-actions .quiet, .icon-button, .nav-button, .catalogue summary,
+  .catalogue-item, .item-link, .detail-tabs button { min-height: 44px; }
+  .icon-button { min-width: 44px; }
+  .source-filter-wrap select, .search-box { min-height: 44px; }
+  .search-box input, .progress-controls select, .progress-controls textarea { font-size: 16px; }
+  .progress-controls select, .progress-controls textarea,
+  .inspector .primary, .inspector .secondary, .inspector .pin-button { min-height: 44px; }
+  .context-bar { height: 38px; padding-inline: 12px; }
+  .view-heading { display: block; padding: 10px 14px 8px; }
+  .view-heading h1 {
+    font-size: 21px;
+    line-height: 1.2;
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 1;
+    overflow: hidden;
+    margin-bottom: 5px;
+  }
+  .view-heading .eyebrow { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+  body.has-selection #view-description,
+  body.has-selection .view-heading .eyebrow,
+  body.has-selection #landscape-stats { display: none; }
+  .view-actions { display: flex; flex-wrap: wrap; align-items: center; max-width: 100%; gap: 2px 8px; }
+  .view-actions .toggle { min-height: 44px; margin: 0; padding-block: 3px; font-size: 9px; }
+  .view-actions .secondary { min-height: 44px; padding: 6px 8px; font-size: 10px; }
+  .cosmic-navigation { min-height: 44px; gap: 3px; padding: 0; }
+  .cosmic-navigation button { min-height: 44px; padding-inline: 8px; font-size: 9px; }
+  .cosmic-navigation .cosmic-depth { font-size: 8px; margin-inline: 4px 0; letter-spacing: .25px; }
+  .graph-shell, #graph { min-height: 0; }
+  .graph-shell { margin-inline: 10px; }
+  .graph-tools { left: 8px; bottom: 8px; }
+  .graph-tools button { width: 44px; height: 44px; }
+  .graph-footer { padding: 6px 13px; gap: 3px; font-size: 9px; }
+  .graph-footer .edge-legend { display: none; }
+}
+@media (min-width: 601px) and (max-width: 1000px) and (max-height: 600px) {
+  #view-description, .view-heading .eyebrow, #landscape-stats { display: none; }
+  .view-heading { padding-block: 6px 4px; }
+  .view-heading h1 { font-size: 19px; }
+  .header-counts { display: none; }
+}
+
+/* Astronomical annotations sit directly on the sky. Their transparent
+   rectangles retain the renderer's click targets and label measurements. */
+.tau-graph .tau-star-node-label rect {
+  fill: transparent !important;
+  fill-opacity: 1 !important;
+  stroke: none !important;
+}
+.tau-graph .tau-star-node-label > text {
+  paint-order: stroke fill;
+  stroke: #050b15;
+  stroke-width: 3px;
+  stroke-linejoin: round;
+}
+.tau-graph .tau-star-node-label > text:first-of-type { fill: #e1e8e9 !important; }
+.tau-graph .tau-star-node-label > text:last-of-type {
+  fill: #aebfc9 !important;
+  font-family: var(--mono) !important;
+  font-weight: 400 !important;
+  stroke-width: 2px;
+}
+.tau-graph .tau-node.is-selected .tau-star-node-label > text:first-of-type,
+.tau-graph .tau-node.is-hovered .tau-star-node-label > text:first-of-type { fill: #f1dec0 !important; }
+
+/* A target's kind is a small overline, leaving the whole width for its name. */
+.item-link { min-width: 0; }
+.item-link > span:not(.arrow) { min-width: 0; }
+.item-link:has(> .landmark-kind) {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 4px;
+  align-items: start;
+}
+.item-link > .landmark-kind {
+  display: flex;
+  width: auto;
+  max-width: 100%;
+  min-width: 0;
+  margin: 0;
+  gap: 6px;
+  font: 9px/1.4 var(--mono);
+  letter-spacing: .8px;
+}
+.item-link > .landmark-kind + span {
+  min-width: 0;
+  max-width: 100%;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  line-height: 1.55;
+}

@@ -33,6 +33,7 @@ def build(output: Path) -> dict:
         "KATEX": "vendor/katex.v0.16.28.min.js",
         "MARKDOWN": "src/markdown.js",
         "GRAPH": "src/graph.js",
+        "CAMERA": "src/camera.js",
         "PROGRESS": "src/progress.js",
         "LANDMARKS": "src/landmarks.js",
         "APP": "src/app.js",
