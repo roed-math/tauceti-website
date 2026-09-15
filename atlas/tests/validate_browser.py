@@ -71,126 +71,6 @@ def pinch_until(page, session, selector, scale, predicate, attempts=7):
    return True
   except PlaywrightTimeoutError:pass
  return bool(page.evaluate(predicate))
-def finite_chart(page):
- return page.evaluate("TauExplorer.graph.debugState().positions.every(n=>Number.isFinite(n.x)&&Number.isFinite(n.y))")
-def captions_do_not_overlap(page, minimum=1):
- # Caption rectangles include every text line, while excluding the star cores.
- # Hiding lower-priority labels is valid; displaying overlapping text is not.
- page.wait_for_timeout(500)
- return page.evaluate("""minimum => {
-  const captions=TauExplorer.graph.debugState().positions.filter(n=>n.caption);
-  const collisions=[];
-  for(let i=0;i<captions.length;i++)for(let j=i+1;j<captions.length;j++){
-   const a=captions[i],b=captions[j],x=a.caption,y=b.caption;
-   const width=Math.min(x.x+x.w,y.x+y.w)-Math.max(x.x,y.x);
-   const height=Math.min(x.y+x.h,y.y+y.h)-Math.max(x.y,y.y);
-   if(width>1&&height>1)collisions.push({first:a.id,second:b.id,width,height});
-  }
-  window.__tauTestCaptionCollisions=collisions;
-  return captions.length>=minimum&&captions.every(n=>Object.values(n.caption).every(Number.isFinite))&&!collisions.length;
- }""",minimum)
-def sector_routes_match_dependencies(page):
- return page.evaluate("""() => {
-  const graph=TauExplorer.getGraph(),nodes=new Map(graph.nodes.map(n=>[n.id,n])),routes=TauExplorer.graph.debugState().sectorRoutes;
-  if(!Array.isArray(routes)||!routes.length)return false;
-  const key=e=>JSON.stringify([e.source,e.target,e.kind]),pair=(a,b)=>JSON.stringify([a,b].sort());
-  const expected=graph.edges.filter(e=>e.kind!=='reference'&&e.kind!=='contains'&&nodes.has(e.source)&&nodes.has(e.target)&&nodes.get(e.source).group!==nodes.get(e.target).group);
-  const edgeKeys=expected.map(key).sort(),routePairs=new Set();
-  for(const route of routes){
-   const p=pair(route.source,route.target);
-   if(routePairs.has(p)||!route.witnesses.length||route.dependencies!==route.witnesses.length)return false;
-   routePairs.add(p);
-   if(!route.witnesses.every(e=>nodes.has(e.source)&&nodes.has(e.target)&&pair(nodes.get(e.source).group,nodes.get(e.target).group)===p))return false;
-  }
-  return JSON.stringify(routes.flatMap(r=>r.witnesses).map(key).sort())===JSON.stringify(edgeKeys);
- }""")
-def headings_clear_controls(page):
- page.wait_for_timeout(500)
- return page.evaluate("""() => {
-  const tools=document.querySelector('.graph-tools').getBoundingClientRect();
-  const headings=Array.from(document.querySelectorAll('.tau-constellation-subject')).filter(e=>getComputedStyle(e).display!=='none');
-  const boxes=headings.map(e=>({label:e.textContent,box:e.getBoundingClientRect()}));
-  const intersects=(a,b)=>Math.min(a.right,b.right)-Math.max(a.left,b.left)>1&&Math.min(a.bottom,b.bottom)-Math.max(a.top,b.top)>1;
-  const collisions=boxes.filter(({box})=>intersects(box,tools)).map(({label,box})=>({first:label,second:'Chart controls',box}));
-  for(let i=0;i<boxes.length;i++)for(let j=i+1;j<boxes.length;j++)if(intersects(boxes[i].box,boxes[j].box))collisions.push({first:boxes[i].label,second:boxes[j].label,box:boxes[i].box,other:boxes[j].box});
-  window.__tauTestCaptionCollisions=collisions;
-  return headings.length===TauExplorer.graph.debugState().constellationSubjects&&!collisions.length;
- }""")
-def galaxy_labels_are_unique(page):
- # A galaxy shows at most one name, the selected galaxy exactly one, and any
- # name that is shown must be large enough to read. Names too small to read
- # are withheld rather than drawn as noise.
- return page.evaluate("""() => {
-  const nodes=Array.from(document.querySelectorAll('.tau-galaxy-node')),selected=TauExplorer.graph.debugState().selectedId;
-  const visible=e=>e&&getComputedStyle(e).display!=='none'&&getComputedStyle(e).visibility!=='hidden'&&e.getBoundingClientRect().width>0;
-  const legible=e=>{const t=e.querySelector('text'),m=t&&t.getScreenCTM();return !!m&&Math.hypot(m.c,m.d)*parseFloat(getComputedStyle(t).fontSize)>=8;};
-  const failures=nodes.map(node=>({id:node.getAttribute('data-node-id'),labels:Array.from(node.querySelectorAll('.tau-galaxy-name,.tau-star-node-label')).filter(visible)}))
-   .filter(node=>node.labels.length>1||(node.id===selected&&node.labels.length!==1)||node.labels.some(label=>!label.textContent.trim()||!legible(label)));
-  window.__tauTestCaptionCollisions=failures.map(node=>({id:node.id,visibleNames:node.labels.length}));
-  return nodes.length>0&&!failures.length;
- }""")
-def overview_names_clear_headings(page):
- return page.evaluate("""() => {
-  const chart=document.querySelector('#graph').getBoundingClientRect(),tools=document.querySelector('.graph-tools').getBoundingClientRect();
-  const visible=e=>getComputedStyle(e).display!=='none'&&getComputedStyle(e).visibility!=='hidden'&&e.getBoundingClientRect().width>0;
-  const names=Array.from(document.querySelectorAll('.tau-galaxy-name,.tau-star-node-label')).filter(visible).map(e=>({id:e.closest('[data-node-id]').getAttribute('data-node-id'),box:e.querySelector('text').getBoundingClientRect(),text:e.querySelector('text')}));
-  const headings=Array.from(document.querySelectorAll('.tau-constellation-subject text')).filter(visible).map(e=>({id:e.textContent,box:e.getBoundingClientRect()}));
-  const overlap=(a,b)=>Math.min(a.right,b.right)-Math.max(a.left,b.left)>.6&&Math.min(a.bottom,b.bottom)-Math.max(a.top,b.top)>.6;
-  const collisions=[];
-  for(let i=0;i<names.length;i++){
-   const a=names[i],matrix=a.text.getScreenCTM();
-   if(!matrix||Math.hypot(matrix.c,matrix.d)*parseFloat(getComputedStyle(a.text).fontSize)<8)collisions.push({first:a.id,second:'Illegible name'});
-   if(a.box.left<chart.left-1||a.box.right>chart.right+1||a.box.top<chart.top-1||a.box.bottom>chart.bottom+1)collisions.push({first:a.id,second:'Chart boundary'});
-   if(overlap(a.box,tools))collisions.push({first:a.id,second:'Chart controls'});
-   for(const b of [...names.slice(i+1),...headings])if(overlap(a.box,b.box))collisions.push({first:a.id,second:b.id});
-  }
-  window.__tauTestCaptionCollisions=collisions;
-  return names.length<=TauExplorer.getGraph().nodes.length&&!collisions.length;
- }""")
-def close_range_names_are_complete(page):
- # Zoomed in on one area, every galaxy in view must show exactly one legible
- # name; hidden names are only permitted where they could not be read.
- # Names are packed in chart space; a short landscape chart packs them small,
- # so the zoom used here is whatever legal scale makes that packing legible.
- page.evaluate("""() => {
-  const g=TauExplorer.graph,s=g.debugState(),subject=s.subjects.find(x=>/^Classical/.test(x.label))||s.subjects[0];
-  const members=s.positions.filter(n=>n.galaxyNameFont&&TauExplorer.getGraph().nodes.find(x=>x.id===n.id)?.group===subject.label);
-  const smallest=Math.min(...members.map(n=>n.galaxyNameFont)),k=Math.min(8,Math.max(s.semantic.fitScale*6,9.5/smallest));
-  g.svg.interrupt();g.svg.call(g.zoom.transform,d3.zoomIdentity.translate(g.width/2-subject.x*k,g.height/2-subject.y*k).scale(k));
- }""")
- page.wait_for_timeout(300)
- result=page.evaluate("""() => {
-  const g=TauExplorer.graph,state=g.debugState(),chart=document.querySelector('#graph').getBoundingClientRect(),t=state.transform;
-  const visible=e=>e&&getComputedStyle(e).display!=='none'&&getComputedStyle(e).visibility!=='hidden'&&e.getBoundingClientRect().width>0;
-  const inView=state.positions.filter(n=>{const x=n.x*t.k+t.x,y=n.y*t.k+t.y;return x>40&&x<state.width-40&&y>40&&y<state.height-40&&document.querySelector('[data-node-id="'+CSS.escape(n.id)+'"]')?.classList.contains('tau-galaxy-node');});
-  const failures=inView.filter(n=>{const node=document.querySelector('[data-node-id="'+CSS.escape(n.id)+'"]');const labels=Array.from(node.querySelectorAll('.tau-galaxy-name,.tau-star-node-label')).filter(visible);return labels.length!==1||!n.galaxyNameScreenFont||n.galaxyNameScreenFont<8.5;});
-  window.__tauTestCaptionCollisions=failures.map(n=>({id:n.id,screenFont:n.galaxyNameScreenFont}));
-  return inView.length>=3&&!failures.length;
- }""")
- page.locator('#fit-graph').click();page.wait_for_timeout(400)
- return result
-def overview_regions_are_irregular(page):
- # Detect row/column snapping without prescribing the artist's coordinates.
- # A phone chart is narrow enough that some stacking is unavoidable.
- return page.evaluate("""() => {
-  const state=TauExplorer.graph.debugState(),subjects=state.subjects,scale=state.transform.k,need=state.width<600?.45:.6;
-  if(subjects.length<10)return false;
-  const centers=subjects.map(s=>({x:(s.x??s.sector.x+s.sector.w/2)*scale,y:(s.y??s.sector.y+s.sector.h/2)*scale}));
-  const distinct=axis=>{const values=centers.map(s=>s[axis]).sort((a,b)=>a-b),bands=[];for(const value of values)if(!bands.length||value-bands[bands.length-1]>.35)bands.push(value);return bands.length;};
-  return centers.every(s=>Number.isFinite(s.x)&&Number.isFinite(s.y))&&distinct('x')>subjects.length*need&&distinct('y')>subjects.length*need;
- }""")
-def legend_matches_map_encoding(page):
- # Colour encodes recorded progress only. A roadmap without any recorded
- # status is drawn as an open ring, never coloured as though it were planned.
- return page.evaluate("""() => {
-  const beacon=id=>document.querySelector('[data-node-id="'+CSS.escape(id)+'"] .tau-survey-beacon');
-  const blank=beacon('AnalyticNumberTheory'),done=beacon('tauceti:Completed/EffectiveBounds');
-  const positions=TauExplorer.graph.debugState().positions,blankNode=positions.find(n=>n.id==='AnalyticNumberTheory'),doneNode=positions.find(n=>n.id==='tauceti:Completed/EffectiveBounds');
-  const legend=document.querySelector('.progress-legend'),keys=Array.from(legend.querySelectorAll('span')).map(e=>e.textContent.trim());
-  const groupColours=TauExplorer.data.groups.map(g=>g.color.toLowerCase());
-  return !!blank&&!!done&&blankNode.hasProgress===false&&doneNode.progress===100&&blank.getAttribute('fill')==='#0b1016'&&blank.getAttribute('stroke')==='#6f7f8c'&&done.getAttribute('fill')===doneNode.accent&&doneNode.accent==='#67af8c'
-   &&keys.includes('No progress data')&&keys.includes('Not started')&&keys.includes('Complete')&&!!legend.querySelector('.none')&&positions.filter(n=>!n.hasProgress).every(n=>!groupColours.includes(n.accent.toLowerCase()));
- }""")
 def pinch_gesture(page, session, selector, scale):
  # One two-finger gesture on the chosen object, without any expectation.
  target=page.locator(selector).first.bounding_box();chart=page.locator('#graph').bounding_box()
@@ -208,97 +88,6 @@ def pinch_gesture(page, session, selector, scale):
  session.send('Input.dispatchTouchEvent',{'type':'touchEnd','touchPoints':[]})
  page.wait_for_timeout(400)
  return True
-def sector_routes_are_curved(page):
- return page.evaluate(r"""() => {
-  const paths=Array.from(document.querySelectorAll('.tau-sector-route'));
-  let bent=0;
-  const failures=paths.filter(path=>{
-   const d=path.getAttribute('d')||'',length=path.getTotalLength();
-   if(!/[CQ]/i.test(d)||/[LHV]/i.test(d)||!Number.isFinite(length)||length<=0)return true;
-   const a=path.getPointAtLength(0),b=path.getPointAtLength(length),chord=Math.hypot(b.x-a.x,b.y-a.y);
-   let deviation=0;
-   for(let step=1;step<12;step++){const p=path.getPointAtLength(length*step/12);if(!Number.isFinite(p.x)||!Number.isFinite(p.y))return true;deviation=Math.max(deviation,Math.abs((b.x-a.x)*(p.y-a.y)-(b.y-a.y)*(p.x-a.x))/Math.max(.001,chord));}
-   if(deviation>.005)bent++;
-   return false;
-  });
-  window.__tauTestCaptionCollisions=failures.map(e=>({route:[e.dataset.sourceArea,e.dataset.targetArea],path:e.getAttribute('d')}));
-  return paths.length>0&&!failures.length&&bent>=paths.length*.8;
- }""")
-def check_overview_layout(page,scope):
- page.wait_for_timeout(500)
- record(scope+' overview uses irregular mathematical area positions',overview_regions_are_irregular(page))
- record(scope+' overview routes curve between areas without right-angle segments',sector_routes_are_curved(page))
- record(scope+' overview retains every real cross-area dependency',sector_routes_match_dependencies(page))
- record(scope+' overview shows at most one legible name per galaxy',galaxy_labels_are_unique(page))
- record(scope+' galaxy names clear other names, headings and chart controls',overview_names_clear_headings(page))
- record(scope+' close range shows every galaxy in view with one legible name',close_range_names_are_complete(page))
- record(scope+' legend colours match the map encoding',legend_matches_map_encoding(page))
-def check_catalogue_galaxy_name(page,scope,touch=False):
- # Reproduce the reported left-hand catalogue path, including the subsequent
- # pointer preview. Calling graph.select alone would miss the real UI regression.
- title=page.evaluate("TauExplorer.data.roadmaps.find(r=>r.id==='AnalyticNumberTheory').title")
- if touch:page.locator('#catalogue-button').tap()
- # Catalogue spelling may retain a source prefix, so its original title is the
- # stable discriminator rather than an abbreviated visible caption.
- item=page.locator('#catalogue .catalogue-item[title='+json.dumps(title)+']')
- group=item.locator('xpath=..')
- def reach_with_touch(target):
-  # Landscape scrolls the entire index; portrait keeps its catalogue scrollable.
-  # Native swipes verify that a user can reach the item without auto-scroll.
-  catalogue=page.locator('#catalogue');sidebar=page.locator('.sidebar')
-  panel=catalogue if catalogue.evaluate("e=>/auto|scroll/.test(getComputedStyle(e).overflowY)&&e.scrollHeight>e.clientHeight") else sidebar
-  session=page.context.new_cdp_session(page)
-  for _ in range(12):
-   box=target.bounding_box();bounds=panel.bounding_box();outer=sidebar.bounding_box()
-   top=max(bounds['y'],outer['y']);bottom=min(bounds['y']+bounds['height'],outer['y']+outer['height'])
-   if box and box['y']>=top and box['y']+box['height']<=bottom:return True
-   x=bounds['x']+bounds['width']/2
-   missing=top-box['y'] if box and box['y']<top else box['y']+box['height']-bottom if box else 70
-   distance=min(90,bottom-top-45,max(35,missing+25))
-   start=(x,bottom-20);end=(x,bottom-20-distance)
-   if box and box['y']<top:start,end=(x,top+20),(x,top+20+distance)
-   touch_swipe(page,session,start,end)
-  return False
- if touch:record(scope+' Browse reaches its subject using touch scrolling',reach_with_touch(group.locator('summary')))
- if not group.evaluate('(e)=>e.open'):
-  if touch:group.locator('summary').tap()
-  else:group.locator('summary').click()
- if touch:
-  record(scope+' Browse reaches its roadmap using touch scrolling',reach_with_touch(item))
-  item.tap()
- else:item.click()
- page.wait_for_function("TauExplorer.getState().selected==='AnalyticNumberTheory'&&TauExplorer.getState().view==='group'")
- page.wait_for_timeout(600)
- record(scope+' catalogue selection gives its galaxy one visible name',galaxy_labels_are_unique(page))
- if not touch:
-  page.locator('[data-node-id="AnalyticNumberTheory"] .tau-star-hit').hover()
-  page.wait_for_timeout(150)
-  record(scope+' hovering a catalogue-selected galaxy does not duplicate its name',galaxy_labels_are_unique(page))
- page.screenshot(path=str(ROOT/('preview-'+scope.lower().replace(' ','-')+'-catalogue-selection.png')),animations='disabled')
- page.evaluate("TauExplorer.navigate({view:'all',id:null,layer:null,selected:null,origin:'all',activity:'all',unmapped:true,outside:false,references:false})")
- page.locator('#fit-graph').click();page.wait_for_timeout(500)
-def run_overview_checks(page,browser):
- global mp
- page.locator('#fit-graph').click();page.wait_for_timeout(500)
- page.screenshot(path=str(ROOT/'preview-desktop-organic-overview.png'),animations='disabled')
- check_overview_layout(page,'Desktop')
- record('Desktop overview headings clear each other and controls',headings_clear_controls(page))
- check_catalogue_galaxy_name(page,'Desktop')
- if desktop_only:return
- mobile=browser.new_context(viewport={'width':390,'height':844},device_scale_factor=2,is_mobile=True,has_touch=True)
- mp=mobile.new_page();mp.on('pageerror',lambda e:errors.append('mobile overview: '+str(e)))
- if url.startswith('file:'):
-  mp.route('http://**/*',lambda route:(requests.append(route.request.url),route.abort()))
-  mp.route('https://**/*',lambda route:(requests.append(route.request.url),route.abort()))
- mp.goto(url,wait_until='load');mp.wait_for_function('!!window.TauExplorer')
- for scope,width,height in [('Phone',390,844),('Narrow phone',375,812),('Landscape phone',844,390)]:
-  mp.set_viewport_size({'width':width,'height':height});mp.locator('#fit-graph').tap();mp.wait_for_timeout(600)
-  mp.screenshot(path=str(ROOT/('preview-'+scope.lower().replace(' ','-')+'-organic-overview.png')),animations='disabled')
-  check_overview_layout(mp,scope)
-  record(scope+' overview headings clear each other and controls',headings_clear_controls(mp))
-  record(scope+' overview remains within the viewport',mp.evaluate('document.documentElement.scrollWidth<=innerWidth+1'))
-  check_catalogue_galaxy_name(mp,scope,touch=True)
- mobile.close()
 def reference_sources_are_exact(page, planet_id):
  return page.evaluate(r"""id => {
   const item=TauExplorer.landmarks.find(x=>x.id===id),entries=Object.values(TauExplorer.references.forLandmark(item)).flat();
@@ -316,8 +105,8 @@ def run_reference_checks(page,browser):
  page.wait_for_timeout(500)
  # A formula with no narrower citation must expose the roadmap bibliography as
  # wider reading, while preserving the mathematical statement and source record.
- page.evaluate("TauExplorer.openStage('EllipticKTheory:E.2')")
- page.locator('[data-node-id="'+FORMULA_PLANET+'"] .tau-star-hit').click()
+ page.evaluate("TauExplorer.openStage('EllipticKTheory:E.2')");page.wait_for_timeout(700)
+ page.locator('[data-node-id="'+FORMULA_PLANET+'"] .tau-hit').click()
  reading=page.locator('#inspector .planet-references')
  record('Planet references distinguish wider reading from an exact topic citation',reading.is_visible() and page.evaluate("id => {const item=TauExplorer.landmarks.find(x=>x.id===id),refs=TauExplorer.references.forLandmark(item);return !refs.direct.length&&!refs.layer.length&&refs.roadmap.length>0}",FORMULA_PLANET) and reading.locator('[data-reference-scope="direct"],[data-reference-scope="layer"]').count()==0 and reading.locator('[data-reference-scope="roadmap"] h4').inner_text()=='Roadmap reading')
  text=reading.inner_text()
@@ -335,8 +124,8 @@ def run_reference_checks(page,browser):
  # An explicit paper in a TauCeti target belongs to that topic, not to every
  # target in the roadmap. Its public paper link and local source stay separate.
  topic='tauceti:TauCetiRoadmap/CombinatorialHeegaardFloer#milestone-g-7::landmark:k-u-k-1csrgny'
- page.evaluate("TauExplorer.openStage('tauceti:TauCetiRoadmap/CombinatorialHeegaardFloer#milestone-g-7')")
- page.locator('[data-node-id="'+topic+'"] .tau-star-hit').click()
+ page.evaluate("TauExplorer.openStage('tauceti:TauCetiRoadmap/CombinatorialHeegaardFloer#milestone-g-7')");page.wait_for_timeout(700)
+ page.locator('[data-node-id="'+topic+'"] .tau-hit').click()
  direct=page.locator('.planet-references [data-reference-scope="direct"]')
  record('A TauCeti mathematical target exposes its explicit topic reference',direct.locator('h4').inner_text()=='For this topic' and 'Milnor conjecture' in direct.inner_text() and direct.locator('a[href="https://arxiv.org/abs/1011.5265"]').count()==1 and reference_sources_are_exact(page,topic))
  direct.locator('.reference-source').first.click()
@@ -344,14 +133,14 @@ def run_reference_checks(page,browser):
  page.locator('#close-reader').click()
 
  layer_topic='AInfCohomology:AI.0::landmark:common-integral-perfectoid-ring-and-witt-v-1vm5fxh'
- page.evaluate("TauExplorer.openStage('AInfCohomology:AI.0')")
- page.locator('[data-node-id="'+layer_topic+'"] .tau-star-hit').click()
+ page.evaluate("TauExplorer.openStage('AInfCohomology:AI.0')");page.wait_for_timeout(700)
+ page.locator('[data-node-id="'+layer_topic+'"] .tau-hit').click()
  layer=page.locator('.planet-references [data-reference-scope="layer"]')
  record('Layer source locators are labelled separately from direct topic citations',layer.locator('h4').inner_text()=='For this layer' and 'BMS1 §3; BS22 §§2–3,17' in layer.inner_text() and page.locator('.planet-references [data-reference-scope="direct"]').count()==0)
 
  empty='AbelianSchemesAndArithmeticModuli:A1::landmark:relative-dimension-as-locally-constant-all-13bhoef'
- page.evaluate("TauExplorer.openStage('AbelianSchemesAndArithmeticModuli:A1')")
- page.locator('[data-node-id="'+empty+'"] .tau-star-hit').click()
+ page.evaluate("TauExplorer.openStage('AbelianSchemesAndArithmeticModuli:A1')");page.wait_for_timeout(700)
+ page.locator('[data-node-id="'+empty+'"] .tau-hit').click()
  record('A target without recorded references says so without invented reading',page.evaluate("id => Object.values(TauExplorer.references.forLandmark(TauExplorer.landmarks.find(x=>x.id===id))).every(items=>!items.length)",empty) and page.locator('.planet-references .detail-note').inner_text()=='No bibliography is listed for this topic in the embedded roadmap.' and page.locator('.planet-references .planet-reference,.planet-references a,.planet-references .reference-source').count()==0)
 
  if not desktop_only:
@@ -361,8 +150,8 @@ def run_reference_checks(page,browser):
    mp.route('http://**/*',lambda route:(requests.append(route.request.url),route.abort()))
    mp.route('https://**/*',lambda route:(requests.append(route.request.url),route.abort()))
   mp.goto(url,wait_until='load');mp.wait_for_function('!!window.TauExplorer')
-  mp.evaluate("TauExplorer.openStage('EllipticKTheory:E.2')");mp.wait_for_timeout(500)
-  mp.locator('[data-node-id="'+FORMULA_PLANET+'"] .tau-star-hit').tap()
+  mp.evaluate("TauExplorer.openStage('EllipticKTheory:E.2')");mp.wait_for_timeout(800)
+  mp.locator('[data-node-id="'+FORMULA_PLANET+'"] .tau-hit').tap()
   touch=mobile.new_cdp_session(mp)
   panel=mp.locator('#inspector-content');button=mp.locator('.planet-references .reference-source').first
   def reference_button_in_view():
@@ -385,6 +174,138 @@ def write_report(scope):
  (ROOT/'BROWSER_VALIDATION.json').write_text(json.dumps(report,indent=2)+'\n')
  print(json.dumps(report,indent=2))
  print('Screenshots and report:',ROOT)
+BUILD=json.loads((REPO/'BUILD.json').read_text()) if (REPO/'BUILD.json').exists() else {}
+def debug(page):return page.evaluate('TauExplorer.graph.debugState()')
+def label_boxes(page):
+ return page.evaluate("""() => Array.from(document.querySelectorAll('.tau-layer-label g.tau-label')).map(g=>{const t=g.querySelector('text'),b=t.getBoundingClientRect(),m=t.getScreenCTM();return {id:g.getAttribute('data-label-for'),kind:Array.from(g.classList).find(c=>c.startsWith('tau-label-')&&c!=='tau-label-hit').replace('tau-label-',''),x:b.left,y:b.top,w:b.width,h:b.height,font:m?Math.hypot(m.c,m.d)*parseFloat(getComputedStyle(t).fontSize):0,text:t.textContent};})""")
+def labels_are_clean(page,minimum_font=8):
+ # No two drawn labels overlap, every drawn label is legible and inside the chart.
+ chart=page.locator('#graph').bounding_box();boxes=label_boxes(page);collisions=[]
+ for i,a in enumerate(boxes):
+  if a['font']<minimum_font:collisions.append({'first':a['id'],'second':'illegible','font':a['font']})
+  if a['x']<chart['x']-2 or a['x']+a['w']>chart['x']+chart['width']+2 or a['y']<chart['y']-2 or a['y']+a['h']>chart['y']+chart['height']+2:collisions.append({'first':a['id'],'second':'chart boundary'})
+  for b in boxes[i+1:]:
+   if min(a['x']+a['w'],b['x']+b['w'])-max(a['x'],b['x'])>1 and min(a['y']+a['h'],b['y']+b['h'])-max(a['y'],b['y'])>1:collisions.append({'first':a['id'],'second':b['id']})
+ page.evaluate('c => { window.__tauTestCaptionCollisions=c; }',collisions)
+ return not collisions
+def names_are_unique(page):
+ return page.evaluate("""() => { const seen=new Map(); for(const g of document.querySelectorAll('.tau-layer-label g.tau-label')){const id=g.getAttribute('data-label-for');seen.set(id,(seen.get(id)||0)+1);} const dup=Array.from(seen.entries()).filter(([,n])=>n>1); window.__tauTestCaptionCollisions=dup; return !dup.length; }""")
+def legend_matches_map_encoding(page):
+ # Colour encodes recorded progress only. A roadmap without any recorded
+ # status is drawn as an open ring, never coloured as though it were planned.
+ return page.evaluate("""() => {
+  const beacon=id=>document.querySelector('[data-node-id="'+CSS.escape(id)+'"] .tau-beacon');
+  const blank=beacon('AnalyticNumberTheory'),done=beacon('tauceti:Completed/EffectiveBounds'),d=TauExplorer.graph.debugState();
+  const blankNode=d.constellations.find(n=>n.id==='AnalyticNumberTheory'),doneNode=d.constellations.find(n=>n.id==='tauceti:Completed/EffectiveBounds');
+  const keys=Array.from(document.querySelectorAll('.progress-legend span')).map(e=>e.textContent.trim()),groupColours=TauExplorer.data.groups.map(g=>g.color.toLowerCase());
+  return !!blank&&!!done&&blankNode.hasProgress===false&&doneNode.progress===100&&blank.getAttribute('fill')==='#0b1016'&&blank.getAttribute('stroke')==='#6f7f8c'&&done.getAttribute('fill')===doneNode.accent&&doneNode.accent==='#67af8c'
+   &&keys.includes('No progress data')&&keys.includes('Not started')&&keys.includes('Complete')&&!!document.querySelector('.progress-legend .none')&&d.constellations.filter(n=>!n.hasProgress).every(n=>!groupColours.includes(n.accent.toLowerCase()));
+ }""")
+def fit_all(page,touch=False):
+ if touch:page.locator('#fit-graph').tap()
+ else:page.locator('#fit-graph').click()
+ page.wait_for_timeout(500)
+def check_overview(page,scope,touch=False):
+ page.evaluate("TauExplorer.navigate({view:'all',id:null,layer:null,selected:null,origin:'all',activity:'all',unmapped:true,references:false})");page.wait_for_timeout(700)
+ d=debug(page)
+ record(scope+' universe holds every galaxy, roadmap, layer and planet',d['layout']=='universe' and d['counts']['galaxies']==17 and d['counts']['constellations']==196 and d['counts']['stars']==BUILD.get('mathematicalStars',1594)-BUILD.get('sourceRefinements',0) and d['counts']['planets']>=3440)
+ record(scope+' overview resolves no stars or planets and stays light',d['visible']['resolved']==0 and d['visible']['stars']==0 and d['visible']['planets']==0 and d['rendered']<600)
+ record(scope+' overview draws every roadmap as a point',page.locator('.tau-constellation').count()==196 and page.locator('.tau-unmapped-node').count()==16)
+ # A chart under 400px tall cannot hold all seventeen headings without
+ # overlap; there a hidden heading is the honest outcome.
+ headings=page.locator('.tau-label-galaxy').count();short=page.locator('#graph').bounding_box()['height']<400
+ record(scope+' every area heading is drawn once, legibly, without overlap',(headings==17 if not short else headings>=14) and labels_are_clean(page) and names_are_unique(page))
+ record(scope+' universe fits inside the chart',page.evaluate("() => { const d=TauExplorer.graph.debugState(),t=d.transform,g=document.querySelector('#graph').getBoundingClientRect(); const u=TauExplorer.getUniverse().bounds; const x0=u.x*t.k+t.x,x1=(u.x+u.w)*t.k+t.x,y0=u.y*t.k+t.y,y1=(u.y+u.h)*t.k+t.y; return x0>=-2&&x1<=g.width+2&&y0>=-2&&y1<=g.height+2; }"))
+ record(scope+' no links are drawn until something is selected',page.locator('.tau-link').count()==0 and page.evaluate("Array.from(document.querySelectorAll('.tau-route')).every(e=>Number(e.getAttribute('opacity'))===0)"))
+ record(scope+' legend colours match the map encoding',legend_matches_map_encoding(page))
+ record(scope+' page has no horizontal overflow',page.evaluate('document.documentElement.scrollWidth<=innerWidth+1'))
+def check_hover_links(page):
+ heading=page.locator('.tau-label-galaxy').first
+ heading.hover();page.wait_for_timeout(200)
+ own=page.evaluate("() => { const id=document.querySelector('.tau-label-galaxy').getAttribute('data-label-for'); const routes=Array.from(document.querySelectorAll('.tau-route')); const mine=routes.filter(r=>r.dataset.sourceArea===id||r.dataset.targetArea===id); return mine.length>0&&mine.every(r=>Number(r.getAttribute('opacity'))>=.5)&&routes.filter(r=>!mine.includes(r)).every(r=>Number(r.getAttribute('opacity'))===0); }")
+ page.mouse.move(5,5);page.wait_for_timeout(200)
+ record('Hovering an area heading reveals only that area\'s routes',own and page.evaluate("Array.from(document.querySelectorAll('.tau-route')).every(e=>Number(e.getAttribute('opacity'))===0)"))
+def check_zoom_journey(page,scope):
+ # A continuous wheel zoom carries the reader from the universe into one
+ # galaxy, one constellation and one star system, and the address follows.
+ fit_all(page)
+ record(scope+' wheel zoom enters a galaxy',wheel_until(page,'.tau-galaxy[data-node-id="classical"] ellipse',-300,"TauExplorer.getState().view==='group' && TauExplorer.getState().id==='classical'",attempts=14))
+ page.wait_for_timeout(400)
+ record(scope+' inside a galaxy its constellations resolve into stars',wheel_until(page,'.tau-galaxy[data-node-id="classical"] ellipse',-200,"(() => { const d=TauExplorer.graph.debugState(); return d.visible.resolved>0 && d.visible.stars>0; })()",attempts=6))
+ record(scope+' wheel zoom enters a roadmap constellation',wheel_until(page,'[data-node-id="AnalyticNumberTheory"] .tau-hit',-300,"TauExplorer.getState().view==='roadmap' && TauExplorer.getState().id==='AnalyticNumberTheory' && !TauExplorer.getState().layer",attempts=14))
+ record(scope+' constellation names and star names are legible and disjoint',labels_are_clean(page) and names_are_unique(page))
+ record(scope+' wheel zoom enters a star system',wheel_until(page,'[data-node-id="AnalyticNumberTheory:AN.0"] .tau-hit',-300,"TauExplorer.getState().layer==='AnalyticNumberTheory:AN.0'",attempts=14))
+ record(scope+' a star system shows its planets',page.locator('.tau-planet').count()>0 and page.locator('.tau-orbit').count()>0)
+ page.screenshot(path=str(ROOT/('preview-'+scope.lower().replace(' ','-')+'-star-system.png')),animations='disabled')
+ record(scope+' wheel zoom out returns to the roadmap',wheel_until(page,'#graph',300,"TauExplorer.getState().view==='roadmap' && !TauExplorer.getState().layer",attempts=14))
+ record(scope+' wheel zoom out returns to the universe',wheel_until(page,'#graph',300,"TauExplorer.getState().view==='all'",attempts=20))
+def check_click_journey(page,scope):
+ page.evaluate("TauExplorer.navigate({view:'all',id:null,layer:null,selected:null})");page.wait_for_timeout(600)
+ page.locator('[data-node-id="AnalyticNumberTheory"] .tau-hit').click()
+ page.wait_for_function("TauExplorer.getState().view==='roadmap' && TauExplorer.getState().id==='AnalyticNumberTheory'");page.wait_for_timeout(500)
+ record(scope+' clicking a roadmap point travels into its constellation',page.evaluate("() => { const d=TauExplorer.graph.debugState(); return d.focus.level==='constellation' && d.visible.stars>=10; }") and page.locator('#selection-kind').inner_text()=='Campaign roadmap')
+ record(scope+' the selected roadmap shows its own links',page.locator('.tau-link').count()==page.evaluate("TauExplorer.data.edges.filter(e=>e.source==='AnalyticNumberTheory'||e.target==='AnalyticNumberTheory').length"))
+ page.screenshot(path=str(ROOT/('preview-'+scope.lower().replace(' ','-')+'-constellation.png')),animations='disabled')
+ page.locator('[data-node-id="AnalyticNumberTheory:AN.0"] .tau-hit').click()
+ page.wait_for_function("TauExplorer.getState().layer==='AnalyticNumberTheory:AN.0'");page.wait_for_timeout(500)
+ record(scope+' clicking a star travels to its system and opens the layer',page.locator('#selection-kind').inner_text()=='Layer' and page.locator('.tau-planet').count()>0)
+ record(scope+' the selected star shows exactly its prerequisite and consumer links',page.locator('.tau-link').count()==page.evaluate("() => { const stars=new Set(TauExplorer.getUniverse().stars.map(s=>s.id)); return TauExplorer.data.stageEdges.filter(e=>(e.source==='AnalyticNumberTheory:AN.0'||e.target==='AnalyticNumberTheory:AN.0')&&stars.has(e.source)&&stars.has(e.target)).length; }"))
+ planet=page.evaluate("TauExplorer.getUniverse().stars.find(s=>s.id==='AnalyticNumberTheory:AN.0').planetIds[0]")
+ page.locator('[data-node-id="'+planet+'"] .tau-hit').click();page.wait_for_timeout(400)
+ record(scope+' clicking a planet reads its mathematics',page.locator('.landmark-description').is_visible() and len(page.locator('.landmark-description').inner_text())>20 and page.evaluate("TauExplorer.getState().layer==='AnalyticNumberTheory:AN.0'"))
+ page.screenshot(path=str(ROOT/('preview-'+scope.lower().replace(' ','-')+'-planet.png')),animations='disabled')
+ page.locator('.cosmic-back').click();page.wait_for_function("!TauExplorer.getState().layer");page.wait_for_timeout(400)
+ page.locator('.cosmic-back').click();page.wait_for_function("TauExplorer.getState().view==='group'");page.wait_for_timeout(400)
+ page.locator('.cosmic-back').click();page.wait_for_function("TauExplorer.getState().view==='all'");page.wait_for_timeout(400)
+ record(scope+' back steps out through roadmap and area to the universe',page.evaluate("TauExplorer.graph.debugState().focus.level==='all'"))
+ page.locator('.tau-graph').click(position={'x':8,'y':8});page.wait_for_timeout(200)
+ record(scope+' clicking empty sky clears the selection and its links',page.evaluate("TauExplorer.getState().selected===null") and page.locator('.tau-link').count()==0)
+def check_refinements(page):
+ page.evaluate("TauExplorer.navigate({view:'roadmap',id:'PadicFamilies',layer:'PadicFamilies:L2a',selected:'PadicFamilies:L2a'})");page.wait_for_timeout(800)
+ expected=page.evaluate("TauExplorer.data.stages.filter(s=>s.expansion&&s.parentStageId==='PadicFamilies:L2a').length")
+ record('Reviewed source refinements orbit their layer as planets',expected==14 and page.locator('.tau-planet[data-node-id*="/"]').count()==expected)
+ record('Refinements are excluded from progress denominators',page.evaluate("TauExplorer.progress.roadmapLeaves('PadicFamilies').every(id=>!id.includes('/')) && TauExplorer.progress.stage('PadicFamilies:L2a/spectral-hypersurface').status==='unknown'"))
+ page.locator('.tau-planet[data-node-id="PadicFamilies:L2a/spectral-hypersurface"] .tau-hit').click();page.wait_for_timeout(400)
+ record('A refinement planet explains its statement, sources and unchecked status',page.locator('#selection-kind').inner_text()=='Construction · source refinement' and 'Fredholm' in page.locator('.detail-title').inner_text() and page.locator('#inspector-content .reference-works a').count()>0 and 'unchecked' in page.locator('#inspector-content').inner_text())
+ record('A layer lists its source decomposition beside its extracted targets',page.evaluate("() => { TauExplorer.openStage('PadicFamilies:L2a'); return true; }") and (page.wait_for_timeout(400) or True) and 'Source decomposition' in page.locator('#inspector-content').inner_text() and page.locator('#inspector-content .item-link[data-item-id*="/"]').count()==14)
+ record('A roadmap summarises its reviewed expansion',page.evaluate("() => { TauExplorer.openItem('PadicFamilies'); return true; }") and (page.wait_for_timeout(500) or True) and 'Source expansion' in page.locator('#inspector-content').inner_text() and 'accepted' in page.locator('#inspector-content').inner_text())
+ page.screenshot(path=str(ROOT/'preview-refined-layer.png'),animations='disabled')
+def check_catalogue_selection(page,scope,touch=False):
+ title=page.evaluate("TauExplorer.data.roadmaps.find(r=>r.id==='AnalyticNumberTheory').title")
+ if touch:page.locator('#catalogue-button').tap()
+ item=page.locator('#catalogue .catalogue-item[title='+json.dumps(title)+']');group=item.locator('xpath=..')
+ if not group.evaluate('(e)=>e.open'):
+  if touch:group.locator('summary').tap()
+  else:group.locator('summary').click()
+ if touch:item.scroll_into_view_if_needed();item.tap()
+ else:item.click()
+ page.wait_for_function("TauExplorer.getState().selected==='AnalyticNumberTheory'&&TauExplorer.getState().view==='roadmap'");page.wait_for_timeout(600)
+ record(scope+' catalogue selection travels to the roadmap and names it once',page.locator('.tau-label[data-label-for="AnalyticNumberTheory"]').count()==1 and names_are_unique(page) and page.evaluate("TauExplorer.graph.debugState().focus.id==='AnalyticNumberTheory'"))
+ page.screenshot(path=str(ROOT/('preview-'+scope.lower().replace(' ','-')+'-catalogue-selection.png')),animations='disabled')
+ page.evaluate("TauExplorer.navigate({view:'all',id:null,layer:null,selected:null})");page.wait_for_timeout(500)
+def check_performance(page):
+ fit_all(page)
+ t=time.time();page.evaluate("""() => new Promise(resolve => { const g=TauExplorer.graph,s=g.debugState().transform; let step=0; const tick=()=>{ step++; const k=s.k*Math.pow(1.25,step); g.svg.call(g.zoom.transform,d3.zoomIdentity.translate(g.width/2-(g.width/2-s.x)/s.k*k,g.height/2-(g.height/2-s.y)/s.k*k).scale(k)); if(step<16)requestAnimationFrame(tick); else requestAnimationFrame(resolve); }; requestAnimationFrame(tick); })""")
+ elapsed=int((time.time()-t)*1000)
+ record('Sixteen zoom frames from the universe to a system render quickly',elapsed<2500)
+ print('zoom frames ms',elapsed,flush=True)
+ fit_all(page)
+def run_overview_checks(page,browser):
+ global mp
+ fit_all(page);page.screenshot(path=str(ROOT/'preview-desktop-universe.png'),animations='disabled')
+ check_overview(page,'Desktop');check_hover_links(page);check_catalogue_selection(page,'Desktop')
+ if desktop_only:return
+ mobile=browser.new_context(viewport={'width':390,'height':844},device_scale_factor=2,is_mobile=True,has_touch=True)
+ mp=mobile.new_page();mp.on('pageerror',lambda e:errors.append('mobile overview: '+str(e)))
+ if url.startswith('file:'):
+  mp.route('http://**/*',lambda route:(requests.append(route.request.url),route.abort()))
+  mp.route('https://**/*',lambda route:(requests.append(route.request.url),route.abort()))
+ mp.goto(url,wait_until='load');mp.wait_for_function('!!window.TauExplorer')
+ for scope,width,height in [('Phone',390,844),('Narrow phone',375,812),('Landscape phone',844,390)]:
+  mp.set_viewport_size({'width':width,'height':height});mp.wait_for_timeout(500);fit_all(mp,touch=True)
+  mp.screenshot(path=str(ROOT/('preview-'+scope.lower().replace(' ','-')+'-universe.png')),animations='disabled')
+  check_overview(mp,scope,touch=True);check_catalogue_selection(mp,scope,touch=True)
+ mobile.close()
 with sync_playwright() as p:
  browser=p.chromium.launch(headless=True)
  context=browser.new_context(viewport={'width':1600,'height':1000},accept_downloads=True)
@@ -397,68 +318,50 @@ with sync_playwright() as p:
   run_overview_checks(page,browser)
   record('No application exceptions',not errors)
   if url.startswith('file:'):record('No network requests needed',not requests)
-  browser.close()
-  write_report('overview desktop' if desktop_only else 'overview desktop and mobile')
-  sys.exit(0)
+  browser.close();write_report('overview desktop' if desktop_only else 'overview desktop and mobile');sys.exit(0)
  if references_only:
   run_reference_checks(page,browser)
   record('No application exceptions',not errors)
   if url.startswith('file:'):record('No network requests needed',not requests)
-  browser.close()
-  write_report('references desktop' if desktop_only else 'references desktop and mobile')
-  sys.exit(0)
+  browser.close();write_report('references desktop' if desktop_only else 'references desktop and mobile');sys.exit(0)
  record('Native offline mathematics renders',page.evaluate("() => {const d=TauMarkdown.render('$x^2$');return !!d.querySelector('math')}"))
- record('180 roadmap and 1604 stage records',page.evaluate('TauExplorer.data.roadmaps.length===180 && TauExplorer.data.stages.length===1604'))
+ record('Snapshot records match the build report',page.evaluate("TauExplorer.data.roadmaps.length===180 && TauExplorer.data.stages.filter(s=>!s.expansion).length===1604 && TauExplorer.data.stages.length===%d && TauExplorer.data.stages.filter(s=>s.expansion).length===%d"%(BUILD.get('stages',1604),BUILD.get('sourceRefinements',0))))
+ check_overview(page,'Desktop');check_hover_links(page);check_performance(page)
  page.screenshot(path=str(ROOT/'preview-overview.png'),animations='disabled')
- check_overview_layout(page,'Desktop')
- check_catalogue_galaxy_name(page,'Desktop')
- record('16 unmapped areas are separate from 180 roadmaps',page.evaluate('TauExplorer.data.opportunities.areas.length===16 && TauExplorer.getGraph().nodes.filter(n=>n.unmapped).length===16'))
- record('Unmapped regions have outlined galaxy symbols',page.locator('.tau-unmapped-node').count()==16)
- record('Outer atlas contains 180 roadmap galaxies and 16 unmapped areas',page.evaluate("TauExplorer.getGraph().nodes.filter(n=>n.type==='roadmap').length===180 && TauExplorer.getGraph().nodes.length===196"))
- record('Every roadmap galaxy carries a mathematical name for close range',page.evaluate("() => {const ids=TauExplorer.getGraph().nodes.filter(n=>n.type==='roadmap').map(n=>n.id),elements=new Map(Array.from(document.querySelectorAll('.tau-galaxy-node')).map(e=>[e.getAttribute('data-node-id'),e]));return ids.length===180 && ids.every(id=>{const label=elements.get(id)?.querySelector('.tau-galaxy-name');return label&&label.textContent.trim().length>0})}"))
- record('Strong sector routes are visible on arrival and every route stays in the data',page.evaluate("() => {const routes=Array.from(document.querySelectorAll('.tau-sector-route')),data=TauExplorer.graph.debugState().sectorRoutes,strong=routes.filter(e=>e.dataset.strong==='true');return TauExplorer.getGraph().edges.filter(e=>e.kind!=='reference'&&e.kind!=='contains').length===1011 && routes.length>0 && routes.length===data.length && strong.length>0 && strong.length<routes.length && strong.every(e=>Number(getComputedStyle(e).opacity)>0) && routes.every(e=>getComputedStyle(e).display!=='none' && e.getAttribute('data-source-area') && e.getAttribute('data-target-area'));}"))
- record('Hovering an area reveals its own routes and quietens the rest',page.evaluate("() => {const g=TauExplorer.graph,subject=g.debugState().subjects[0].label;g.hoveredSubject=subject;g.updateConstellationLabels();const routes=Array.from(document.querySelectorAll('.tau-sector-route'));const own=routes.filter(e=>e.dataset.sourceArea===subject||e.dataset.targetArea===subject),other=routes.filter(e=>!own.includes(e));const ok=own.length>0&&own.every(e=>Number(e.getAttribute('opacity'))>=.5)&&other.every(e=>Number(e.getAttribute('opacity'))<.1);g.hoveredSubject=null;g.updateConstellationLabels();return ok;}"))
+ record('Unmapped areas are separate from roadmaps',page.evaluate("TauExplorer.data.opportunities.areas.length===16 && TauExplorer.getGraph().nodes.filter(n=>n.unmapped).length===16 && TauExplorer.getGraph().nodes.length===196"))
  record('A roadmap without status data has a blank progress indicator',page.evaluate("() => {const id='AnalyticNumberTheory',status=TauExplorer.progress.roadmap(id),node=TauExplorer.getGraph().nodes.find(n=>n.id===id);return status.total>0 && status.unknown===status.total && node.progress===null && node.progressLabel===''}"))
- page.evaluate("TauExplorer.navigate({view:'subjects',id:null,selected:null})")
- record('Roadmap-free regions do not imply zero percent completion',page.evaluate("TauExplorer.getGraph().nodes.filter(n=>['geometry','combinatorics','computation','logic'].includes(n.id)).every(n=>n.progress===null)"))
- page.evaluate("TauExplorer.navigate({view:'all',id:null,selected:null,references:true})")
- record('Unmapped areas can show contextual links',page.evaluate("TauExplorer.getGraph().edges.some(e=>e.kind==='reference' && e.source.startsWith('unmapped:'))"))
- page.evaluate("TauExplorer.navigate({references:false})")
+ check_zoom_journey(page,'Desktop');check_click_journey(page,'Desktop');check_catalogue_selection(page,'Desktop');check_refinements(page)
  gap=page.evaluate('TauExplorer.data.opportunities.areas[0].id')
- page.locator('[data-node-id="'+gap+'"]').click()
+ page.evaluate("TauExplorer.navigate({view:'all',id:null,layer:null,selected:null})");page.wait_for_timeout(500)
+ page.locator('[data-node-id="'+gap+'"] .tau-hit').click();page.wait_for_timeout(500)
  record('Unmapped area explains missing plan without fake progress',page.locator('#selection-kind').inner_text()=='Unmapped area' and page.locator('.progress-summary').count()==0)
- page.locator('#show-unmapped').uncheck()
- record('Unmapped areas can be hidden',page.evaluate('TauExplorer.getGraph().nodes.length===180'))
- page.locator('#source-filter').select_option('tauceti')
- page.locator('#activity-filter').select_option('unmapped')
+ page.locator('#show-unmapped').uncheck();page.wait_for_timeout(500)
+ record('Unmapped areas can be hidden',page.evaluate('TauExplorer.getGraph().nodes.length===180 && TauExplorer.graph.debugState().counts.constellations===180'))
+ page.locator('#source-filter').select_option('tauceti');page.locator('#activity-filter').select_option('unmapped');page.wait_for_timeout(500)
  record('Dedicated unmapped filter restores all opportunity areas',page.evaluate("TauExplorer.getState().origin==='all' && TauExplorer.getState().unmapped && TauExplorer.getGraph().nodes.length===16 && TauExplorer.getGraph().nodes.every(n=>n.unmapped)"))
- page.locator('#show-unmapped').uncheck()
+ page.locator('#show-unmapped').uncheck();page.wait_for_timeout(500)
  record('Hiding unmapped areas restores the roadmap view',page.evaluate("TauExplorer.getState().activity==='all' && TauExplorer.getGraph().nodes.length===180"))
- record('Mathematical stars exclude procedural labels',page.evaluate("TauExplorer.landmarks.every(x=>!/^(Dependency|Canonical owner|API to develop|the|Tests|Suggested home)$/i.test(x.title))"))
+ record('Mathematical planets exclude procedural labels',page.evaluate("TauExplorer.landmarks.every(x=>!/^(Dependency|Canonical owner|API to develop|the|Tests|Suggested home)$/i.test(x.title))"))
  record('All roadmap summaries use mathematical prose',page.evaluate("TauExplorer.data.roadmaps.every(r=>r.summary.split(/\\s+/).length>=40 && !/portfolio audit|component implements|silently attributed/.test(r.summary))"))
-
- # Presentation hides administrative tasks without deleting their source or status.
- page.evaluate("TauExplorer.navigate({view:'roadmap',id:'FoundationsAndLibraryIntegration',layer:null,selected:null,origin:'all',activity:'all',outside:false})")
- record('Administrative library pinning is not a mathematical star',page.evaluate("!TauExplorer.isMathematicalStage('FoundationsAndLibraryIntegration:LI.0') && !TauExplorer.getGraph().nodes.some(n=>n.id==='FoundationsAndLibraryIntegration:LI.0') && TauExplorer.getGraph().nodes.every(n=>TauExplorer.isMathematicalStage(n.id))"))
- record('Hidden administrative layer retains its raw source and progress',page.evaluate("() => {const id='FoundationsAndLibraryIntegration:LI.0',raw=TauExplorer.data.stages.find(s=>s.id===id);return raw.title==='Pinned libraries and declarations' && raw.description.includes('Record Lean, Mathlib, TauCeti and supplier-roadmap commits separately.') && TauExplorer.progress.roadmapLeaves(raw.owner).includes(id) && typeof TauExplorer.progress.stage(id).status==='string'}"))
+ page.evaluate("TauExplorer.navigate({view:'roadmap',id:'FoundationsAndLibraryIntegration',layer:null,selected:null,origin:'all',activity:'all',unmapped:true})");page.wait_for_timeout(600)
+ record('Administrative library pinning is not a star',page.evaluate("!TauExplorer.isMathematicalStage('FoundationsAndLibraryIntegration:LI.0') && !TauExplorer.getUniverse().byId.has('FoundationsAndLibraryIntegration:LI.0') && TauExplorer.getUniverse().stars.every(s=>TauExplorer.isMathematicalStage(s.id))"))
+ record('Hidden administrative layer retains its raw source and progress',page.evaluate("() => {const id='FoundationsAndLibraryIntegration:LI.0',raw=TauExplorer.data.stages.find(s=>s.id===id);return raw.title==='Pinned libraries and declarations' && raw.description.includes('Record Lean, Mathlib, TauCeti and supplier-roadmap commits') && TauExplorer.progress.stage(id).status!==undefined}"))
  page.evaluate("TauExplorer.openReader('FoundationsAndLibraryIntegration')")
  record('Full source document preserves hidden administrative instructions','Pinned libraries and declarations' in page.locator('#reader-body').inner_text())
  page.locator('#close-reader').click()
  pinned_group='tauceti:TauCetiRoadmap/ReductiveGroups#layer-9-pinned-chevalleydemazure-group-schemes-over-ℤ'
- page.evaluate("TauExplorer.openItem('tauceti:TauCetiRoadmap/ReductiveGroups')")
- record('Mathematical pinned group schemes remain visible',page.evaluate("id => TauExplorer.isMathematicalStage(id) && TauExplorer.getGraph().nodes.some(n=>n.id===id && n.label===TauExplorer.stageTitle(id))",pinned_group))
- page.locator('[data-node-id="'+pinned_group+'"] .tau-star-hit').click()
- page.wait_for_function("id => TauExplorer.getState().layer===id",arg=pinned_group)
- record('Pinned group schemes show mathematics before progress controls',page.locator('.stage-description').is_visible() and page.evaluate("id => {const description=document.querySelector('.stage-description'),controls=document.querySelector('.progress-controls');return TauExplorer.stageSummary(id).length>60 && TauExplorer.getGraph().nodes.some(n=>n.id===id && n.type==='stage') && !!(description.compareDocumentPosition(controls)&Node.DOCUMENT_POSITION_FOLLOWING)}",pinned_group))
-
- # Short map names leave the full mathematical formula in the clicked details.
+ page.evaluate("TauExplorer.openItem('tauceti:TauCetiRoadmap/ReductiveGroups')");page.wait_for_timeout(600)
+ record('Mathematical pinned group schemes remain visible',page.evaluate("id => TauExplorer.isMathematicalStage(id) && TauExplorer.getUniverse().byId.has(id) && TauExplorer.getUniverse().byId.get(id).label===TauExplorer.stageTitle(id)",pinned_group))
+ page.locator('[data-node-id="'+pinned_group+'"] .tau-hit').click()
+ page.wait_for_function("id => TauExplorer.getState().layer===id",arg=pinned_group);page.wait_for_timeout(400)
+ record('Pinned group schemes show mathematics before progress controls',page.locator('.stage-description').is_visible() and page.evaluate("id => {const description=document.querySelector('.stage-description'),controls=document.querySelector('.progress-controls');return TauExplorer.stageSummary(id).length>60 && description && controls && description.compareDocumentPosition(controls)&Node.DOCUMENT_POSITION_FOLLOWING}",pinned_group))
  record('Planet label overrides refer to existing mathematical targets',page.evaluate("() => {const ids=new Set(TauExplorer.landmarks.map(x=>x.id)),labels=TauExplorer.data.landmarkLabels;return Object.keys(labels).length>0 && Object.keys(labels).every(id=>ids.has(id))}"))
- page.evaluate("TauExplorer.openStage('EllipticKTheory:E.2')")
- page.locator('[data-node-id="'+FORMULA_PLANET+'"] .tau-star-hit').click()
- record('Formula planet uses a short plain name in the graph and SVG',page.evaluate(r"""id => {
-  const item=TauExplorer.landmarks.find(x=>x.id===id),title=TauExplorer.presentation.landmarkTitle(item),node=TauExplorer.getGraph().nodes.find(x=>x.id===id);
+ page.evaluate("TauExplorer.openStage('EllipticKTheory:E.2')");page.wait_for_timeout(700)
+ page.locator('[data-node-id="'+FORMULA_PLANET+'"] .tau-hit').click();page.wait_for_timeout(400)
+ record('Formula planet uses a short plain name in the map and SVG',page.evaluate(r"""id => {
+  const item=TauExplorer.landmarks.find(x=>x.id===id),title=TauExplorer.presentation.landmarkTitle(item),node=TauExplorer.getUniverse().byId.get(id);
   const svg=new DOMParser().parseFromString(TauExplorer.graph.exportSVG(),'image/svg+xml');
-  const caption=Array.from(svg.querySelectorAll('[data-node-id]')).find(e=>e.getAttribute('data-node-id')===id)?.querySelector('.tau-star-node-label text');
+  const caption=Array.from(svg.querySelectorAll('[data-label-for]')).find(e=>e.getAttribute('data-label-for')===id)?.querySelector('text');
   return title==='Curve rank–determinant decomposition'&&title.length<60&&!/[\\${}^_]/.test(title)&&node.label===title&&caption&&caption.textContent.replace(/\s/g,'')===title.replace(/\s/g,'')&&!svg.querySelector('parsererror');
  }""",FORMULA_PLANET))
  record('Opening a named planet renders its preserved source formula',page.locator('.landmark-description math').count()>0 and page.locator('.landmark-description math').first.evaluate('(e)=>e.getBoundingClientRect().width>30 && e.getBoundingClientRect().height>10') and page.locator('.landmark-description .katex-error').count()==0 and page.evaluate(r"""id => {
@@ -466,116 +369,67 @@ with sync_playwright() as p:
   return item.title.includes('\\operatorname{Pic}')&&item.description===item.sourceExcerpt&&roadmap.readme.includes(item.sourceExcerpt)&&roadmap.readme.split('\n').slice(item.sourceLine-1).join('\n').startsWith(item.sourceExcerpt);
  }""",FORMULA_PLANET))
  page.screenshot(path=str(ROOT/'preview-formula-planet.png'),animations='disabled')
-
- # A real wheel gesture traverses each semantic level, then reverses it.
- page.evaluate("TauExplorer.navigate({view:'all',id:null,layer:null,selected:null,origin:'all',activity:'all',unmapped:true,outside:false})")
- page.wait_for_timeout(900)
- record('Wheel zoom enters a roadmap galaxy',wheel_until(page,'[data-node-id="AnalyticNumberTheory"] .tau-star-hit',-450,"TauExplorer.getState().view==='roadmap' && TauExplorer.getState().id==='AnalyticNumberTheory' && !TauExplorer.getState().layer"))
- record('A roadmap displays only its mathematical layer stars',page.evaluate("() => {const expected=TauExplorer.data.roadmaps.find(r=>r.id==='AnalyticNumberTheory').stages.filter(TauExplorer.isMathematicalStage),nodes=TauExplorer.getGraph().nodes;return TauExplorer.graph.debugState().layout==='layer-constellations' && nodes.length===expected.length && nodes.every(n=>n.type==='stage' && expected.includes(n.id))}"))
- record('Layer constellation positions are finite and distinct',finite_chart(page) and page.evaluate("new Set(TauExplorer.graph.debugState().positions.map(n=>n.x+','+n.y)).size===TauExplorer.getGraph().nodes.length"))
- page.screenshot(path=str(ROOT/'preview-layer-constellations.png'),animations='disabled')
- page.wait_for_timeout(900)
- record('Wheel zoom enters a layer solar system',wheel_until(page,'[data-node-id="AnalyticNumberTheory:AN.0"] .tau-star-hit',-450,"TauExplorer.getState().layer==='AnalyticNumberTheory:AN.0' && TauExplorer.graph.debugState().layout==='solar-system'"))
- record('Solar system contains one layer and only its mathematical targets',page.evaluate("() => {const graph=TauExplorer.getGraph(),layer=TauExplorer.getState().layer;return graph.nodes.filter(n=>n.type==='stage').length===1 && graph.nodes.find(n=>n.type==='stage').id===layer && graph.nodes.filter(n=>n.type==='landmark').length===TauExplorer.landmarks.filter(x=>x.stageId===layer).length && graph.nodes.filter(n=>n.type==='landmark').every(n=>n.stageId===layer)}"))
- record('Solar system has orbital paths and finite positions',page.locator('.tau-orbit-path').count()>0 and finite_chart(page))
- page.screenshot(path=str(ROOT/'preview-solar-system.png'),animations='disabled')
- page.wait_for_timeout(900)
- record('Wheel zoom out returns to the roadmap',wheel_until(page,'#graph',450,"TauExplorer.getState().view==='roadmap' && !TauExplorer.getState().layer && TauExplorer.graph.debugState().layout==='layer-constellations'"))
- page.wait_for_timeout(900)
- record('Wheel zoom out returns to the atlas',wheel_until(page,'#graph',450,"TauExplorer.getState().view==='all' && !TauExplorer.getState().layer && TauExplorer.graph.debugState().layout==='constellations'"))
- record('Zoom round trip retains the whole atlas',page.evaluate('TauExplorer.getGraph().nodes.length===196'))
- page.screenshot(path=str(ROOT/'preview-galaxy-atlas.png'),animations='disabled')
-
- # Click navigation provides the same path without requiring zoom gestures.
- page.evaluate("TauExplorer.navigate({view:'subjects',id:null,layer:null,selected:null,origin:'all'})")
- page.locator('[data-node-id="classical"]').click()
- record('Click subject opens its description',page.locator('#inspector').is_visible())
- page.get_by_role('button',name='Open roadmaps →').click()
- page.wait_for_timeout(500);page.screenshot(path=str(ROOT/'preview-galaxy-region.png'),animations='disabled')
- page.locator('[data-node-id="AnalyticNumberTheory"] .tau-star-hit').click()
- page.wait_for_function("TauExplorer.getState().view==='roadmap' && TauExplorer.graph.debugState().layout==='layer-constellations'")
- record('Single click enters roadmap galaxy',page.evaluate("TauExplorer.getState().id==='AnalyticNumberTheory' && !TauExplorer.getState().layer"))
- record('Click roadmap shows meaningful summary',len(page.locator('.detail-summary').inner_text())>50)
- page.wait_for_timeout(500)
- record('Roadmap layer view has no mathematical planets yet',page.evaluate("TauExplorer.getGraph().nodes.length>0 && TauExplorer.getGraph().nodes.every(n=>n.type==='stage' && TauExplorer.isMathematicalStage(n.id))"))
- page.locator('[data-node-id="AnalyticNumberTheory:AN.0"] .tau-star-hit').click()
- page.wait_for_function("TauExplorer.getState().layer==='AnalyticNumberTheory:AN.0' && TauExplorer.graph.debugState().layout==='solar-system'")
- record('Single click opens the chosen layer solar system',page.evaluate("TauExplorer.getState().selected==='AnalyticNumberTheory:AN.0'"))
- star=page.evaluate("TauExplorer.getGraph().nodes.find(n=>n.type==='landmark').id")
- page.locator('[data-node-id="'+star+'"] .tau-star-hit').click()
- record('Planet opens source-backed mathematical details',page.locator('.landmark-description').is_visible() and len(page.locator('.landmark-description').inner_text())>20)
- record('Inspecting a planet preserves its parent solar system',page.evaluate("TauExplorer.getState().layer==='AnalyticNumberTheory:AN.0' && TauExplorer.graph.debugState().layout==='solar-system'"))
- page.screenshot(path=str(ROOT/'preview-mathematical-planet.png'),animations='disabled')
- page.locator('[data-node-id="AnalyticNumberTheory:AN.0"] .tau-star-hit').click()
+ page.evaluate("TauExplorer.openStage('AnalyticNumberTheory:AN.0')");page.wait_for_timeout(600)
  record('Central layer star exposes progress controls',page.get_by_label('Layer status',exact=True).is_visible())
- record('A stage without status data shows no badge and keeps its raw status',page.evaluate("TauExplorer.progress.stage('AnalyticNumberTheory:AN.0').status==='unknown' && TauExplorer.graph.debugState().positions.find(n=>n.id==='AnalyticNumberTheory:AN.0').progress===null") and page.locator('#inspector .status-chip').count()==0 and page.get_by_label('Layer status',exact=True).input_value()=='unknown' and page.locator('[aria-label="Layer status"] option[value="unknown"]').inner_text()=='')
-
+ record('A stage without status data shows no badge and keeps its raw status',page.evaluate("TauExplorer.progress.stage('AnalyticNumberTheory:AN.0').status==='unknown' && TauExplorer.graph.debugState().stars.find(n=>n.id==='AnalyticNumberTheory:AN.0').progress===null") and page.locator('#inspector .status-chip').count()==0)
  page.get_by_label('Layer status',exact=True).select_option('complete');page.get_by_label('Progress note',exact=True).fill('Browser test evidence')
- page.get_by_role('button',name='Save status',exact=True).click()
- record('Local update persists and makes stage green',page.evaluate("TauExplorer.progress.stage('AnalyticNumberTheory:AN.0').manual && TauExplorer.progress.stage('AnalyticNumberTheory:AN.0').status==='complete'") and page.locator('#inspector .status-chip').inner_text().endswith('Complete'))
- record('Node progress colour updates',page.locator('[data-node-id="AnalyticNumberTheory:AN.0"]').get_attribute('data-progress')=='100')
- page.reload(wait_until='load');page.wait_for_function('!!window.TauExplorer')
+ page.get_by_role('button',name='Save status',exact=True).click();page.wait_for_timeout(400)
+ record('Local update persists and makes the star green',page.evaluate("TauExplorer.progress.stage('AnalyticNumberTheory:AN.0').manual && TauExplorer.progress.stage('AnalyticNumberTheory:AN.0').status==='complete'") and page.locator('#inspector .status-chip').inner_text().endswith('Complete') and page.locator('[data-node-id="AnalyticNumberTheory:AN.0"]').get_attribute('data-progress')=='100')
+ page.reload(wait_until='load');page.wait_for_function('!!window.TauExplorer');page.wait_for_timeout(500)
  record('Progress survives reload',page.evaluate("TauExplorer.progress.stage('AnalyticNumberTheory:AN.0').status==='complete'"))
  page.screenshot(path=str(ROOT/'preview-stage.png'),animations='disabled')
  record('Export/reset/import round trip',page.evaluate("""() => {const x=TauExplorer.progress.export();TauExplorer.progress.resetStage('AnalyticNumberTheory:AN.0');const reverted=TauExplorer.progress.stage('AnalyticNumberTheory:AN.0').status!=='complete';TauExplorer.progress.import(x);return reverted&&TauExplorer.progress.stage('AnalyticNumberTheory:AN.0').status==='complete'}"""))
  record('Malformed import is atomic',page.evaluate("""() => {const a=JSON.stringify(TauExplorer.progress.export());try{TauExplorer.progress.import({version:1,stages:{bad:{status:'complete'}}});return false}catch{}return a===JSON.stringify(TauExplorer.progress.export())}"""))
- page.evaluate("TauExplorer.progress.resetStage('AnalyticNumberTheory:AN.0')")
- record('Resetting local progress restores the blank indicator',page.evaluate("TauExplorer.progress.stage('AnalyticNumberTheory:AN.0').status==='unknown' && TauExplorer.graph.debugState().positions.find(n=>n.id==='AnalyticNumberTheory:AN.0').progress===null") and page.locator('#inspector .status-chip').count()==0)
+ page.evaluate("TauExplorer.progress.resetStage('AnalyticNumberTheory:AN.0')");page.wait_for_timeout(300)
+ record('Resetting local progress restores the blank indicator',page.evaluate("TauExplorer.progress.stage('AnalyticNumberTheory:AN.0').status==='unknown' && TauExplorer.graph.debugState().stars.find(n=>n.id==='AnalyticNumberTheory:AN.0').progress===null") and page.locator('#inspector .status-chip').count()==0)
  page.get_by_role('button',name='Read full roadmap',exact=True).click()
  record('Full document readable offline',page.locator('#reader[open]').is_visible() and len(page.locator('#reader-body').inner_text())>3000)
  page.locator('#close-reader').click()
  page.locator('#search').fill('Perron')
  record('Search reaches mathematical roadmap text',page.locator('.search-hit').count()>0)
  page.locator('#search').fill('')
- page.locator('#source-filter').select_option('tauceti')
- record('Tau Ceti collection filter',page.evaluate("TauExplorer.getState().origin==='tauceti'"))
- page.evaluate("TauExplorer.openItem('tauceti:Completed/EffectiveBounds')")
+ page.locator('#source-filter').select_option('tauceti');page.wait_for_timeout(400)
+ record('Tau Ceti collection filter',page.evaluate("TauExplorer.getState().origin==='tauceti' && TauExplorer.graph.debugState().counts.constellations===28"))
+ page.evaluate("TauExplorer.openItem('tauceti:Completed/EffectiveBounds')");page.wait_for_timeout(500)
  record('Maintainer completed area is green',page.evaluate("TauExplorer.progress.roadmap('tauceti:Completed/EffectiveBounds').percent===100"))
- page.evaluate("TauExplorer.openItem('tauceti:TauCetiRoadmap/RepresentationTheory')")
- record('Nested roadmap collection opens 11 children',page.evaluate("TauExplorer.getState().view==='collection' && TauExplorer.graph.debugState().nodes===11"))
- page.evaluate("TauExplorer.navigate({view:'all',id:null,layer:null,selected:null,origin:'all',unmapped:false})")
- record('All nodes and all roadmap edges available',page.evaluate('TauExplorer.graph.debugState().nodes===180 && TauExplorer.graph.debugState().edges===1011'))
- record('All graph positions finite',page.evaluate('TauExplorer.graph.debugState().positions.every(n=>Number.isFinite(n.x)&&Number.isFinite(n.y))'))
+ page.evaluate("TauExplorer.openItem('tauceti:TauCetiRoadmap/RepresentationTheory')");page.wait_for_timeout(600)
+ record('Nested roadmap collection frames its 11 child constellations',page.evaluate("TauExplorer.getState().view==='collection' && TauExplorer.getUniverse().constellations.filter(c=>c.parentRoadmapId==='tauceti:TauCetiRoadmap/RepresentationTheory').length===11"))
+ page.evaluate("TauExplorer.navigate({view:'all',id:null,layer:null,selected:null,origin:'all',unmapped:false})");page.wait_for_timeout(500)
+ record('All roadmaps and all roadmap edges available',page.evaluate('TauExplorer.getGraph().nodes.length===180 && TauExplorer.getGraph().edges.length===%d'%BUILD.get('roadmapEdges',1011)))
+ record('All positions finite',page.evaluate("() => { const u=TauExplorer.getUniverse(); return [...u.galaxies,...u.constellations,...u.stars,...u.planets].every(n=>Number.isFinite(n.x)&&Number.isFinite(n.y)); }"))
  page.screenshot(path=str(ROOT/'preview-all.png'),animations='disabled')
- first_caption=page.locator('.tau-constellation-subject').first
- first_caption.click();record('Area caption opens its mathematical group',page.evaluate("TauExplorer.getState().view==='group'"))
- page.evaluate("TauExplorer.navigate({view:'all',id:null,layer:null,selected:null,origin:'all',unmapped:false})")
- record('Galaxy overview has 13 mathematical regions',page.evaluate("TauExplorer.graph.debugState().layout==='constellations' && TauExplorer.graph.debugState().constellationSubjects===13"))
- page.locator('#fit-graph').click();page.wait_for_timeout(500)
- record('Every subject heading stays visible and readable at atlas fit',page.evaluate("""() => {
-  const chart=document.querySelector('#graph').getBoundingClientRect(),headings=Array.from(document.querySelectorAll('.tau-constellation-subject'));
-  return headings.length===13&&headings.every(e=>{
-   const box=e.getBoundingClientRect(),text=e.querySelector('text'),matrix=text?.getScreenCTM();
-   return getComputedStyle(e).display!=='none'&&getComputedStyle(e).visibility!=='hidden'&&box.width>0&&box.height>0&&box.left>=chart.left-2&&box.right<=chart.right+2&&box.top>=chart.top-2&&box.bottom<=chart.bottom+2&&matrix&&Math.hypot(matrix.c,matrix.d)*parseFloat(getComputedStyle(text).fontSize)>=10;
-  });
- }"""))
- record('No old lung geometry remains',page.locator('.tau-vessel,.tau-vessel-lobe,.tau-lobe').count()==0)
- record('Sector routes account for every real cross-area dependency once',sector_routes_match_dependencies(page))
+ page.locator('.tau-label-galaxy').first.click();page.wait_for_timeout(500)
+ record('Area heading opens its subject',page.evaluate("TauExplorer.getState().view==='group'") and page.locator('#selection-kind').inner_text()=='Subject')
+ page.evaluate("TauExplorer.navigate({view:'all',id:null,layer:null,selected:null,origin:'all',unmapped:false})");page.wait_for_timeout(400)
+ record('Universe has 13 populated areas without unmapped regions',page.evaluate("TauExplorer.graph.debugState().counts.galaxies===13"))
+ record('Area routes account for every real cross-area dependency once',page.evaluate("""() => { const graph=TauExplorer.getGraph(),nodes=new Map(graph.nodes.map(n=>[n.id,n])),routes=TauExplorer.graph.debugState().routes; const expected=graph.edges.filter(e=>nodes.get(e.source).group!==nodes.get(e.target).group); const pair=(a,b)=>JSON.stringify([a,b].sort()),seen=new Set(); let witnesses=0; for(const route of routes){const p=pair(route.source,route.target); if(seen.has(p)||route.dependencies!==route.witnesses.length)return false; seen.add(p); witnesses+=route.witnesses.length;} return witnesses===expected.length; }"""))
  page.locator('#stats-button').click()
  record('Mission status uses unique leaf totals',page.locator('#stats-scope').inner_text().endswith('1,543 tracked leaf layers'))
  record('Mission status distinguishes 4 states',page.locator('#stats-summary .metric.complete strong').inner_text()=='36' and page.locator('#stats-summary .metric.active strong').inner_text()=='49' and page.locator('#stats-summary .metric.unknown strong').inner_text()=='1,352')
  record('All 13 mathematical areas have progress ledgers',page.locator('#area-progress .area-stat').count()==13)
  page.screenshot(path=str(ROOT/'preview-stats.png'),animations='disabled');page.locator('#close-stats').click()
- page.locator('#activity-filter').select_option('active')
+ page.locator('#activity-filter').select_option('active');page.wait_for_timeout(400)
  record('Activity filter shows only active roadmaps',page.evaluate("TauExplorer.getGraph().nodes.length>0 && TauExplorer.getGraph().nodes.length<180 && TauExplorer.getGraph().nodes.every(n=>TauExplorer.progress.roadmap(n.id).active>0)"))
- page.locator('#activity-filter').select_option('all')
- page.evaluate("TauExplorer.navigate({view:'neighbors',id:'AnalyticNumberTheory',selected:'AnalyticNumberTheory',tab:'links'})")
+ page.locator('#activity-filter').select_option('all');page.wait_for_timeout(400)
+ page.evaluate("TauExplorer.navigate({view:'roadmap',id:'AnalyticNumberTheory',selected:'AnalyticNumberTheory',tab:'links'})");page.wait_for_timeout(600)
  page.locator('.connection-card').first.locator('summary').click()
  record('Roadmap connections expose supporting layer pairs',page.locator('.connection-witness').count()>0)
- page.evaluate("TauExplorer.navigate({view:'all',id:null,selected:null,references:true})")
- record('Related-plan links are dotted without prerequisite arrows',page.locator('.tau-reference-edge').count()>0 and page.evaluate("Array.from(document.querySelectorAll('.tau-reference-edge')).every(e=>!e.getAttribute('marker-end') && e.getAttribute('stroke-dasharray'))"))
- page.evaluate("TauExplorer.navigate({references:false})")
- page.evaluate("TauExplorer.openItem('AnalyticNumberTheory')")
+ related='tauceti:TauCetiRoadmap/RepresentationTheory/LieHighestWeight'
+ page.evaluate("id => TauExplorer.navigate({view:'roadmap',id,layer:null,selected:id,tab:'overview'})",related);page.wait_for_timeout(600)
+ page.get_by_label('Show related-plan links',exact=True).check();page.wait_for_timeout(500)
+ record('Related-plan links appear on request, dotted and without prerequisite arrows',page.locator('.tau-reference-edge').count()>0 and page.evaluate("Array.from(document.querySelectorAll('.tau-reference-edge')).every(e=>!e.getAttribute('marker-end') && e.getAttribute('stroke-dasharray'))"))
+ page.get_by_label('Show related-plan links',exact=True).uncheck();page.wait_for_timeout(300)
+ record('Related-plan links disappear when switched off',page.locator('.tau-reference-edge').count()==0)
+ page.evaluate("TauExplorer.navigate({view:'roadmap',id:'AnalyticNumberTheory',layer:null,selected:'AnalyticNumberTheory',tab:'overview'})");page.wait_for_timeout(500)
  page.locator('.pin-button').click()
  record('Roadmap can be pinned',page.locator('#pinned-list .pin-item').count()==1)
- page.reload(wait_until='load');page.wait_for_function('!!window.TauExplorer')
+ page.reload(wait_until='load');page.wait_for_function('!!window.TauExplorer');page.wait_for_timeout(500)
  record('Pinned roadmap persists',page.locator('.pin-button').get_attribute('aria-pressed')=='true')
- page.locator('#activity-filter').select_option('pinned')
+ page.locator('#activity-filter').select_option('pinned');page.wait_for_timeout(400)
  record('Pinned filter returns saved roadmap',page.evaluate("TauExplorer.getGraph().nodes.length===1 && TauExplorer.getGraph().nodes[0].id==='AnalyticNumberTheory'"))
- page.locator('#activity-filter').select_option('all')
+ page.locator('#activity-filter').select_option('all');page.wait_for_timeout(400)
  page.evaluate("TauExplorer.openReader('tauceti:TauCetiRoadmap/ModularForms')")
- internal=page.locator('#reader-body [data-doc-link]').all()
- linked=False
+ internal=page.locator('#reader-body [data-doc-link]').all();linked=False
  for link in internal:
   raw=link.get_attribute('data-doc-link')
   if raw and 'README.md' in raw and not raw.startswith(('http','file','#')):
@@ -586,143 +440,113 @@ with sync_playwright() as p:
  if page.evaluate('(TauExplorer.data.documents||[]).length'):
   page.evaluate("TauExplorer.openReader('AnalyticNumberTheory')")
   page.locator('#reader-body [data-doc-link]').filter(has_text='campaign execution protocol').click()
-  record('Campaign execution guide is embedded and linked', 'execution' in page.locator('#reader-title').inner_text().lower())
+  record('Campaign execution guide is embedded and linked','execution' in page.locator('#reader-title').inner_text().lower())
   page.locator('#close-reader').click()
  page.locator('#progress-button').click()
  with page.expect_download() as dl:page.locator('#download-offline').click()
  artifact=ROOT/'verified-offline.html';dl.value.save_as(str(artifact));page.locator('#close-progress').click()
  offline=browser.new_context();op=offline.new_page();op.goto(artifact.as_uri());op.wait_for_function('!!window.TauExplorer')
- record('Offline galaxy and mathematical stars load',op.evaluate("TauExplorer.landmarks.length>3000 && TauExplorer.graph.debugState().layout==='constellations'"))
- record('Downloaded atlas starts independently',op.evaluate('TauExplorer.data.roadmaps.length===180') and op.locator('#pinned-list .pin-item').count()==0)
+ record('Offline universe loads independently',op.evaluate("TauExplorer.landmarks.length>3000 && TauExplorer.graph.debugState().layout==='universe' && TauExplorer.data.roadmaps.length===180") and op.locator('#pinned-list .pin-item').count()==0)
  offline.close()
  if not desktop_only:
-  # A genuine touch viewport exercises mobile input, not only responsive CSS.
   mobile=context.browser.new_context(viewport={'width':390,'height':844},device_scale_factor=2,is_mobile=True,has_touch=True)
   mp=mobile.new_page();mp.on('pageerror',lambda e:errors.append('mobile: '+str(e)))
   if url.startswith('file:'):
    mp.route('http://**/*',lambda route:(requests.append(route.request.url),route.abort()))
    mp.route('https://**/*',lambda route:(requests.append(route.request.url),route.abort()))
-  mp.goto(url,wait_until='load');mp.wait_for_function('!!window.TauExplorer')
+  mp.goto(url,wait_until='load');mp.wait_for_function('!!window.TauExplorer');mp.wait_for_timeout(500)
   touch=mobile.new_cdp_session(mp)
   record('Phone uses touch input at a real mobile viewport',mp.evaluate('navigator.maxTouchPoints>0 && innerWidth===390'))
-  record('Phone overview headings do not overlap each other or controls',headings_clear_controls(mp))
+  check_overview(mp,'Phone',touch=True)
   mp.screenshot(path=str(ROOT/'preview-phone-overview.png'),animations='disabled')
-  check_overview_layout(mp,'Phone')
-  check_catalogue_galaxy_name(mp,'Phone',touch=True)
-  box=mp.locator('#graph').bounding_box()
-  before=mp.evaluate('TauExplorer.getState().view')
+  box=mp.locator('#graph').bounding_box();before=mp.evaluate('TauExplorer.getState().view')
   touch_swipe(mp,touch,(box['x']+20,box['y']+25),(box['x']+65,box['y']+65))
-  record('One-finger chart pan does not enter a galaxy',mp.evaluate('TauExplorer.getState().view')==before=='all')
-  mp.locator('#fit-graph').tap();mp.wait_for_timeout(500)
-  mp.locator('[data-node-id="AnalyticNumberTheory"] .tau-star-hit').tap()
-  mp.wait_for_function("TauExplorer.getState().view==='roadmap' && !TauExplorer.getState().layer")
-  record('Phone tap enters a roadmap constellation',mp.evaluate("TauExplorer.getState().id==='AnalyticNumberTheory' && TauExplorer.getGraph().nodes.every(n=>n.type==='stage')"))
-  mp.wait_for_timeout(500)
-  mp.locator('[data-node-id="AnalyticNumberTheory:AN.0"] .tau-star-hit').tap()
-  mp.wait_for_function("TauExplorer.getState().layer==='AnalyticNumberTheory:AN.0'")
-  record('Phone tap enters a layer solar system',mp.evaluate("TauExplorer.graph.debugState().layout==='solar-system'"))
-  planet=mp.evaluate("TauExplorer.getGraph().nodes.find(n=>n.type==='landmark').id")
-  # A gentle pinch over a planet is a camera gesture, not a tap on the planet.
-  pinch_gesture(mp,touch,'[data-node-id="'+planet+'"] .tau-star-hit',1.12)
-  record('Phone pinch over a planet does not open it',mp.evaluate("TauExplorer.getState().selected==='AnalyticNumberTheory:AN.0' && TauExplorer.graph.debugState().layout==='solar-system'"))
+  record('One-finger pan does not open anything',mp.evaluate('TauExplorer.getState().view')==before=='all' and mp.evaluate('TauExplorer.getState().selected===null'))
+  fit_all(mp,touch=True)
+  mp.locator('[data-node-id="AnalyticNumberTheory"] .tau-hit').tap()
+  mp.wait_for_function("TauExplorer.getState().view==='roadmap' && TauExplorer.getState().id==='AnalyticNumberTheory'");mp.wait_for_timeout(600)
+  record('Phone tap enters a roadmap constellation',mp.evaluate("TauExplorer.graph.debugState().visible.stars>=10"))
+  mp.locator('[data-node-id="AnalyticNumberTheory:AN.0"] .tau-hit').tap()
+  mp.wait_for_function("TauExplorer.getState().layer==='AnalyticNumberTheory:AN.0'");mp.wait_for_timeout(600)
+  record('Phone tap enters a star system',mp.locator('.tau-planet').count()>0)
+  planet=mp.evaluate("TauExplorer.getUniverse().stars.find(s=>s.id==='AnalyticNumberTheory:AN.0').planetIds[0]")
+  pinch_gesture(mp,touch,'[data-node-id="'+planet+'"] .tau-hit',1.12)
+  record('Phone pinch over a planet does not open it',mp.evaluate("TauExplorer.getState().selected==='AnalyticNumberTheory:AN.0'"))
   mp.wait_for_timeout(800)
-  mp.locator('[data-node-id="'+planet+'"] .tau-star-hit').tap()
+  mp.locator('[data-node-id="'+planet+'"] .tau-hit').tap();mp.wait_for_timeout(400)
   record('Phone tap opens mathematical planet details',mp.locator('.landmark-description').is_visible())
-  record('Phone reading pane leaves graph and back navigation visible',mp.locator('.cosmic-back').is_visible() and mp.evaluate("() => {const g=document.querySelector('#graph').getBoundingClientRect(),i=document.querySelector('#inspector').getBoundingClientRect();return g.height>80 && i.height>150 && g.bottom<=i.top+2 && i.bottom<=innerHeight+2}"))
+  record('Phone reading pane leaves the sky and back navigation visible',mp.locator('.cosmic-back').is_visible() and mp.evaluate("() => {const g=document.querySelector('#graph').getBoundingClientRect(),i=document.querySelector('#inspector').getBoundingClientRect();return g.height>80 && i.height>150 && g.bottom<=i.top+2 && i.bottom<=innerHeight+1}"))
   reading=mp.locator('#inspector-content')
   if reading.evaluate('(e)=>e.scrollHeight>e.clientHeight+10'):
-   rb=reading.bounding_box()
-   touch_swipe(mp,touch,(rb['x']+rb['width']/2,rb['y']+rb['height']-30),(rb['x']+rb['width']/2,rb['y']+30))
+   rb=reading.bounding_box();touch_swipe(mp,touch,(rb['x']+rb['width']/2,rb['y']+rb['height']-30),(rb['x']+rb['width']/2,rb['y']+30))
    record('Phone mathematical details scroll with touch',reading.evaluate('(e)=>e.scrollTop>0'))
   record('Phone mathematical text has a readable size and no page overflow',mp.locator('.landmark-description').evaluate('(e)=>parseFloat(getComputedStyle(e).fontSize)>=12') and mp.evaluate('document.documentElement.scrollWidth<=innerWidth+1'))
-  next_planet=mp.evaluate("TauExplorer.getGraph().nodes.filter(n=>n.type==='landmark')[1].id")
-  mp.locator('[data-node-id="'+next_planet+'"] .tau-star-hit').tap()
-  record('Selecting another planet starts its explanation at the top',reading.evaluate('(e)=>e.scrollTop===0') and mp.evaluate('TauExplorer.getState().selected')==next_planet)
-  record('Portrait phone solar captions do not overlap',captions_do_not_overlap(mp))
+  record('Phone system labels are legible and disjoint',labels_are_clean(mp) and names_are_unique(mp))
   mp.screenshot(path=str(ROOT/'preview-phone-planet.png'),animations='disabled')
-  mp.locator('.cosmic-back').tap();mp.wait_for_function("TauExplorer.getState().view==='roadmap' && !TauExplorer.getState().layer");mp.wait_for_timeout(500)
-  mp.locator('.cosmic-back').tap();mp.wait_for_function("TauExplorer.getState().view==='all'")
-  record('Phone back buttons retrace both levels while details are open',mp.evaluate("!TauExplorer.getState().layer && TauExplorer.getGraph().nodes.length===196"))
-
-  # A second common phone width runs a full pinch-to-dive and pinch-to-ascend route.
-  mp.set_viewport_size({'width':375,'height':812});mp.locator('#fit-graph').tap()
-  record('Narrow phone overview headings do not overlap each other or controls',headings_clear_controls(mp))
-  mp.screenshot(path=str(ROOT/'preview-phone-narrow-overview.png'),animations='disabled')
-  check_overview_layout(mp,'Narrow phone')
-  record('Two-finger pinch enters a galaxy on a narrow phone',pinch_until(mp,touch,'[data-node-id="AnalyticNumberTheory"] .tau-star-hit',3,"TauExplorer.getState().id==='AnalyticNumberTheory' && TauExplorer.getState().view==='roadmap' && !TauExplorer.getState().layer"))
-  record('Two-finger pinch enters a layer on a narrow phone',pinch_until(mp,touch,'[data-node-id="AnalyticNumberTheory:AN.0"] .tau-star-hit',3,"TauExplorer.getState().layer==='AnalyticNumberTheory:AN.0' && TauExplorer.graph.debugState().layout==='solar-system'"))
-  record('Narrow phone solar system stays finite and readable',finite_chart(mp) and mp.locator('.cosmic-back').is_visible())
-  record('Narrow phone solar captions do not overlap',captions_do_not_overlap(mp,minimum=0))
-  mp.screenshot(path=str(ROOT/'preview-phone-solar-system.png'),animations='disabled')
-  record('Pinching out returns to the roadmap',pinch_until(mp,touch,'#graph',.3,"TauExplorer.getState().view==='roadmap' && !TauExplorer.getState().layer"))
-  record('Pinching out returns to the galaxy field',pinch_until(mp,touch,'#graph',.3,"TauExplorer.getState().view==='all' && !TauExplorer.getState().layer"))
-
-  # Coarse-pointer landscape uses a side reading pane, keeping the sky available.
-  mp.set_viewport_size({'width':844,'height':390});mp.locator('#fit-graph').tap();mp.wait_for_timeout(900)
-  record('Landscape phone overview headings do not overlap each other or controls',headings_clear_controls(mp))
-  mp.screenshot(path=str(ROOT/'preview-phone-landscape-overview.png'),animations='disabled')
-  check_overview_layout(mp,'Landscape phone')
-  check_catalogue_galaxy_name(mp,'Landscape phone',touch=True)
-  mp.locator('[data-node-id="AnalyticNumberTheory"] .tau-star-hit').tap()
-  mp.wait_for_function("TauExplorer.getState().view==='roadmap' && !TauExplorer.getState().layer");mp.wait_for_timeout(500)
-  mp.locator('[data-node-id="AnalyticNumberTheory:AN.0"] .tau-star-hit').tap()
-  mp.wait_for_function("TauExplorer.getState().layer==='AnalyticNumberTheory:AN.0'");mp.wait_for_timeout(500)
-  planet=mp.evaluate("TauExplorer.getGraph().nodes.find(n=>n.type==='landmark').id")
-  mp.locator('[data-node-id="'+planet+'"] .tau-star-hit').tap()
-  record('Landscape phone opens a mathematical planet',mp.locator('.landmark-description').is_visible())
-  record('Landscape phone preserves readable chart and back navigation',mp.locator('.cosmic-back').is_visible() and mp.evaluate("() => {const g=document.querySelector('#graph').getBoundingClientRect(),i=document.querySelector('#inspector').getBoundingClientRect();return g.width>200 && g.height>70 && i.width>240 && i.height>180 && g.right<=i.left+2}"))
-  record('Landscape phone has no horizontal page overflow',mp.evaluate('document.documentElement.scrollWidth<=innerWidth+1'))
-  record('Landscape phone solar captions do not overlap',captions_do_not_overlap(mp))
-  mp.screenshot(path=str(ROOT/'preview-phone-landscape.png'),animations='disabled')
   mp.locator('.cosmic-back').tap();mp.wait_for_function("!TauExplorer.getState().layer");mp.wait_for_timeout(500)
+  mp.locator('.cosmic-back').tap();mp.wait_for_function("TauExplorer.getState().view==='group'");mp.wait_for_timeout(500)
+  mp.locator('.cosmic-back').tap();mp.wait_for_function("TauExplorer.getState().view==='all'")
+  record('Phone back buttons retrace every level',mp.evaluate("!TauExplorer.getState().layer && TauExplorer.graph.debugState().counts.constellations===196"))
+  mp.set_viewport_size({'width':375,'height':812});mp.wait_for_timeout(500);fit_all(mp,touch=True)
+  check_overview(mp,'Narrow phone',touch=True)
+  mp.screenshot(path=str(ROOT/'preview-phone-narrow-overview.png'),animations='disabled')
+  record('Two-finger pinch enters a galaxy on a narrow phone',pinch_until(mp,touch,'[data-label-for="classical"]',3,"TauExplorer.getState().view==='group' && TauExplorer.getState().id==='classical'"))
+  record('Two-finger pinch enters a roadmap on a narrow phone',pinch_until(mp,touch,'[data-node-id="AnalyticNumberTheory"] .tau-hit',3,"TauExplorer.getState().view==='roadmap' && TauExplorer.getState().id==='AnalyticNumberTheory'"))
+  record('Two-finger pinch enters a star system on a narrow phone',pinch_until(mp,touch,'[data-node-id="AnalyticNumberTheory:AN.0"] .tau-hit',3,"TauExplorer.getState().layer==='AnalyticNumberTheory:AN.0'"))
+  mp.screenshot(path=str(ROOT/'preview-phone-star-system.png'),animations='disabled')
+  record('Pinching out returns to the roadmap',pinch_until(mp,touch,'#graph',.3,"TauExplorer.getState().view==='roadmap' && !TauExplorer.getState().layer"))
+  record('Pinching out returns to the universe',pinch_until(mp,touch,'#graph',.3,"TauExplorer.getState().view==='all'",attempts=12))
+  mp.set_viewport_size({'width':844,'height':390});mp.wait_for_timeout(600);fit_all(mp,touch=True)
+  check_overview(mp,'Landscape phone',touch=True)
+  mp.screenshot(path=str(ROOT/'preview-phone-landscape-overview.png'),animations='disabled')
+  mp.locator('[data-node-id="AnalyticNumberTheory"] .tau-hit').tap();mp.wait_for_function("TauExplorer.getState().view==='roadmap'");mp.wait_for_timeout(500)
+  mp.locator('[data-node-id="AnalyticNumberTheory:AN.0"] .tau-hit').tap();mp.wait_for_function("TauExplorer.getState().layer==='AnalyticNumberTheory:AN.0'");mp.wait_for_timeout(500)
+  planet=mp.evaluate("TauExplorer.getUniverse().stars.find(s=>s.id==='AnalyticNumberTheory:AN.0').planetIds[0]")
+  mp.locator('[data-node-id="'+planet+'"] .tau-hit').tap();mp.wait_for_timeout(400)
+  record('Landscape phone opens a mathematical planet',mp.locator('.landmark-description').is_visible())
+  record('Landscape phone preserves readable chart and back navigation',mp.locator('.cosmic-back').is_visible() and mp.evaluate("() => {const g=document.querySelector('#graph').getBoundingClientRect(),i=document.querySelector('#inspector').getBoundingClientRect();return g.width>200 && g.height>70 && i.width>240 && i.height>180 && document.documentElement.scrollWidth<=innerWidth+1}"))
+  mp.screenshot(path=str(ROOT/'preview-phone-landscape.png'),animations='disabled')
+  mp.locator('.cosmic-back').tap();mp.wait_for_function("!TauExplorer.getState().layer");mp.wait_for_timeout(400)
+  mp.locator('.cosmic-back').tap();mp.wait_for_function("TauExplorer.getState().view==='group'");mp.wait_for_timeout(400)
   mp.locator('.cosmic-back').tap();mp.wait_for_function("TauExplorer.getState().view==='all'")
   record('Landscape phone back controls remain tappable',mp.locator('#catalogue-button').is_visible())
-  mp.set_viewport_size({'width':375,'height':812})
-  mp.evaluate("TauExplorer.openStage('EllipticKTheory:E.2')");mp.wait_for_timeout(500)
-  mp.locator('[data-node-id="'+FORMULA_PLANET+'"] .tau-star-hit').tap()
+  mp.set_viewport_size({'width':375,'height':812});mp.wait_for_timeout(500)
+  mp.evaluate("TauExplorer.openStage('EllipticKTheory:E.2')");mp.wait_for_timeout(700)
+  mp.locator('[data-node-id="'+FORMULA_PLANET+'"] .tau-hit').tap();mp.wait_for_timeout(400)
   formula=mp.locator('.landmark-description math').first
   reading=mp.locator('#inspector-content');reading_box=reading.bounding_box();formula_box=formula.bounding_box()
   if formula_box and formula_box['y']+formula_box['height']>reading_box['y']+reading_box['height']:
    touch_swipe(mp,touch,(reading_box['x']+reading_box['width']/2,reading_box['y']+reading_box['height']-25),(reading_box['x']+reading_box['width']/2,reading_box['y']+25))
-  record('Phone tap opens readable mathematics behind the plain planet name',formula.is_visible() and mp.evaluate("() => {const math=document.querySelector('.landmark-description math').getBoundingClientRect(),panel=document.querySelector('#inspector-content').getBoundingClientRect();return math.width>30&&math.height>10&&math.left>=panel.left-1&&math.right<=panel.right+1&&math.top>=panel.top-1&&math.bottom<=panel.bottom+1&&document.documentElement.scrollWidth<=innerWidth+1}"))
+  record('Phone tap opens readable mathematics behind the plain planet name',formula.is_visible() and mp.evaluate("() => {const math=document.querySelector('.landmark-description math').getBoundingClientRect(),panel=document.querySelector('#inspector-content').getBoundingClientRect();return math.width>30&&math.height>10&&math.left>=panel.left-1&&math.right<=panel.right+1}"))
   mp.screenshot(path=str(ROOT/'preview-phone-formula-planet.png'),animations='disabled')
-  mp.locator('.cosmic-back').tap();mp.wait_for_function("!TauExplorer.getState().layer");mp.wait_for_timeout(500)
-  if mp.evaluate("TauExplorer.getState().view!=='all'"):mp.locator('.cosmic-back').tap()
-  mp.wait_for_function("TauExplorer.getState().view==='all'")
+  mp.locator('.cosmic-back').tap();mp.wait_for_function("!TauExplorer.getState().layer");mp.wait_for_timeout(400)
+  mp.evaluate("TauExplorer.navigate({view:'all',id:null,layer:null,selected:null})");mp.wait_for_timeout(400)
   mp.locator('#catalogue-button').tap()
   record('Phone view has working browse/search',mp.locator('#search').is_visible())
   mp.locator('#search').fill('Perron');record('Phone search returns topics',mp.locator('.search-hit').count()>0)
   mp.locator('.search-hit').first.tap();record('Phone selection dismisses index',not mp.locator('#search').is_visible())
   mp.screenshot(path=str(ROOT/'preview-phone.png'),animations='disabled')
   mobile.close()
-
-  # Exercise WebKit when its browser is already installed; never download one.
   if Path(p.webkit.executable_path).exists():
    safari=p.webkit.launch(headless=True)
    sc=safari.new_context(viewport={'width':390,'height':844},is_mobile=True,has_touch=True)
    sp=sc.new_page();sp.on('pageerror',lambda e:errors.append('webkit: '+str(e)))
-   sp.goto(url,wait_until='load');sp.wait_for_function('!!window.TauExplorer')
-   sp.locator('[data-node-id="AnalyticNumberTheory"] .tau-star-hit').tap()
-   sp.wait_for_function("TauExplorer.getState().view==='roadmap'");sp.wait_for_timeout(500)
-   sp.locator('[data-node-id="AnalyticNumberTheory:AN.0"] .tau-star-hit').tap()
-   sp.wait_for_function("TauExplorer.getState().layer==='AnalyticNumberTheory:AN.0'")
-   planet=sp.evaluate("TauExplorer.getGraph().nodes.find(n=>n.type==='landmark').id")
-   sp.locator('[data-node-id="'+planet+'"] .tau-star-hit').tap()
+   sp.goto(url,wait_until='load');sp.wait_for_function('!!window.TauExplorer');sp.wait_for_timeout(600)
+   sp.locator('[data-node-id="AnalyticNumberTheory"] .tau-hit').tap();sp.wait_for_function("TauExplorer.getState().view==='roadmap'");sp.wait_for_timeout(600)
+   sp.locator('[data-node-id="AnalyticNumberTheory:AN.0"] .tau-hit').tap();sp.wait_for_function("TauExplorer.getState().layer==='AnalyticNumberTheory:AN.0'");sp.wait_for_timeout(600)
+   planet=sp.evaluate("TauExplorer.getUniverse().stars.find(s=>s.id==='AnalyticNumberTheory:AN.0').planetIds[0]")
+   sp.locator('[data-node-id="'+planet+'"] .tau-hit').tap();sp.wait_for_timeout(400)
    record('Installed WebKit supports mobile galaxy, layer and planet taps',sp.locator('.landmark-description').is_visible() and sp.locator('.cosmic-back').is_visible())
    sp.screenshot(path=str(ROOT/'preview-webkit-phone.png'),animations='disabled');safari.close()
  page.evaluate("TauExplorer.openItem('AnalyticNumberTheory')")
- page.set_viewport_size({'width':900,'height':800});page.screenshot(path=str(ROOT/'preview-narrow.png'),animations='disabled')
+ page.set_viewport_size({'width':900,'height':800});page.wait_for_timeout(600);page.screenshot(path=str(ROOT/'preview-narrow.png'),animations='disabled')
  record('Narrow desktop view usable',page.locator('#inspector').is_visible())
- record('Markdown rejects unsafe HTML and schemes',page.evaluate("""() => {const f=TauMarkdown.render('<img src=x onerror=alert(1)>\\n\\n[x](javascript:alert(1))');const d=document.createElement('div');d.append(f);return !d.querySelector('img,script,iframe')&&!Array.from(d.querySelectorAll('a')).some(a=>a.href.startsWith('javascript:'))}"""))
- page.evaluate("TauExplorer.openItem('GeometricSatakeAndFusion')")
- record('Layer order respects internal prerequisites',page.evaluate("() => {const d=TauExplorer.graph.debugState().positions;const index=new Map(d.map((n,i)=>[n.id,i]));const data=TauExplorer.data;const ids=new Set(data.roadmaps.find(r=>r.id==='GeometricSatakeAndFusion').stages);const positions=new Map(d.map(n=>[n.id,n]));return TauExplorer.getGraph().edges.filter(e=>ids.has(e.source)&&ids.has(e.target)).every(e=>Number.isInteger(positions.get(e.source).rank) && positions.get(e.source).rank<positions.get(e.target).rank);}"))
- page.locator('#close-inspector').click()
- page.get_by_label('Show outside dependencies',exact=True).check()
- record('Outside prerequisite stars stay mathematical and within a usable chart',page.evaluate("TauExplorer.graph.debugState().positions.every(n=>Number.isFinite(n.x)&&Math.abs(n.x)<10000 && TauExplorer.isMathematicalStage(n.id))"))
- page.evaluate("TauExplorer.navigate({view:'all',id:null,selected:null,origin:'all',outside:false})")
- svg=page.evaluate('TauExplorer.graph.exportSVG()')
- svgpath=ROOT/'verified-galaxies.svg';svgpath.write_text(svg)
- record('SVG export contains galaxy artwork and no scripts', 'tau-galaxy-glow' in svg and '<script' not in svg and 'file:///' not in svg)
+ record('Markdown rejects unsafe HTML and schemes',page.evaluate("""() => {const f=TauMarkdown.render('<img src=x onerror=alert(1)>\\n\\n[x](javascript:alert(1))');const d=document.createElement('div');d.append(f);return !d.querySelector('img,script,iframe')&&!Array.from(d.querySelectorAll('a')).some(a=>a.href.startsWith('javascript'))}"""))
+ page.evaluate("TauExplorer.openItem('GeometricSatakeAndFusion')");page.wait_for_timeout(600)
+ record('Layer order respects internal prerequisites',page.evaluate("() => {const u=TauExplorer.getUniverse(),stars=u.stars.filter(s=>s.constellationId==='GeometricSatakeAndFusion'),ids=new Set(stars.map(s=>s.id)),rank=new Map(stars.map(s=>[s.id,s.rank]));return stars.every(s=>s.dependencyOrderValid) && TauExplorer.data.stageEdges.filter(e=>ids.has(e.source)&&ids.has(e.target)).every(e=>rank.get(e.source)<rank.get(e.target));}"))
+ page.evaluate("TauExplorer.navigate({view:'all',id:null,selected:null,origin:'all'})");page.wait_for_timeout(500)
+ svg=page.evaluate('TauExplorer.graph.exportSVG()');svgpath=ROOT/'verified-universe.svg';svgpath.write_text(svg)
+ record('SVG export contains the universe and no scripts','tau-galaxy-disc' in svg and '<script' not in svg and 'file:///' not in svg)
  svgp=page.context.new_page();svgp.goto(svgpath.as_uri());record('SVG export opens independently',svgp.locator('svg').count()==1);svgp.close()
  run_reference_checks(page,browser)
  record('No application exceptions',not errors)

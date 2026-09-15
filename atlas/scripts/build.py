@@ -73,6 +73,7 @@ def build(output: Path) -> dict:
         "D3": "vendor/d3.v5.15.0.min.js",
         "KATEX": "vendor/katex.v0.16.28.min.js",
         "MARKDOWN": "src/markdown.js",
+        "UNIVERSE": "src/universe.js",
         "GRAPH": "src/graph.js",
         "CAMERA": "src/camera.js",
         "PROGRESS": "src/progress.js",

@@ -15,3 +15,8 @@ local-progress*.json
 *.zip
 *.tar
 *.gz
+
+# Local operational notes and worker prompts carry private filesystem paths.
+HANDOVER.md
+research/expansion/EXTERNAL_AGENTS.md
+research/expansion/prompts/

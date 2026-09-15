@@ -389,3 +389,7 @@ dialog::backdrop{background:#05080cb8}
 @media (prefers-reduced-motion:reduce){
   *,*::before,*::after{transition:none!important;animation:none!important;scroll-behavior:auto!important}
 }
+
+/* Universe labels are drawn inside the SVG; the address bar names the place. */
+.breadcrumbs .crumb-level{color:var(--faint);font-size:11px;margin-right:2px}
+.context-bar .links-toggle{font-size:11px}
