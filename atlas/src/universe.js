@@ -187,6 +187,31 @@
     star.planetGap = Number.isFinite(gap) ? gap : star.room;
   }
 
+  // Seen from afar, an area is a galaxy: a field of faint stars, dense at
+  // the centre and thinning outward, with two soft spiral arms. The field is
+  // generated once per area, deterministically, and drawn as a few paths.
+  function galaxyDust(galaxy) {
+    let seed = hash(galaxy.label + '|dust') || 1;
+    const random = () => { seed = (seed + 0x6D2B79F5) >>> 0; let t = seed; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
+    const count = Math.max(320, Math.min(760, 260 + 14 * galaxy.count + 4 * galaxy.unmappedCount));
+    const tilt = (hash(galaxy.label) % 360) * Math.PI / 180, phase = random() * Math.PI * 2, pitch = 2.4 + random() * 1.4;
+    // The disc is seen at an inclination, so the field is flattened along
+    // its tilt; a bright core, two arms and a thin halo give it depth.
+    const flatten = .62 + (hash(galaxy.label + '|f') % 20) / 100;
+    const points = [];
+    let guard = 0;
+    while (points.length < count && guard++ < count * 14) {
+      const halo = random() < .12, radial = halo ? .85 + random() * .3 : Math.pow(random(), .88), angle = random() * Math.PI * 2;
+      const arm = .5 + .5 * Math.cos(2 * angle - pitch * Math.log(1 + 4 * radial) + phase);
+      if (!halo && random() > .22 + .78 * (radial < .16 ? 1 : arm)) continue;
+      const ex = radial * galaxy.rx * .98 * Math.cos(angle), ey = radial * galaxy.ry * .98 * flatten * Math.sin(angle);
+      const x = galaxy.x + ex * Math.cos(tilt) - ey * Math.sin(tilt), y = galaxy.y + ex * Math.sin(tilt) + ey * Math.cos(tilt);
+      const shine = random();
+      points.push({ x, y, radial, cls: halo ? 0 : radial < .28 && shine > .3 ? 2 : shine > .5 ? 1 : 0 });
+    }
+    return points;
+  }
+
   function routesBetween(galaxies, constellations, edges) {
     const byConstellation = new Map(constellations.map(constellation => [constellation.id, constellation]));
     const routes = new Map();
@@ -213,7 +238,7 @@
 
   function build(input, viewport) {
     const aspect = viewport && viewport.width && viewport.height ? viewport.width / viewport.height : 1.5;
-    const galaxies = input.groups.map(group => ({ id: group.id, level: 'galaxy', label: group.label, color: group.color, constellationIds: [], count: 0, unmappedCount: 0 }));
+    const galaxies = input.groups.map(group => ({ id: group.id, level: 'galaxy', label: group.label, color: group.color, constellationIds: [], count: 0, unmappedCount: 0, progress: group.progress == null ? null : group.progress, progressLabel: group.progressLabel || '' }));
     const galaxyById = new Map(galaxies.map(galaxy => [galaxy.id, galaxy]));
     const constellations = input.constellations.map(item => ({ ...item, level: 'constellation', starIds: item.starIds || [] }))
       .filter(item => galaxyById.has(item.galaxyId));
@@ -247,6 +272,7 @@
       });
       stars.push(...members);
     });
+    populated.forEach(galaxy => { galaxy.dust = galaxyDust(galaxy); });
     const byId = new Map();
     [...populated, ...constellations, ...stars, ...planets].forEach(node => byId.set(node.id, node));
     const left = Math.min(...populated.map(galaxy => galaxy.x - galaxy.rx)), top = Math.min(...populated.map(galaxy => galaxy.y - galaxy.ry));

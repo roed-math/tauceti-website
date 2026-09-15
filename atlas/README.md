@@ -23,7 +23,7 @@ The atlas is one continuous universe. Mathematical areas are galaxies, roadmaps 
 
 No links are drawn at rest. Selecting a roadmap shows its prerequisite links to other roadmaps; selecting a star shows the prerequisites and consumers of that layer, prerequisite → consumer; hovering an area heading shows the routes between areas. The faint figure joining a constellation's stars prefers real prerequisite pairs and is a shape, not a claim. Planet orbits express membership in a layer, not additional prerequisites. Related-plan links can be switched on and carry no prerequisite claim. Positions, discs and orbits are visual aids, not astronomical coordinates or mathematical measurements.
 
-Colour on the map means one thing: recorded progress. A green, amber or red mark is a layer or roadmap recorded as complete, in progress or not started; an open ring means no progress has been recorded, and nothing is ever coloured as started or as zero percent to fill the gap. Dashed outlines mark areas without a roadmap. All marks are flat: solid fills and thin strokes, with no gradients, glows or shaded spheres. The page uses system type, one dark palette and no decorative elements; headline statistics live in Mission status. Scene artwork is generated locally as SVG. There are no external fonts or image downloads, transitions are short, and reduced-motion preferences are respected.
+Colour on the map means one thing: recorded progress, shown as brightness. A layer, roadmap or area recorded as not started is red; it warms through salmon as work is recorded and turns white when complete, so an area's galaxy brightens as its roadmaps fill in. An open ring means no progress has been recorded, and nothing is ever coloured as started or as zero percent to fill the gap. Dashed outlines mark areas without a roadmap. All marks are flat: solid fills and thin strokes, with no gradients, glows or shaded spheres. The page uses system type, one dark palette and no decorative elements; headline statistics live in Mission status. Scene artwork is generated locally as SVG. There are no external fonts or image downloads, transitions are short, and reduced-motion preferences are respected.
 
 ## Source-decomposed refinements
 
@@ -54,7 +54,7 @@ The source snapshot includes local working-tree material and older maintained pr
 
 ## Progress colours and local updates
 
-Stage colours distinguish not-started, in-progress, and complete statuses. Layers without recorded status have no progress label or status colour. The amber midpoint is a status category, not a claim that a theorem is half proved.
+Stage colours run from red (not started) through salmon (in progress) to white (complete). Layers without recorded status have no progress label or status colour. The salmon midpoint is a status category, not a claim that a theorem is half proved.
 
 Roadmap and subject percentages count **completed terminal targets divided by all tracked terminal targets**. Unknown targets remain in the denominator; no percentage is shown when an entire roadmap or subject has no status data. A parent stage and its children are never counted twice; collection roadmaps aggregate their child roadmaps. Completing every extracted target does not by itself certify all source-proof, acceptance, or formal-verification requirements. A separately displayed roadmap-level report retains its own provenance.
 

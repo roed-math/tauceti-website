@@ -198,7 +198,7 @@ def legend_matches_map_encoding(page):
   const blank=beacon('AnalyticNumberTheory'),done=beacon('tauceti:Completed/EffectiveBounds'),d=TauExplorer.graph.debugState();
   const blankNode=d.constellations.find(n=>n.id==='AnalyticNumberTheory'),doneNode=d.constellations.find(n=>n.id==='tauceti:Completed/EffectiveBounds');
   const keys=Array.from(document.querySelectorAll('.progress-legend span')).map(e=>e.textContent.trim()),groupColours=TauExplorer.data.groups.map(g=>g.color.toLowerCase());
-  return !!blank&&!!done&&blankNode.hasProgress===false&&doneNode.progress===100&&blank.getAttribute('fill')==='#0b1016'&&blank.getAttribute('stroke')==='#6f7f8c'&&done.getAttribute('fill')===doneNode.accent&&doneNode.accent==='#67af8c'
+  return !!blank&&!!done&&blankNode.hasProgress===false&&doneNode.progress===100&&blank.getAttribute('fill')==='#0b1016'&&blank.getAttribute('stroke')==='#6f7f8c'&&done.getAttribute('fill')===doneNode.accent&&doneNode.accent==='#f7f3e9'
    &&keys.includes('No progress data')&&keys.includes('Not started')&&keys.includes('Complete')&&!!document.querySelector('.progress-legend .none')&&d.constellations.filter(n=>!n.hasProgress).every(n=>!groupColours.includes(n.accent.toLowerCase()));
  }""")
 def fit_all(page,touch=False):

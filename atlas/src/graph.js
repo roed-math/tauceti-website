@@ -7,19 +7,20 @@
   'use strict';
   let instanceCount = 0;
   const SVG_NS = 'http://www.w3.org/2000/svg';
-  const BACKGROUND = '#0b1016', ACCENT = '#dfc186', NO_PROGRESS = '#6f7f8c', CREAM = '#e8e4da';
+  const BACKGROUND = '#0b1016', ACCENT = '#dfc186', NO_PROGRESS = '#6f7f8c', CREAM = '#e8e4da', DUST = '#8ea1b6';
   const KIND_FILL = { definition: '#7fb8bd', theorem: '#dba57f', construction: '#8fa8d0' };
   const normalizeText = value => String(value == null ? '' : value).replace(/([a-z])([A-Z])/g, '$1 $2').replace(/_/g, ' ');
 
   function progressValue(value) {
     return typeof value === 'number' && Number.isFinite(value) ? Math.max(0, Math.min(100, value)) : null;
   }
-  // Colour means recorded progress and nothing else. Red, amber and green are
-  // recorded states; an object without recorded status has no colour.
+  // Colour means recorded progress and nothing else: an object brightens
+  // from red, through salmon, to white as its roadmap fills in. An object
+  // without recorded status has no colour at all.
   function progressColor(value) {
     const progress = progressValue(value);
     if (progress === null) return null;
-    const stops = [[217, 108, 96], [212, 165, 79], [103, 175, 140]];
+    const stops = [[200, 68, 58], [232, 150, 120], [247, 243, 233]];
     const index = progress <= 50 ? 0 : 1, fraction = progress <= 50 ? progress / 50 : (progress - 50) / 50;
     return '#' + stops[index].map((channel, i) => Math.round(channel + (stops[index + 1][i] - channel) * fraction).toString(16).padStart(2, '0')).join('');
   }
@@ -92,7 +93,7 @@
         .tau-graph text { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif; pointer-events: none; paint-order: stroke fill; stroke: ${BACKGROUND}; stroke-linejoin: round; }
         .tau-graph .tau-node { cursor: pointer; outline: none; }
         .tau-graph .tau-hit { fill: transparent; pointer-events: all; }
-        .tau-graph .tau-galaxy-disc, .tau-graph .tau-constellation-disc, .tau-graph .tau-figure, .tau-graph .tau-orbit, .tau-graph .tau-field, .tau-graph .tau-link, .tau-graph .tau-route, .tau-graph .tau-ring { pointer-events: none; }
+        .tau-graph .tau-galaxy-disc, .tau-graph .tau-dust, .tau-graph .tau-constellation-disc, .tau-graph .tau-figure, .tau-graph .tau-orbit, .tau-graph .tau-field, .tau-graph .tau-link, .tau-graph .tau-route, .tau-graph .tau-ring { pointer-events: none; }
         .tau-graph .tau-label-galaxy text { fill: #b3bec9; font-weight: 500; letter-spacing: .2px; stroke-width: 2.5px; }
         .tau-graph .tau-label-galaxy.is-active text { fill: #e2e6eb; }
         .tau-graph .tau-label-constellation text { fill: #c9d2da; font-weight: 400; stroke-width: 2.5px; }
@@ -113,7 +114,10 @@
       this.viewport = this.svg.append('g').attr('class', 'tau-viewport');
       this.layers = {};
       ['field', 'galaxy', 'route', 'constellation', 'figure', 'link', 'star', 'planet', 'label'].forEach(name => { this.layers[name] = this.viewport.append('g').attr('class', 'tau-layer-' + name); });
+      // The universe spans thousands of times in scale, so a wheel or trackpad
+      // step must move the camera a long way; a pinch keeps a gentler gain.
       this.zoom = d3.zoom().scaleExtent([.015, 120]).clickDistance(6)
+        .wheelDelta(() => -d3.event.deltaY * (d3.event.deltaMode === 1 ? .05 : d3.event.deltaMode ? 1 : .002) * (d3.event.ctrlKey ? 1.6 : 3.2))
         .filter(() => !this.busy && !d3.event.button && (!d3.event.ctrlKey || d3.event.type === 'wheel'))
         .on('zoom', () => { this.transform = d3.event.transform; this.viewport.attr('transform', this.transform); this.scheduleRender(); this.scheduleFocus(); });
       this.svg.call(this.zoom).on('dblclick.zoom', null);
@@ -170,6 +174,7 @@
         if (value && typeof value === 'object') { node.progress = value.progress; node.progressLabel = value.progressLabel; } else node.progress = value;
       });
       this.layers.constellation.selectAll('*').remove(); this.layers.star.selectAll('*').remove();
+      this.paintDust();
       this.scheduleRender();
       return this;
     }
@@ -185,17 +190,46 @@
       field.selectAll('circle').data(stars).enter().append('circle').attr('class', 'tau-field').attr('cx', d => d.x).attr('cy', d => d.y).attr('r', d => d.r).attr('fill', '#c7d3df').attr('opacity', d => d.opacity);
     }
 
+    dustPath(points, radius) {
+      return points.map(p => `M${(p.x + radius).toFixed(1)},${p.y.toFixed(1)}a${radius},${radius} 0 1,0 ${-2 * radius},0a${radius},${radius} 0 1,0 ${2 * radius},0`).join('');
+    }
+
     drawGalaxies() {
       const galaxies = this.layers.galaxy.selectAll('g.tau-galaxy').data(this.universe.galaxies, d => d.id).enter().append('g')
         .attr('class', 'tau-galaxy').attr('data-node-id', d => d.id);
       galaxies.append('ellipse').attr('class', 'tau-galaxy-disc').attr('cx', d => d.x).attr('cy', d => d.y).attr('rx', d => d.rx).attr('ry', d => d.ry)
-        .attr('fill', '#9db3c9').attr('opacity', .028);
+        .attr('fill', '#9db3c9').attr('opacity', .014);
+      // Two dust fields per area: a coarse one that reads as a galaxy from far
+      // away and a fine one that stays as a faint background inside it. Each
+      // brightness class is one path, so an area costs six elements, not
+      // hundreds. The dust takes the area's progress colour.
+      const graph = this;
+      galaxies.each(function (galaxy) {
+        const g = d3.select(this), far = g.append('g').attr('class', 'tau-dust tau-dust-far'), near = g.append('g').attr('class', 'tau-dust tau-dust-near');
+        const farRadius = Math.max(3, Math.max(galaxy.rx, galaxy.ry) * .019), nearRadius = Math.max(.4, Math.max(galaxy.rx, galaxy.ry) * .0018);
+        [0, 1, 2].forEach(cls => {
+          const points = galaxy.dust.filter(p => p.cls === cls);
+          far.append('path').attr('class', 'tau-dust-path').attr('data-class', cls).attr('d', graph.dustPath(points, farRadius * (cls === 2 ? 1.2 : cls === 1 ? .95 : .7)));
+          near.append('path').attr('class', 'tau-dust-path').attr('data-class', cls).attr('d', graph.dustPath(points.filter((_, index) => index % 3 === 0), nearRadius * (cls === 2 ? 1.3 : 1)));
+        });
+      });
+      this.paintDust();
       galaxies.append('ellipse').attr('class', 'tau-ring tau-galaxy-ring').attr('cx', d => d.x).attr('cy', d => d.y).attr('rx', d => d.rx).attr('ry', d => d.ry)
         .attr('fill', 'none').attr('stroke', ACCENT).attr('vector-effect', 'non-scaling-stroke').attr('stroke-width', 1).attr('opacity', 0);
       const routes = this.layers.route.selectAll('path').data(this.universe.routes).enter().append('path').attr('class', 'tau-route tau-sector-route')
         .attr('data-source-area', d => d.source).attr('data-target-area', d => d.target).attr('data-strong', d => String(!!d.strong))
         .attr('d', d => d.path).attr('vector-effect', 'non-scaling-stroke').attr('stroke-width', d => .7 + Math.min(1, Math.log1p(d.dependencies) * .18)).attr('opacity', 0);
       routes.append('title').text(d => `${d.source} ↔ ${d.target}: ${d.dependencies} roadmap prerequisite links`);
+    }
+
+    paintDust() {
+      this.layers.galaxy.selectAll('g.tau-galaxy').each(function (galaxy) {
+        const lit = hasProgress(galaxy), colour = lit ? accentOf(galaxy) : DUST;
+        const base = lit ? .4 + .45 * (progressValue(galaxy.progress) / 100) : .34;
+        d3.select(this).selectAll('.tau-dust-path').attr('fill', colour).attr('opacity', function () {
+          const cls = Number(this.getAttribute('data-class')); return Math.min(.95, base * (cls === 2 ? 1.5 : cls === 1 ? 1 : .5));
+        });
+      });
     }
 
     // ----- level of detail ---------------------------------------------------
@@ -271,8 +305,14 @@
       this.renderPlanets(planets, k, active);
       this.renderLabels(labels, k);
       this.renderLinks(activeNode, k);
-      this.layers.galaxy.selectAll('g.tau-galaxy').select('.tau-galaxy-ring').attr('opacity', d => active === d.id ? .55 : 0);
-      this.layers.galaxy.selectAll('g.tau-galaxy').select('.tau-galaxy-disc').attr('opacity', d => active === d.id ? .055 : .028);
+      const galaxySelection = this.layers.galaxy.selectAll('g.tau-galaxy');
+      galaxySelection.select('.tau-galaxy-ring').attr('opacity', d => active === d.id ? .55 : 0);
+      galaxySelection.select('.tau-galaxy-disc').attr('opacity', d => active === d.id ? .04 : .014);
+      // Coarse dust is for the far view only; it is gone before a galaxy fills
+      // the chart, while the fine dust takes over as a faint background.
+      const farFade = Math.max(0, Math.min(1, (.85 - k) / .45)), nearFade = .6 * Math.max(0, Math.min(1, (k - .35) / .4)) * Math.max(0, Math.min(1, (9 - k) / 4));
+      galaxySelection.select('.tau-dust-far').attr('opacity', farFade).attr('display', farFade > 0 ? null : 'none');
+      galaxySelection.select('.tau-dust-near').attr('opacity', nearFade).attr('display', nearFade > 0 ? null : 'none');
     }
 
     renderConstellations(items, k, active) {
@@ -314,18 +354,16 @@
       const enter = join.enter().append('g').attr('class', 'tau-node tau-star').attr('data-node-id', d => d.id).attr('data-level', 'star')
         .attr('transform', d => `translate(${d.x},${d.y})`).attr('tabindex', 0).attr('role', 'button').attr('aria-label', d => normalizeText(d.label) + '. Layer' + (progressDescription(d) ? ', ' + progressDescription(d) : ''));
       enter.append('circle').attr('class', 'tau-hit');
-      enter.append('circle').attr('class', 'tau-ring tau-progress-ring').attr('fill', 'none').attr('vector-effect', 'non-scaling-stroke');
-      enter.append('circle').attr('class', 'tau-star-core').attr('fill', CREAM);
+      enter.append('circle').attr('class', 'tau-star-core').attr('vector-effect', 'non-scaling-stroke');
       enter.append('circle').attr('class', 'tau-ring tau-select-ring').attr('fill', 'none').attr('stroke', ACCENT).attr('vector-effect', 'non-scaling-stroke').attr('stroke-width', 1.6);
       enter.append('title').text(d => normalizeText(d.label) + (progressDescription(d) ? '\n' + progressDescription(d) : '') + '\nClick to open its planets');
       this.bindInteractions(enter);
       const all = enter.merge(join);
       all.classed('is-selected', d => d.id === this.selectedId).classed('is-hovered', d => d.id === this.hoveredId).attr('data-progress', d => progressValue(d.progress));
       all.select('.tau-hit').attr('r', d => Math.min(Math.max(d.r * 1.8, (graph.isCoarse ? 14 : 10) / k), Math.max(d.r * 1.2, (d.nearest || d.r * 6) * .48)));
-      all.select('.tau-star-core').attr('r', d => d.r);
-      all.select('.tau-progress-ring').attr('r', d => d.r * 1.75).attr('stroke', d => accentOf(d)).attr('stroke-width', 1.3)
-        .attr('stroke-dasharray', d => hasProgress(d) ? null : '2 3').attr('opacity', d => hasProgress(d) ? .95 : .55);
-      all.select('.tau-select-ring').attr('r', d => d.r * 2.6).attr('opacity', d => active === d.id ? 1 : 0);
+      all.select('.tau-star-core').attr('r', d => d.r).attr('fill', d => hasProgress(d) ? accentOf(d) : '#1a222c')
+        .attr('stroke', d => hasProgress(d) ? accentOf(d) : NO_PROGRESS).attr('stroke-width', d => hasProgress(d) ? 1 : 1.3).attr('stroke-dasharray', d => hasProgress(d) ? null : '2 2');
+      all.select('.tau-select-ring').attr('r', d => d.r * 2.2).attr('opacity', d => active === d.id ? 1 : 0);
     }
 
     renderPlanets(items, k, active) {
@@ -495,8 +533,8 @@
     }
     fitAll(animate) { if (!this.universe) return this; const b = this.universe.bounds; return this.travel(this.transformWithHeadroom({ x: b.x - 40, y: b.y, w: b.w + 80, h: b.h }, 48, 12), animate !== false); }
     fit(animate) { return this.lastFocus && this.lastFocus.id ? this.zoomTo(this.lastFocus.id, animate) : this.fitAll(animate); }
-    zoomIn() { this.svg.transition().duration(120).call(this.zoom.scaleBy, 1.5); return this; }
-    zoomOut() { this.svg.transition().duration(120).call(this.zoom.scaleBy, 1 / 1.5); return this; }
+    zoomIn() { this.svg.transition().duration(140).call(this.zoom.scaleBy, 2.4); return this; }
+    zoomOut() { this.svg.transition().duration(140).call(this.zoom.scaleBy, 1 / 2.4); return this; }
     captureCamera() { return { x: this.transform.x, y: this.transform.y, k: this.transform.k, width: this.width, height: this.height }; }
     restoreCamera(camera) {
       if (!camera || ![camera.x, camera.y, camera.k].every(Number.isFinite) || camera.k <= 0) return this;
