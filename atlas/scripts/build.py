@@ -6,9 +6,20 @@ import argparse
 import hashlib
 import json
 import re
+import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / "scripts"))
+from decompositions import merge_decompositions  # noqa: E402
+
+
+def load_decompositions() -> list:
+    """Reviewed source decompositions promoted under data/decompositions/, in name order."""
+    folder = ROOT / "data" / "decompositions"
+    if not folder.is_dir():
+        return []
+    return [json.loads(path.read_text(encoding="utf-8")) for path in sorted(folder.glob("*.json"))]
 
 
 def read_text(relative_path: str) -> str:
@@ -25,6 +36,13 @@ def comment_text(text: str) -> str:
 
 def build(output: Path) -> dict:
     atlas = json.loads(read_text("data/atlas.json"))
+    # The snapshot stays immutable; reviewed decompositions refine it at build
+    # time, so nothing is appended twice and the originals remain the record.
+    decompositions = load_decompositions()
+    original_stage_count = len(atlas["stages"])
+    atlas, _expanded_documents = merge_decompositions(atlas, decompositions)
+    atlas.setdefault("decompositions", [])
+    atlas["meta"]["originalStageCount"] = original_stage_count
     atlas["progress"] = json.loads(read_text("data/status.json"))
     atlas["regions"] = json.loads(read_text("data/regions.json"))
     atlas["opportunities"] = json.loads(read_text("data/opportunities.json"))
@@ -94,12 +112,21 @@ def build(output: Path) -> dict:
         raise ValueError("An absolute home directory remains in the public atlas.")
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text(page, encoding="utf-8")
-    parent_ids = {stage.get("parentStageId") for stage in atlas["stages"] if stage.get("parentStageId")}
+    # Refinements are planning detail under their parent layer: they are not
+    # progress targets, so the parent stays terminal for progress accounting.
+    refinements = [stage for stage in atlas["stages"] if stage.get("expansion")]
+    parent_ids = {stage.get("parentStageId") for stage in atlas["stages"] if stage.get("parentStageId") and not stage.get("expansion")}
     source_paths = ["src/shell.html", *style_paths, *assets.values(), "data/atlas.json", "data/status.json", "data/regions.json", "data/opportunities.json", "data/stage-presentation.json", "data/landmark-labels.json", "data/bibliography.json", "NOTICE", "LICENSE", "vendor/D3-LICENSE.txt", "vendor/KaTeX-LICENSE.txt"]
+    source_paths += [str(path.relative_to(ROOT)) for path in sorted((ROOT / "data" / "decompositions").glob("*.json"))] if (ROOT / "data" / "decompositions").is_dir() else []
     report = {
         "roadmaps": len(atlas["roadmaps"]),
         "stages": len(atlas["stages"]),
-        "terminalTargets": sum(stage["id"] not in parent_ids for stage in atlas["stages"]),
+        "originalStages": original_stage_count,
+        "sourceRefinements": len(refinements),
+        "reviewedDecompositions": [{"roadmap": item["roadmapId"], "status": item["status"], "nodes": item["nodes"],
+                                    "review": item["review"]["status"], "deferredLinks": len(item.get("deferredLinks", []))}
+                                   for item in atlas["decompositions"]],
+        "terminalTargets": sum(stage["id"] not in parent_ids and not stage.get("expansion") for stage in atlas["stages"]),
         "groups": len(atlas["groups"]),
         "unmappedAreas": len(atlas["opportunities"]["areas"]),
         "additionalRegions": len(atlas["opportunities"]["groups"]),

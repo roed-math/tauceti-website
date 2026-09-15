@@ -22,6 +22,9 @@
       this.roadmapChildren = new Map(Array.from(this.roadmaps.keys(), id => [id, []]));
       this.byOwner = new Map(Array.from(this.roadmaps.keys(), id => [id, []]));
       this.stages.forEach(stage => {
+        // A source refinement is planning detail beneath its layer, not a tracked
+        // target: it never enters the leaf counts and never inherits a status.
+        if (stage.expansion) return;
         if (stage.parentStageId && this.children.has(stage.parentStageId) && stage.parentStageId !== stage.id) this.children.get(stage.parentStageId).push(stage.id);
         if (this.byOwner.has(stage.owner)) this.byOwner.get(stage.owner).push(stage.id);
       });
