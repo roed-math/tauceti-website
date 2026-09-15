@@ -1,0 +1,22 @@
+Tau Ceti Explorer
+
+This project presents an interactive snapshot of mathematical roadmap material
+from the Tau Ceti project and the revised modern number theory campaign.
+
+TauCetiRoadmap and its contributors
+Source: https://github.com/TauCetiProject/TauCetiRoadmap
+The Apache License 2.0 in LICENSE is copied from that source repository.
+Source documents have been reorganized for exploration, embedded in the atlas,
+and sanitized to remove local filesystem paths. Recorded source hashes, commit
+references, and report dates remain in the data. Progress summaries and local
+user overrides are explorer features and do not modify the source reports.
+
+D3.js v5.15.0
+Copyright 2010-2017 Mike Bostock. All rights reserved.
+Source: https://github.com/d3/d3
+D3 is distributed under its original BSD-style terms, reproduced in
+vendor/D3-LICENSE.txt and embedded in the generated offline HTML.
+
+KaTeX 0.16.28 is bundled for offline native MathML rendering.
+Copyright (c) 2013-2020 Khan Academy and other contributors.
+MIT License; see vendor/KaTeX-LICENSE.txt.

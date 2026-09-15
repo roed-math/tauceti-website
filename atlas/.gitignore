@@ -1,0 +1,17 @@
+.DS_Store
+__pycache__/
+*.py[cod]
+.venv/
+node_modules/
+.pytest_cache/
+playwright-report/
+test-results/
+*.log
+progress-backup*.json
+local-progress*.json
+
+# Reference libraries remain outside this application repository.
+*.pdf
+*.zip
+*.tar
+*.gz
