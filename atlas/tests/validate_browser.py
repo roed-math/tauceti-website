@@ -127,6 +127,9 @@ def reference_sources_are_exact(page, planet_id):
  }""",planet_id)
 def run_reference_checks(page,browser):
  global mp
+ # This desktop fixture is independent of the preceding narrow-window check.
+ page.set_viewport_size({'width':1600,'height':1000})
+ page.wait_for_timeout(500)
  # A formula with no narrower citation must expose the roadmap bibliography as
  # wider reading, while preserving the mathematical statement and source record.
  page.evaluate("TauExplorer.openStage('EllipticKTheory:E.2')")
