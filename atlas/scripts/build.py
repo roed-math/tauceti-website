@@ -30,6 +30,7 @@ def build(output: Path) -> dict:
     atlas["opportunities"] = json.loads(read_text("data/opportunities.json"))
     atlas["stagePresentation"] = json.loads(read_text("data/stage-presentation.json"))
     atlas["landmarkLabels"] = json.loads(read_text("data/landmark-labels.json"))
+    atlas["bibliography"] = json.loads(read_text("data/bibliography.json"))
     stage_ids = {stage["id"] for stage in atlas["stages"]}
     if set(atlas["stagePresentation"]) - stage_ids:
         raise ValueError("Stage presentation contains an unknown stage ID.")
@@ -45,6 +46,11 @@ def build(output: Path) -> dict:
             raise ValueError("Planet label contains an unknown stage ID: " + landmark_id)
         if not isinstance(label, str) or not label.strip() or len(label) > 72 or re.search(r"[\\${}^]", label):
             raise ValueError("Planet labels must be short plain text: " + landmark_id)
+    for work in atlas["bibliography"]["works"]:
+        if not work.get("title") or not isinstance(work.get("aliases"), list):
+            raise ValueError("Bibliographic records need a title and aliases.")
+        if work.get("url") and not re.match(r"^https?://", work["url"]):
+            raise ValueError("Bibliographic links must be public web addresses.")
     assets = {
         "D3": "vendor/d3.v5.15.0.min.js",
         "KATEX": "vendor/katex.v0.16.28.min.js",
@@ -54,6 +60,7 @@ def build(output: Path) -> dict:
         "PROGRESS": "src/progress.js",
         "LANDMARKS": "src/landmarks.js",
         "PRESENTATION": "src/presentation.js",
+        "REFERENCES": "src/references.js",
         "APP": "src/app.js",
     }
     style_paths = ["src/style.css"]
@@ -88,7 +95,7 @@ def build(output: Path) -> dict:
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text(page, encoding="utf-8")
     parent_ids = {stage.get("parentStageId") for stage in atlas["stages"] if stage.get("parentStageId")}
-    source_paths = ["src/shell.html", *style_paths, *assets.values(), "data/atlas.json", "data/status.json", "data/regions.json", "data/opportunities.json", "data/stage-presentation.json", "data/landmark-labels.json", "NOTICE", "LICENSE", "vendor/D3-LICENSE.txt", "vendor/KaTeX-LICENSE.txt"]
+    source_paths = ["src/shell.html", *style_paths, *assets.values(), "data/atlas.json", "data/status.json", "data/regions.json", "data/opportunities.json", "data/stage-presentation.json", "data/landmark-labels.json", "data/bibliography.json", "NOTICE", "LICENSE", "vendor/D3-LICENSE.txt", "vendor/KaTeX-LICENSE.txt"]
     report = {
         "roadmaps": len(atlas["roadmaps"]),
         "stages": len(atlas["stages"]),
@@ -101,6 +108,7 @@ def build(output: Path) -> dict:
         "administrativeStages": sum(bool(item.get("hidden")) for item in atlas["stagePresentation"].values()),
         "mathematicalStars": sum(not atlas["stagePresentation"].get(stage["id"], {}).get("hidden") for stage in atlas["stages"]),
         "plainTextPlanetLabels": len(atlas["landmarkLabels"]),
+        "bibliographicSources": len(atlas["bibliography"]["works"]),
         "roadmapEdges": len(atlas["edges"]),
         "stageEdges": len(atlas["stageEdges"]),
         "sourceDocuments": sum(1 for _ in (ROOT / "content").rglob("*.md")),

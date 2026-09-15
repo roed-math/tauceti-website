@@ -6,6 +6,7 @@ const $=id=>document.getElementById(id);
 const maps=new Map(DATA.roadmaps.map(r=>[r.id,r]));
 const stages=new Map(DATA.stages.map(s=>[s.id,s]));
 const presentation=TauPresentation.create(DATA);
+const references=TauReferences.create(DATA);
 const {stageTitle,stageSummary,isMathematicalStage,landmarkTitle}=presentation;
 const mathStages=r=>r.stages.filter(isMathematicalStage);
 const allGroups=[...DATA.groups,...(DATA.opportunities?.groups||[])];
@@ -211,6 +212,34 @@ function renderConnections(box,r){
    card.append(btn('Read linked roadmap',()=>openReader(other),'secondary'));box.append(card);}}
 }
 function landmarkLink(box,landmark){const button=btn('',()=>openLandmark(landmark.id),'item-link');button.append(el('span','landmark-kind',landmark.kind),el('span','',landmarkTitle(landmark)));box.append(button);}
+function openReference(entry,roadmap){
+ const owner=DATA.roadmaps.find(r=>r.sourcePath===entry.sourcePath)||DATA.documents?.find(d=>d.sourcePath===entry.sourcePath)||roadmap;
+ openReader(owner.id);
+ const searchable=text=>text.normalize('NFKC').replace(/[^\p{L}\p{N}]+/gu,'').toLowerCase();
+ const needle=searchable(TauMarkdown.render(entry.text,{basePath:entry.sourcePath}).textContent).slice(0,160);
+ const candidates=[...$('reader-body').querySelectorAll('p,li,tr,blockquote')].filter(node=>needle&&searchable(node.textContent).includes(needle));
+ candidates.sort((a,b)=>a.textContent.length-b.textContent.length)[0]?.scrollIntoView({block:'center'});
+}
+function renderPlanetReferences(box,landmark,roadmap){
+ const entries=references.forLandmark(landmark),panel=el('section','planet-references');
+ section(panel,'References');
+ const scopes=[['direct','For this topic'],['layer','For this layer'],['roadmap','Roadmap reading']];
+ let count=0;
+ for(const [key,title]of scopes){
+  if(!entries[key].length)continue;
+  const group=el('div','reference-group');group.dataset.referenceScope=key;group.append(el('h4','reference-scope',title));
+  for(const entry of entries[key]){
+   const citation=el('article','planet-reference'),body=el('div','md-content reference-text');
+   body.append(TauMarkdown.render(entry.text,{basePath:entry.sourcePath}));
+   citation.append(body);
+   if(entry.works?.length){const works=el('ul','reference-works');for(const work of entry.works){const row=el('li'),link=el(work.url?'a':'span','',work.title);if(work.url){link.href=work.url;link.target='_blank';link.rel='noopener noreferrer';}if(work.authors)row.append(document.createTextNode((Array.isArray(work.authors)?work.authors.join(', '):work.authors)+' — '));row.append(link);works.append(row);}citation.append(works);}
+   citation.append(btn('View citation in roadmap',()=>openReference(entry,roadmap),'reference-source'));group.append(citation);count++;
+  }
+  panel.append(group);
+ }
+ if(!count)panel.append(el('p','detail-note','No bibliography is listed for this topic in the embedded roadmap.'));
+ box.append(panel);
+}
 function renderInspector(){const id=state.selected,changed=inspectedId!==id,box=clear($('inspector-content'));inspectedId=id;if(changed)box.scrollTop=0;$('inspector').hidden=!id;document.body.classList.toggle('has-selection',!!id);if(!id)return;
  if(opportunities.has(id)){const area=opportunities.get(id);$('selection-kind').textContent='UNMAPPED MATHEMATICS';detailHeader(box,area.title,groups.get(area.group).label,'#91aabd');box.append(el('span','status-chip','No dedicated roadmap'),el('p','detail-summary',area.summary),el('p','detail-note',area.reason));section(box,'Nearby mathematical developments');area.relatedRoadmaps.forEach(r=>item(box,r,()=>openItem(r)));box.append(el('p','detail-note','These links provide mathematical context. This proposed area has no layers or completion percentage.'));return;}
  if(groups.has(id)){const g=groups.get(id),members=DATA.roadmaps.filter(r=>r.group===id&&permitted(r));$('selection-kind').textContent='SUBJECT';detailHeader(box,g.label,`${members.length} roadmaps`,g.color);const region=DATA.regions?.groups?.[id]||g;box.append(el('p','detail-summary',region.description||`Explore the mathematics of ${g.label.toLowerCase()}.`));if(region.topics?.length){const topics=el('ul','region-topics');region.topics.forEach(topic=>topics.append(el('li','',topic)));box.append(topics);}const bridges=(region.bridgeGroups||[]).filter(gid=>groups.has(gid));if(bridges.length){section(box,'Connected areas');for(const gid of bridges)box.append(btn(groups.get(gid).label,()=>openItem(gid),'topic-link'));}box.append(btn('Open roadmaps →',()=>openItem(id),'primary'));section(box,'In this subject');members.forEach(r=>item(box,r.id,()=>openItem(r.id)));const gaps=visibleOpportunities().filter(a=>a.group===id);if(gaps.length){section(box,'Areas needing a roadmap');gaps.forEach(a=>box.append(btn(a.title,()=>select(a.id),'item-link')));}return;}
@@ -220,7 +249,7 @@ function renderInspector(){const id=state.selected,changed=inspectedId!==id,box=
  if(state.tab==='links')renderConnections(box,r);
 
  return;}
- if(landmarks.has(id)){const landmark=landmarks.get(id),stage=stages.get(landmark.stageId),r=maps.get(landmark.roadmapId);$('selection-kind').textContent=landmark.kind.toUpperCase()+' / MATHEMATICAL PLANET';detailHeader(box,landmarkTitle(landmark),shortTitle(r.title),'#a8c8df');box.append(el('span','landmark-kind',landmark.kind));const text=el('div','md-content landmark-description');text.append(TauMarkdown.render(TauPresentation.landmarkDescription(landmark),{basePath:landmark.sourcePath}));box.append(text);section(box,'In this layer');box.append(btn(stageTitle(stage.id),()=>openStage(stage.id),'item-link'),el('p','detail-note','This is a target named in the roadmap. Progress is recorded for its parent layer.'),btn('Read full roadmap',()=>openReader(r.id),'secondary'));return;}
+ if(landmarks.has(id)){const landmark=landmarks.get(id),stage=stages.get(landmark.stageId),r=maps.get(landmark.roadmapId);$('selection-kind').textContent=landmark.kind.toUpperCase()+' / MATHEMATICAL PLANET';detailHeader(box,landmarkTitle(landmark),shortTitle(r.title),'#a8c8df');box.append(el('span','landmark-kind',landmark.kind));const text=el('div','md-content landmark-description');text.append(TauMarkdown.render(TauPresentation.landmarkDescription(landmark),{basePath:landmark.sourcePath}));box.append(text);renderPlanetReferences(box,landmark,r);section(box,'In this layer');box.append(btn(stageTitle(stage.id),()=>openStage(stage.id),'item-link'),el('p','detail-note','This is a target named in the roadmap. Progress is recorded for its parent layer.'),btn('Read full roadmap',()=>openReader(r.id),'secondary'));return;}
  if(stages.has(id)){
   const s=stages.get(id),r=maps.get(s.owner),p=progress.stage(id),mathematical=isMathematicalStage(id);
   $('selection-kind').textContent=mathematical?'MATHEMATICAL TOPIC':'PROJECT TASK';
@@ -271,5 +300,5 @@ window.addEventListener('popstate',()=>{state=readRoute();render();});window.add
 document.addEventListener('keydown',event=>{if((event.metaKey||event.ctrlKey)&&event.key.toLowerCase()==='k'){event.preventDefault();if(matchMedia('(max-width:600px)').matches){document.body.classList.add('catalogue-open');$('catalogue-button').setAttribute('aria-expanded','true');}$('search').focus();}if(event.key==='Escape'&&!document.querySelector('dialog[open]')&&state.selected){state.selected=null;renderInspector();graph.select(null);}});
 progress.subscribe(()=>{renderInspector();renderCatalogue();renderStats();if(state.activity!=='all')buildGraph();const update={};for(const n of graphModel.nodes){if(stages.has(n.id)){const p=progress.stage(n.id);update[n.id]={progress:stageProgress(p),progressLabel:labels[p.status]||''};}else if(maps.has(n.id)){const p=progress.roadmap(n.id);update[n.id]={progress:aggregateProgress(p),progressLabel:aggregateProgressLabel(p)};}else if(groups.has(n.id)){const p=summarize(DATA.roadmaps.filter(r=>r.group===n.id&&permitted(r)));update[n.id]={progress:aggregateProgress(p),progressLabel:aggregateProgressLabel(p,'layers complete')};}}graph.setProgress(update);});
 $('roadmap-total').textContent=DATA.roadmaps.length.toLocaleString();$('stage-total').textContent=DATA.stages.length.toLocaleString();document.querySelector('[data-view="subjects"] small').textContent=allGroups.length;document.querySelector('[data-view="all"] small').textContent=DATA.roadmaps.length;
-state=readRoute();render();window.TauExplorer={data:DATA,graph,progress,navigate,openItem,openStage,openReader,getState:()=>({...state}),getGraph:()=>graphModel,landmarks:landmarkList,openLandmark,enterGalaxy,ascend,enterStar,presentation,stageTitle,stageSummary,isMathematicalStage,landmarkTitle,version:'2026-09-15-sector-atlas'};
+state=readRoute();render();window.TauExplorer={data:DATA,graph,progress,navigate,openItem,openStage,openReader,getState:()=>({...state}),getGraph:()=>graphModel,landmarks:landmarkList,openLandmark,enterGalaxy,ascend,enterStar,presentation,references,stageTitle,stageSummary,isMathematicalStage,landmarkTitle,version:'2026-09-15-sector-atlas'};
 })();

@@ -5,6 +5,7 @@ REPO=Path(__file__).resolve().parents[1]
 ROOT=Path(tempfile.mkdtemp(prefix='tauceti-browser-'))
 url=next((arg for arg in sys.argv[1:] if not arg.startswith('--')),(REPO/'index.html').as_uri())
 desktop_only='--desktop-only' in sys.argv[1:]
+references_only='--references-only' in sys.argv[1:]
 FORMULA_PLANET='EllipticKTheory:E.2::landmark:k-0-x-xrightarrow-sim-mathbb-z-oplus-opera-e9le4x'
 results=[];errors=[];requests=[]
 def record(name,value=True):
@@ -114,6 +115,89 @@ def headings_clear_controls(page):
   window.__tauTestCaptionCollisions=collisions;
   return headings.length===TauExplorer.graph.debugState().constellationSubjects&&!collisions.length;
  }""")
+def reference_sources_are_exact(page, planet_id):
+ return page.evaluate(r"""id => {
+  const item=TauExplorer.landmarks.find(x=>x.id===id),entries=Object.values(TauExplorer.references.forLandmark(item)).flat();
+  return entries.length>0&&entries.every(entry=>{
+   const doc=TauExplorer.data.roadmaps.find(x=>x.sourcePath===entry.sourcePath);
+   if(!doc||!Number.isInteger(entry.sourceLine)||entry.sourceLine<1)return false;
+   const lines=doc.readme.split('\n'),length=entry.text.split('\n').length;
+   return lines.slice(entry.sourceLine-1,entry.sourceLine-1+length).join('\n').includes(entry.text);
+  });
+ }""",planet_id)
+def run_reference_checks(page,browser):
+ global mp
+ # A formula with no narrower citation must expose the roadmap bibliography as
+ # wider reading, while preserving the mathematical statement and source record.
+ page.evaluate("TauExplorer.openStage('EllipticKTheory:E.2')")
+ page.locator('[data-node-id="'+FORMULA_PLANET+'"] .tau-star-hit').click()
+ reading=page.locator('#inspector .planet-references')
+ record('Planet references distinguish wider reading from an exact topic citation',reading.is_visible() and page.evaluate("id => {const item=TauExplorer.landmarks.find(x=>x.id===id),refs=TauExplorer.references.forLandmark(item);return !refs.direct.length&&!refs.layer.length&&refs.roadmap.length>0}",FORMULA_PLANET) and reading.locator('[data-reference-scope="direct"],[data-reference-scope="layer"]').count()==0 and reading.locator('[data-reference-scope="roadmap"] h4').inner_text()=='Roadmap reading')
+ text=reading.inner_text()
+ record('Curve K-theory displays its recorded bibliography without inventing precision',all(name in text for name in ['Weibel V','Handbook II.2 and II.3','Bloch','Higher regulators','Thomason–Trobaugh']))
+ record('Reference lookup preserves the named planet and typeset mathematics',page.locator('.landmark-description math').count()>0 and page.evaluate(r"""id => {const item=TauExplorer.landmarks.find(x=>x.id===id);return item.title.includes('\\operatorname{Pic}')&&item.description===item.sourceExcerpt&&TauExplorer.landmarkTitle(item)==='Curve rank–determinant decomposition'&&TauExplorer.getState().selected===id}""",FORMULA_PLANET))
+ record('Curve K-theory citations point to the exact embedded source line',reference_sources_are_exact(page,FORMULA_PLANET))
+ record('Recorded bibliography metadata expands work titles and public links',reading.locator('.reference-works').count()>0 and all(name in reading.locator('.reference-works').inner_text() for name in ['Charles A. Weibel','The K-book: An introduction to algebraic K-theory','Handbook of K-theory','Robert Thomason','Thomas Trobaugh','Higher Algebraic K-Theory of Schemes and of Derived Categories']) and reading.locator('.reference-works a[href="https://sites.math.rutgers.edu/~weibel/Kbook.html"]').count()==1)
+ record('Reference links do not expose local reference PDFs',reading.evaluate(r"""e => Array.from(e.querySelectorAll('a')).every(a=>{const href=a.getAttribute('href')||'';return !/^file:/i.test(href)&&(!/\.pdf(?:[?#]|$)/i.test(href)||/^https?:\/\//i.test(href))})"""))
+ reading.locator('.reference-source').first.scroll_into_view_if_needed()
+ page.screenshot(path=str(ROOT/'preview-planet-references.png'),animations='disabled')
+ reading.locator('.reference-source').first.click()
+ record('A planet reference opens its owning roadmap source',page.locator('#reader[open]').is_visible() and page.locator('#reader-title').inner_text()=='K-theory of curves and elliptic curves' and 'Weibel V; Handbook II.2 and II.3' in page.locator('#reader-body').inner_text())
+ page.locator('#close-reader').click()
+
+ # An explicit paper in a TauCeti target belongs to that topic, not to every
+ # target in the roadmap. Its public paper link and local source stay separate.
+ topic='tauceti:TauCetiRoadmap/CombinatorialHeegaardFloer#milestone-g-7::landmark:k-u-k-1csrgny'
+ page.evaluate("TauExplorer.openStage('tauceti:TauCetiRoadmap/CombinatorialHeegaardFloer#milestone-g-7')")
+ page.locator('[data-node-id="'+topic+'"] .tau-star-hit').click()
+ direct=page.locator('.planet-references [data-reference-scope="direct"]')
+ record('A TauCeti mathematical target exposes its explicit topic reference',direct.locator('h4').inner_text()=='For this topic' and 'Milnor conjecture' in direct.inner_text() and direct.locator('a[href="https://arxiv.org/abs/1011.5265"]').count()==1 and reference_sources_are_exact(page,topic))
+ direct.locator('.reference-source').first.click()
+ record('TauCeti topic citation opens its preserved roadmap passage',page.locator('#reader[open]').is_visible() and 'Milnor conjecture' in page.locator('#reader-body').inner_text() and 'Combinatorial' in page.locator('#reader-title').inner_text())
+ page.locator('#close-reader').click()
+
+ layer_topic='AInfCohomology:AI.0::landmark:common-integral-perfectoid-ring-and-witt-v-1vm5fxh'
+ page.evaluate("TauExplorer.openStage('AInfCohomology:AI.0')")
+ page.locator('[data-node-id="'+layer_topic+'"] .tau-star-hit').click()
+ layer=page.locator('.planet-references [data-reference-scope="layer"]')
+ record('Layer source locators are labelled separately from direct topic citations',layer.locator('h4').inner_text()=='For this layer' and 'BMS1 §3; BS22 §§2–3,17' in layer.inner_text() and page.locator('.planet-references [data-reference-scope="direct"]').count()==0)
+
+ empty='AbelianSchemesAndArithmeticModuli:A1::landmark:relative-dimension-as-locally-constant-all-13bhoef'
+ page.evaluate("TauExplorer.openStage('AbelianSchemesAndArithmeticModuli:A1')")
+ page.locator('[data-node-id="'+empty+'"] .tau-star-hit').click()
+ record('A target without recorded references says so without invented reading',page.evaluate("id => Object.values(TauExplorer.references.forLandmark(TauExplorer.landmarks.find(x=>x.id===id))).every(items=>!items.length)",empty) and page.locator('.planet-references .detail-note').inner_text()=='No bibliography is listed for this topic in the embedded roadmap.' and page.locator('.planet-references .planet-reference,.planet-references a,.planet-references .reference-source').count()==0)
+
+ if not desktop_only:
+  mobile=browser.new_context(viewport={'width':375,'height':812},device_scale_factor=2,is_mobile=True,has_touch=True)
+  mp=mobile.new_page();mp.on('pageerror',lambda e:errors.append('mobile references: '+str(e)))
+  if url.startswith('file:'):
+   mp.route('http://**/*',lambda route:(requests.append(route.request.url),route.abort()))
+   mp.route('https://**/*',lambda route:(requests.append(route.request.url),route.abort()))
+  mp.goto(url,wait_until='load');mp.wait_for_function('!!window.TauExplorer')
+  mp.evaluate("TauExplorer.openStage('EllipticKTheory:E.2')");mp.wait_for_timeout(500)
+  mp.locator('[data-node-id="'+FORMULA_PLANET+'"] .tau-star-hit').tap()
+  touch=mobile.new_cdp_session(mp)
+  panel=mp.locator('#inspector-content');button=mp.locator('.planet-references .reference-source').first
+  def reference_button_in_view():
+   target=button.bounding_box();bounds=panel.bounding_box()
+   return bool(target and bounds and target['y']>=bounds['y'] and target['y']+target['height']<=bounds['y']+bounds['height'])
+  for _ in range(12):
+   if reference_button_in_view():break
+   bounds=panel.bounding_box();x=bounds['x']+bounds['width']/2;y=bounds['y']+bounds['height']-25
+   touch_swipe(mp,touch,(x,y),(x,max(bounds['y']+25,y-125)))
+  record('Phone users can scroll to planet references with touch',reference_button_in_view() and panel.evaluate('(e)=>e.scrollTop>0') and mp.evaluate('navigator.maxTouchPoints>0'))
+  record('Phone bibliography remains readable without covering navigation',mp.locator('.planet-references .reference-text').first.evaluate('(e)=>parseFloat(getComputedStyle(e).fontSize)>=12') and mp.locator('.cosmic-back').is_visible() and mp.evaluate('document.documentElement.scrollWidth<=innerWidth+1'))
+  mp.screenshot(path=str(ROOT/'preview-phone-planet-references.png'),animations='disabled')
+  button.tap()
+  record('Phone tap opens the embedded citation source',mp.locator('#reader[open]').is_visible() and mp.locator('#reader-title').inner_text()=='K-theory of curves and elliptic curves' and 'Thomason–Trobaugh' in mp.locator('#reader-body').inner_text())
+  mp.locator('#close-reader').tap()
+  record('Closing a citation reader preserves the selected planet',mp.evaluate('TauExplorer.getState().selected')==FORMULA_PLANET and mp.locator('.landmark-description math').count()>0)
+  mobile.close()
+def write_report(scope):
+ report={'url':url,'checks':results,'pageErrors':errors,'externalRequests':requests,'result':'PASS','scope':scope}
+ (ROOT/'BROWSER_VALIDATION.json').write_text(json.dumps(report,indent=2)+'\n')
+ print(json.dumps(report,indent=2))
+ print('Screenshots and report:',ROOT)
 with sync_playwright() as p:
  browser=p.chromium.launch(headless=True)
  context=browser.new_context(viewport={'width':1600,'height':1000},accept_downloads=True)
@@ -122,6 +206,13 @@ with sync_playwright() as p:
   page.route('http://**/*',lambda route:(requests.append(route.request.url),route.abort()))
   page.route('https://**/*',lambda route:(requests.append(route.request.url),route.abort()))
  page.goto(url,wait_until='load');page.wait_for_function('!!window.TauExplorer',timeout=15000)
+ if references_only:
+  run_reference_checks(page,browser)
+  record('No application exceptions',not errors)
+  if url.startswith('file:'):record('No network requests needed',not requests)
+  browser.close()
+  write_report('references desktop' if desktop_only else 'references desktop and mobile')
+  sys.exit(0)
  record('Native offline mathematics renders',page.evaluate("() => {const d=TauMarkdown.render('$x^2$');return !!d.querySelector('math')}"))
  record('180 roadmap and 1604 stage records',page.evaluate('TauExplorer.data.roadmaps.length===180 && TauExplorer.data.stages.length===1604'))
  page.screenshot(path=str(ROOT/'preview-overview.png'),animations='disabled')
@@ -427,10 +518,8 @@ with sync_playwright() as p:
  svgpath=ROOT/'verified-galaxies.svg';svgpath.write_text(svg)
  record('SVG export contains galaxy artwork and no scripts', 'tau-galaxy-glow' in svg and '<script' not in svg and 'file:///' not in svg)
  svgp=page.context.new_page();svgp.goto(svgpath.as_uri());record('SVG export opens independently',svgp.locator('svg').count()==1);svgp.close()
+ run_reference_checks(page,browser)
  record('No application exceptions',not errors)
  if url.startswith('file:'):record('No network requests needed',not requests)
  browser.close()
-report={'url':url,'checks':results,'pageErrors':errors,'externalRequests':requests,'result':'PASS','scope':'desktop' if desktop_only else 'desktop and mobile'}
-(ROOT/'BROWSER_VALIDATION.json').write_text(json.dumps(report,indent=2)+'\n')
-print(json.dumps(report,indent=2))
-print('Screenshots and report:',ROOT)
+write_report('desktop' if desktop_only else 'desktop and mobile')

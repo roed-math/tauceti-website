@@ -10,7 +10,7 @@ The atlas also runs entirely offline. Download `index.html` and open it in a bro
 
 - Scroll or pinch toward a **roadmap galaxy** to enter its constellation of **layer stars**. Keep zooming toward a star to discover its **orbiting mathematical planets**.
 - Tap or click a galaxy or star to make the same journey directly. Zoom out or use the back control to return to the previous level.
-- Formula planets have short plain-text names; clicking them opens the typeset definition, theorem target or construction from the source. Progress belongs to its layer star; planets do not carry independent completion claims.
+- Formula planets have short plain-text names; clicking them opens the typeset definition, theorem target or construction from the source. The details also list citations from the topic or layer and broader roadmap reading, with links back to the embedded source. Progress belongs to its layer star; planets do not carry independent completion claims.
 - The details panel explains the mathematics, tracked progress, prerequisites and consumers. The Links tab exposes the actual stage pairs behind dependencies.
 - Outlined galaxies mark **16 areas needing a dedicated roadmap**. They have no stages or completion percentages. Toggle them with Show unmapped areas.
 - Search for a subject, roadmap, or individual stage. Open the full roadmap to read its outline and source text.
@@ -81,6 +81,8 @@ The builder packages the checked-in snapshot. To update the published mathematic
 - `data/regions.json`: mathematical area descriptions and thematic links.
 - `data/opportunities.json`: additional areas with no dedicated roadmap in this atlas.
 - `data/landmark-labels.json`: short mathematical names for formula planets, separate from their source excerpts.
+- `data/bibliography.json`: supplied bibliographic identities for common source abbreviations; no local reference files.
+- `src/references.js`: extracts cited reading with its topic, layer or roadmap scope.
 - `src/landmarks.js`: source-faithful extraction of key definitions, results and constructions.
 - `content/`: sanitized source Markdown documents.
 - `scripts/build.py`: portable offline builder.

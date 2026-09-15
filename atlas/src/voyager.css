@@ -787,3 +787,18 @@ body.is-system-view #landscape-stats { display: none; }
 .source-layer > summary { color: #b7bdc0; font: 11px/1.6 var(--mono); cursor: pointer; padding: 8px 0; }
 .source-layer[open] > summary { color: #e4cb99; }
 .stage-description { margin: 20px 0; }
+
+/* Bibliographic notes travel with the mathematical planet. */
+.planet-references { margin: 24px 0; border-top: 1px solid #344a58; padding-top: 4px; }
+.reference-scope { margin: 18px 0 8px; font: 400 16px/1.4 Georgia, "Times New Roman", serif; color: #d7c7a9; }
+.planet-reference { padding: 10px 0 12px; border-bottom: 1px solid #263a48; }
+.reference-text { font-size: 12px; line-height: 1.75; overflow-wrap: anywhere; }
+.reference-text > :first-child { margin-top: 0; }
+.reference-text > :last-child { margin-bottom: 7px; }
+.reference-source { padding: 5px 0; text-align: left; font: 10px/1.6 var(--mono); color: #aac5d4; text-decoration: underline; text-underline-offset: 3px; }
+.reference-source:hover { color: #f1dec0; }
+@media (max-width: 600px) { .reference-source { min-height: 44px; } }
+
+.reference-works { padding-left: 16px; margin: 8px 0; color: #bac8d0; font-size: 12px; line-height: 1.7; }
+.reference-works li { margin: 7px 0; }
+.reference-works a { color: #e3c794; text-underline-offset: 3px; overflow-wrap: anywhere; }
