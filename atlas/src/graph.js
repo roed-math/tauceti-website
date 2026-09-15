@@ -51,6 +51,30 @@
     return lines.length ? lines : ['Untitled'];
   }
 
+  function galaxyName(node) {
+    const names={
+      AInfCohomology:'Integral A-inf cohomology',ArithmeticKTheory:'Arithmetic K-theory',
+      AutomorphicGaloisRepresentations:'Modular Galois representations',AutomorphicGaloisRepresentationsPartII:'Automorphic Galois II',
+      CompletedCohomologyPartII:'Completed cohomology II',ComplexComparisonPartII:'Complex comparison II',
+      AdicSpacesPartII:'Adic spaces II',ReductiveGroupsPartII:'Reductive groups II',ModularCurvesPartII:'Modular curves II',
+      ClassicalAdicEtaleCohomology:'Adic étale cohomology',DeformationAndDerivedPatchingAlgebra:'Deformation and patching',
+      DiamondEtaleCohomology:'Diamond étale cohomology',DiamondsAndVStacks:'Diamonds and v-stacks',
+      FarguesFontaineDiamonds:'Fargues–Fontaine diamonds',FoundationsAndLibraryIntegration:'Shared foundations',
+      EulerSystemsCyclotomicMainConjecture:'Cyclotomic main conjecture',PotentialAutomorphyInfrastructure:'Potential automorphy',
+      TorsionCohomologyInfrastructure:'Torsion cohomology',EllipticKTheory:'Elliptic K-theory',
+      KTheoryFiniteLocalFields:'Finite and local K-theory',SchemeKTheoryOperations:'Scheme K-theory',
+      KTheoryLowDegrees:'Low-degree K-theory',StableHomotopyKTheory:'Stable homotopy K-theory',
+      MotivesAndAlgebraicCycles:'Motives and cycles',RankZeroOneBSD:'Rank-zero and rank-one BSD',
+      'tauceti:TauCetiRoadmap/RepresentationTheory/ClassicalGroups':'Classical representations',
+      'tauceti:TauCetiRoadmap/RepresentationTheory/CompactGroups':'Compact representations',
+      'tauceti:TauCetiRoadmap/RepresentationTheory/LieHighestWeight':'Highest weight theory',
+      'tauceti:TauCetiRoadmap/RepresentationTheory/SchurWeyl':'Schur–Weyl duality',
+      'tauceti:TauCetiRoadmap/RepresentationTheory/SpinRepresentations':'Spin representations',
+      'tauceti:TauCetiRoadmap/OrthogonalL2Bases':'Orthogonal bases'
+    };
+    return names[node.id]||normalizeText(node.label).replace(/^The /i,'').split(/,|:| — /)[0].replace(/ And /g,' and ');
+  }
+
   function dimensions(node) {
     if (node.type === 'group') return { w: 276, h: 108, font: 17, lines: 3, chars: 27 };
     if (node.type === 'stage') return { w: 278, h: 100, font: 14, lines: 3, chars: 32 };
@@ -310,10 +334,6 @@
         const slot=assignment.get(subject.label),seed=hash(subject.label);
         const header=shortWide?Math.min(72,cellH-gap-18):Math.min(cellH*.46,small?92:196),left=slot.x-cellW/2+gap/2,top=slot.y-cellH/2+gap/2;
         const w=cellW-gap,h=cellH-gap,cx=slot.x,cy=top+header+(h-header)/2;
-        const cut=.08+(seed%7)*.012;
-        const outline=[[left+w*cut,top+h*.025],[left+w*.73,top],[left+w*.98,top+h*.16],
-          [left+w,top+h*.67],[left+w*(.88-cut*.2),top+h*.98],[left+w*.28,top+h],
-          [left+w*.015,top+h*.81],[left,top+h*.25]].map(point=>point.join(',')).join('L');
         const rx=Math.max(25,w/2-(shortWide?14:42)),ry=Math.max(9,(h-header)/2-(shortWide?5:small?8:32)),rotation=(seed%360)*Math.PI/180;
         // Golden-angle packing has no artificial row or prerequisite direction.
         // A roadmap's real links are represented in the edge layer below.
@@ -331,7 +351,7 @@
           this.constellationLinks.push(nearest);connected.add(nearest.target);pending.delete(nearest.target);
         }
         this.constellationSubjects.push({label:subject.label,x:cx,y:slot.y,labelX:cx,labelY:top+(shortWide?2:8),
-          sector:{x:left,y:top,w,h,header,col:slot.col,row:slot.row,outline},radius:Math.max(rx,ry),count:subject.nodes.length,color:subject.nodes[0].color||'#9aabc1'});
+          sector:{x:left,y:top,w,h,header,col:slot.col,row:slot.row},radius:Math.max(rx,ry),count:subject.nodes.length,color:subject.nodes[0].color||'#9aabc1'});
       });
       const regionMap=new Map(this.constellationSubjects.map(subject=>[subject.label,subject])),routes=new Map();
       this.edges.forEach(edge=>{
@@ -343,8 +363,7 @@
       });
       this.sectorRoutes=Array.from(routes.values()).map(route=>{
         const a=regionMap.get(route.source),b=regionMap.get(route.target),ar=a.sector,br=b.sector;
-        // Rectilinear routes use the empty corridors; sector fills mask any
-        // intermediate sector crossing, so clouds never become an edge tangle.
+        // Rectilinear routes connect the reserved spaces between subject clusters.
         const dx=b.x-a.x,dy=b.y-a.y;
         let points;
         if(ar.row===br.row){const sign=Math.sign(dx),sx=a.x+sign*ar.w/2,tx=b.x-sign*br.w/2;points=[[sx,a.y],[tx,b.y]];}
@@ -353,27 +372,86 @@
         return {...route,points};
       });
       this.constellationBounds={x:-chartW/2,y:-chartH/2,w:chartW,h:chartH};
+      this.layoutGalaxyNames();
+    }
+
+    layoutGalaxyNames() {
+      const compact=this.width<600||this.height<300;
+      this.constellationSubjects.forEach(subject=>{
+        const members=this.nodes.filter(node=>node.constellationGroup===subject.label),sector=subject.sector;
+        members.forEach(node=>{node.galaxyName=galaxyName(node);node.galaxyNameLines=wrapText(node.galaxyName,19,2);});
+        const ordered=members.slice().sort((a,b)=>Math.max(...b.galaxyNameLines.map(line=>line.length))-Math.max(...a.galaxyNameLines.map(line=>line.length))||a.id.localeCompare(b.id));
+        const cores=members.map(node=>{
+          const nearest=Math.min(...members.filter(other=>other!==node).map(other=>Math.hypot(other.x-node.x,other.y-node.y)));
+          const r=Math.min(8,nearest*.24);return {x:node.x-r,y:node.y-r,w:r*2,h:r*2};
+        });
+        const overlap=(a,b)=>Math.min(a.x+a.w,b.x+b.w)>Math.max(a.x,b.x)+1e-7&&Math.min(a.y+a.h,b.y+b.h)>Math.max(a.y,b.y)+1e-7;
+        // Large names are tried first. A dense area gets uniformly smaller type
+        // until every label fits, rather than accepting a tangle of overlaps.
+        let font=compact?14:22;
+        for(let attempt=0;attempt<28;attempt++,font*=.82){
+          const padding=font*.3,placed=[],positions=new Map();let failed=false;
+          const left=sector.x+2,right=sector.x+sector.w-2,top=sector.y+sector.header+2,bottom=sector.y+sector.h-2;
+          for(const node of ordered){
+            const w=Math.max(...node.galaxyNameLines.map(line=>line.length))*font*.68+padding*2,h=node.galaxyNameLines.length*font*1.22+padding*2;
+            const candidates=[],add=(x,y)=>candidates.push({x:Math.max(left,Math.min(right-w,x)),y:Math.max(top,Math.min(bottom-h,y)),w,h});
+            add(node.x-w/2,node.y+10);add(node.x-w/2,node.y-h-10);add(node.x+10,node.y-h/2);add(node.x-w-10,node.y-h/2);
+            placed.forEach(box=>{add(box.x-w-padding,node.y-h/2);add(box.x+box.w+padding,node.y-h/2);add(node.x-w/2,box.y-h-padding);add(node.x-w/2,box.y+box.h+padding);});
+            for(let y=top;y+h<=bottom+1e-7;y+=Math.max(.1,h*.55))for(let x=left;x+w<=right+1e-7;x+=Math.max(.1,w*.35))candidates.push({x,y,w,h});
+            let best=null,distance=Infinity;
+            candidates.forEach(box=>{
+              if(box.x<left||box.y<top||box.x+box.w>right+1e-7||box.y+box.h>bottom+1e-7||cores.some(core=>overlap(box,core))||placed.some(other=>overlap(box,other)))return;
+              const d=Math.hypot(box.x+w/2-node.x,box.y+h/2-node.y);if(d<distance){distance=d;best=box;}
+            });
+            if(!best){failed=true;break;}positions.set(node.id,best);placed.push(best);
+          }
+          if(!failed){members.forEach(node=>{node.galaxyNameFont=font;node.galaxyNameBox=positions.get(node.id);});return;}
+        }
+      });
     }
 
     constellationPath(link) {
       return `M${link.source.x},${link.source.y}L${link.target.x},${link.target.y}`;
     }
 
+    sectorRoutePath(route) {
+      // Keep aggregate routes in the open corridors. These bounds are used
+      // only for clipping; no enclosure or masking shape is drawn or exported.
+      const paths=[],epsilon=1e-8;
+      for(let index=1;index<route.points.length;index++){
+        const a=route.points[index-1],b=route.points[index],dx=b[0]-a[0],dy=b[1]-a[1];
+        if(Math.hypot(dx,dy)<epsilon)continue;
+        const hidden=[];
+        this.constellationSubjects.forEach(subject=>{
+          const box=subject.sector;if(!box)return;
+          let enter=0,leave=1;
+          for(const [origin,delta,min,max] of [[a[0],dx,box.x,box.x+box.w],[a[1],dy,box.y,box.y+box.h]]){
+            if(Math.abs(delta)<epsilon){if(origin<=min||origin>=max)return;continue;}
+            const first=(min-origin)/delta,last=(max-origin)/delta;
+            enter=Math.max(enter,Math.min(first,last));leave=Math.min(leave,Math.max(first,last));
+            if(leave-enter<=epsilon)return;
+          }
+          hidden.push([enter,leave]);
+        });
+        hidden.sort((x,y)=>x[0]-y[0]);
+        const append=(start,end)=>{if(end-start>epsilon)paths.push(`M${a[0]+dx*start},${a[1]+dy*start}L${a[0]+dx*end},${a[1]+dy*end}`);};
+        let cursor=0;
+        hidden.forEach(([start,end])=>{append(cursor,start);cursor=Math.max(cursor,end);});
+        append(cursor,1);
+      }
+      return paths.join('');
+    }
+
     drawConstellations() {
       const routes=this.clusterLayer.append('g').attr('class','tau-sector-routes');
       this.sectorRouteSelection=routes.selectAll('path').data(this.sectorRoutes||[]).enter().append('path')
         .attr('class','tau-sector-route').attr('data-source-area',route=>route.source).attr('data-target-area',route=>route.target)
-        .attr('d',route=>'M'+route.points.map(point=>point.join(',')).join('L')).attr('fill','none')
+        .attr('d',route=>this.sectorRoutePath(route)).attr('fill','none')
         .attr('stroke','#7e9cb1').attr('stroke-width',route=>.7+Math.min(1.4,Math.log1p(route.dependencies)*.25))
         .attr('vector-effect','non-scaling-stroke').attr('stroke-linejoin','round').attr('opacity',.42)
         .attr('role','img').attr('aria-label',route=>`Connections between ${route.source} and ${route.target}: ${route.dependencies} roadmap prerequisite links`)
         .attr('pointer-events','stroke').on('mouseenter',route=>this.highlightSectorRoute(route)).on('mouseleave',()=>this.highlightSectorRoute(null));
       this.sectorRouteSelection.append('title').text(route=>`Connections between ${route.source} and ${route.target}\n${route.dependencies} real roadmap prerequisite links. Select a roadmap to inspect their direction.`);
-      const regions=this.clusterLayer.append('g').attr('class','tau-survey-sectors').attr('aria-hidden','true');
-      regions.selectAll('path').data(this.constellationSubjects).enter().append('path').attr('class','tau-sector-boundary')
-        .attr('data-subject-label',subject=>subject.label).attr('d',subject=>'M'+subject.sector.outline+'Z')
-        .attr('fill',subject=>d3.interpolateRgb('#050a14',subject.color)(.035)).attr('fill-opacity',1)
-        .attr('stroke',subject=>subject.color).attr('stroke-opacity',.25).attr('stroke-width',.75).attr('vector-effect','non-scaling-stroke');
       this.constellationSelection=this.clusterLayer.selectAll('path.tau-constellation-link').data(this.constellationLinks).enter().append('path')
         .attr('class',link=>'tau-constellation-link'+(link.sourceEdge?' is-mathematical':' is-grouping'))
         .attr('data-source-edge',link=>String(link.sourceEdge)).attr('d',link=>this.constellationPath(link))
@@ -429,9 +507,8 @@
 
     highlightSectorRoute(route) {
       if(this.layout!=='constellations')return;
-      this.clusterLayer.selectAll('.tau-sector-boundary')
-        .attr('stroke-opacity',subject=>route&&(subject.label===route.source||subject.label===route.target)?.85:.25)
-        .attr('stroke-width',subject=>route&&(subject.label===route.source||subject.label===route.target)?1.4:.75);
+      this.clusterLayer.selectAll('.tau-constellation-subject').select('text')
+        .attr('fill',subject=>route&&(subject.label===route.source||subject.label===route.target)?'#e0c48c':'#e1dfd3');
       if(this.sectorRouteSelection)this.sectorRouteSelection.attr('stroke',item=>item===route?'#e0c48c':'#7e9cb1')
         .attr('opacity',item=>route?(item===route?.9:.13):.42);
     }
@@ -556,6 +633,14 @@
           .attr('stroke-width',edge=>(edge.source.id===active||edge.target.id===active?1.65:1)/scale);
       }
       this.nodeSelection.select('.tau-star-hit').attr('r',node=>node.screenHitRadius/scale);
+      if(this.layout==='constellations')this.nodeSelection.each(function(node){
+        const name=d3.select(this).select('.tau-galaxy-name'),box=node.galaxyNameBox;
+        if(!box)return;
+        const font=Math.min(node.galaxyNameFont,12/scale);
+        name.attr('transform',`translate(${box.x+box.w/2-node.x},${box.y-node.y})`).attr('display',null);
+        name.select('text').attr('font-size',font).attr('stroke-width',Math.min(font*.16,1.5/scale));
+        name.selectAll('tspan').attr('y',function(){return font*1.18+Number(this.getAttribute('data-line'))*font*1.22;});
+      });
       // Layer titles retain their space before transient landmark previews.
       const ordered=this.nodes.slice().sort((a,b)=>(b.type==='stage')-(a.type==='stage')||(b.id===active)-(a.id===active));
       const elements=new Map(); this.nodeSelection.each(function(node){elements.set(node.id,this);});
@@ -847,6 +932,12 @@
         this.nodeSelection.append('circle').attr('class', 'tau-star-hit').attr('r', 13);
         this.nodeSelection.each((node,index,elements)=>this.drawSpaceNode(elements[index],node));
         if(this.layout==='constellations')this.nodeSelection.append('circle').attr('class','tau-survey-beacon tau-space-art-marker').attr('fill',node=>node.unmapped?'#08121d':'#d7e2e6').attr('stroke',node=>node.unmapped?'#92a4bd':nodeAccent(node)).attr('pointer-events','none');
+        if(this.layout==='constellations')this.nodeSelection.each(function(node){
+          const name=d3.select(this).append('g').attr('class','tau-galaxy-name').attr('aria-hidden','true').attr('pointer-events','none');
+          const title=name.append('text').attr('fill','#d6dee5').attr('stroke','#060d18').attr('stroke-width',3)
+            .attr('paint-order','stroke fill').attr('stroke-linejoin','round').attr('font-weight',500).attr('text-anchor','middle');
+          (node.galaxyNameLines||wrapText(node.label,19,2)).forEach((line,index)=>title.append('tspan').attr('x',0).attr('data-line',index).text(line));
+        });
         this.nodeSelection.each(function(node) {
           const group = d3.select(this);
           group.append('path').attr('class','tau-node-label-leader').attr('display','none');
@@ -858,8 +949,8 @@
           const text = label.append('text');
           lines.forEach((line, i) => text.append('tspan').attr('x', 0).attr('y', i*15).text(line));
           label.append('text').attr('x', 0).attr('y', lines.length*15+7).style('font-size', '10px')
-            .style('fill', nodeAccent(node)).text(node.type === 'landmark' ? (node.landmarkKind || 'Mathematical landmark') : progressDescription(node) || 'Click to explore');
-          group.append('title').text(normalizeText(node.label) + '\n' + progressDescription(node) + '\nClick to inspect · Double-click to open');
+            .style('fill', nodeAccent(node)).text(node.type === 'landmark' ? (node.landmarkKind || 'Mathematical landmark') : progressDescription(node) || '');
+          group.append('title').text([normalizeText(node.label),progressDescription(node),'Click to inspect · Double-click to open'].filter(Boolean).join('\n'));
         });
       } else {
       this.nodeSelection.append('rect').attr('class', 'tau-card')
@@ -1101,7 +1192,7 @@
       return { nodes: this.nodes.length, edges: this.edges.length, constellationLinks: this.constellationLinks.length, constellationSubjects: this.constellationSubjects.length, groupConnections: this.groupConnections || [], sectorRoutes:(this.sectorRoutes||[]).map(({source,target,dependencies,witnesses})=>({source,target,dependencies,witnesses})), subjects:this.constellationSubjects.map(subject=>({label:subject.label,sector:subject.sector,caption:subject.screenCaption||null})),
         links: this.constellationLinks.map(link => ({group:link.group,sourceEdge:link.sourceEdge,source:{x:link.source.x,y:link.source.y},target:{x:link.target.x,y:link.target.y}})), layout: this.layout, selectedId: this.selectedId, semantic:{...this.semantic,canAscend:this.canAscend},orbits:(this.orbits||[]).length,
         width: this.width, height: this.height, transform: { x: this.transform.x, y: this.transform.y, k: this.transform.k },
-        positions: this.nodes.map(node => ({ id: node.id, x: node.x, y: node.y, w: node.w, h: node.h, rank: node.rank == null ? null : node.rank, dependencyRank: node.rank == null ? null : node.rank, dependencyOrderValid: node.dependencyOrderValid, caption: node.screenCaption || null, progress: progressValue(node.progress), accent: nodeAccent(node) })) };
+        positions: this.nodes.map(node => ({ id: node.id, x: node.x, y: node.y, w: node.w, h: node.h, rank: node.rank == null ? null : node.rank, dependencyRank: node.rank == null ? null : node.rank, dependencyOrderValid: node.dependencyOrderValid, caption: node.screenCaption || null, galaxyName:node.galaxyName||null,galaxyNameVisible:this.layout==='constellations',galaxyNameFont:node.galaxyNameFont||null,galaxyNameBox:node.galaxyNameBox||null,progress: progressValue(node.progress), accent: nodeAccent(node) })) };
     }
 
     destroy() {

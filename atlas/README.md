@@ -10,7 +10,7 @@ The atlas also runs entirely offline. Download `index.html` and open it in a bro
 
 - Scroll or pinch toward a **roadmap galaxy** to enter its constellation of **layer stars**. Keep zooming toward a star to discover its **orbiting mathematical planets**.
 - Tap or click a galaxy or star to make the same journey directly. Zoom out or use the back control to return to the previous level.
-- Each planet opens a definition, theorem target or construction extracted from the source. Progress belongs to its layer star; planets do not carry independent completion claims.
+- Formula planets have short plain-text names; clicking them opens the typeset definition, theorem target or construction from the source. Progress belongs to its layer star; planets do not carry independent completion claims.
 - The details panel explains the mathematics, tracked progress, prerequisites and consumers. The Links tab exposes the actual stage pairs behind dependencies.
 - Outlined galaxies mark **16 areas needing a dedicated roadmap**. They have no stages or completion percentages. Toggle them with Show unmapped areas.
 - Search for a subject, roadmap, or individual stage. Open the full roadmap to read its outline and source text.
@@ -19,7 +19,7 @@ The atlas also runs entirely offline. Download `index.html` and open it in a bro
 - Use **Browse** on a phone, or **⌘/Ctrl K** on a keyboard to search. Mobile details share the screen with the chart; pinch, tap and back controls remain available. View links preserve the current roadmap and planetary system.
 - Mathematics is typeset offline with native MathML; hover a formula to see its source.
 
-The outer atlas groups roadmap galaxies into named mathematical regions, with clear space between them. Recorded cross-area dependencies influence their placement. At overview scale, routes between regions summarize real roadmap prerequisites; their labels give the number of underlying connections. Each roadmap has one primary home, with thematic links to other relevant areas.
+The outer atlas groups roadmap galaxies into named mathematical regions, with clear space between them. Each galaxy keeps a compact mathematical name; zoom into dense areas to read individual labels, or select a galaxy for its full title. Recorded cross-area dependencies influence their placement. At overview scale, routes between regions summarize real roadmap prerequisites; their labels give the number of underlying connections. Each roadmap has one primary home, with thematic links to other relevant areas.
 
 Zoom closer or select a roadmap to inspect its individual prerequisite paths. Inside a galaxy, stars name mathematical topics and form an irregular constellation shaped by their recorded dependencies. Prerequisite arrows point **prerequisite → consumer**; the Links tab provides supporting stage pairs. Inside a layer, planetary orbits express membership in that layer, not additional prerequisites. Dotted paths are references to related plans or context for an unmapped area, and carry no prerequisite claim. Positions, galaxy shapes and orbits are visual aids, not astronomical coordinates or mathematical measurements.
 
@@ -49,9 +49,9 @@ The source snapshot includes local working-tree material and older maintained pr
 
 ## Progress colours and local updates
 
-Stage colours distinguish not-started, in-progress, and complete statuses. Unknown status is explicitly labelled. The amber midpoint is a status category, not a claim that a theorem is half proved.
+Stage colours distinguish not-started, in-progress, and complete statuses. Layers without recorded status have no progress label or status colour. The amber midpoint is a status category, not a claim that a theorem is half proved.
 
-Roadmap and subject percentages count **completed terminal targets divided by all tracked terminal targets**. Unknown targets remain in the denominator. A parent stage and its children are never counted twice; collection roadmaps aggregate their child roadmaps. Completing every extracted target does not by itself certify all source-proof, acceptance, or formal-verification requirements. A separately displayed roadmap-level report retains its own provenance.
+Roadmap and subject percentages count **completed terminal targets divided by all tracked terminal targets**. Unknown targets remain in the denominator; no percentage is shown when an entire roadmap or subject has no status data. A parent stage and its children are never counted twice; collection roadmaps aggregate their child roadmaps. Completing every extracted target does not by itself certify all source-proof, acceptance, or formal-verification requirements. A separately displayed roadmap-level report retains its own provenance.
 
 Open a stage to change its status and add an evidence note. A parent-stage update includes its descendants. Your changes are local overrides, stored in the current browser when storage is available; they do not edit the published data or upstream repositories. “Use recorded status” removes the corresponding local override and its descendants.
 
@@ -80,6 +80,7 @@ The builder packages the checked-in snapshot. To update the published mathematic
 - `data/status.json`: explicitly mapped source-status evidence.
 - `data/regions.json`: mathematical area descriptions and thematic links.
 - `data/opportunities.json`: additional areas with no dedicated roadmap in this atlas.
+- `data/landmark-labels.json`: short mathematical names for formula planets, separate from their source excerpts.
 - `src/landmarks.js`: source-faithful extraction of key definitions, results and constructions.
 - `content/`: sanitized source Markdown documents.
 - `scripts/build.py`: portable offline builder.
