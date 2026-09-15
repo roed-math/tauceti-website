@@ -1,6 +1,6 @@
 # Tau Ceti Explorer
 
-An interactive atlas of mathematical roadmaps: explore the subject branches, inspect a roadmap, then open its internal stage layers and dependencies.
+An interactive atlas of mathematical roadmaps: explore mathematical constellations, inspect a roadmap, then open its internal stage layers and dependencies.
 
 **[Open the interactive atlas](https://cbirkbeck.github.io/tauceti-explorer/)**
 
@@ -8,29 +8,40 @@ The atlas also runs entirely offline. Download `index.html` and open it in a bro
 
 ## Explore
 
-- Click a node to read its description, progress, prerequisites, and consumers.
-- Double-click a node, or use its Open button, to descend from subjects to roadmaps to stage layers.
+- Click a **roadmap galaxy** to zoom into its **layer constellations**.
+- Click a layer heading to focus it; its **mathematical stars** open definitions, theorem targets and constructions extracted from the source. Stars do not carry independent completion claims.
+- The details panel explains the mathematics, tracked progress, prerequisites and consumers. The Links tab exposes the actual stage pairs behind dependencies.
+- Outlined galaxies mark **16 areas needing a dedicated roadmap**. They have no stages or completion percentages. Toggle them with Show unmapped areas.
 - Search for a subject, roadmap, or individual stage. Open the full roadmap to read its outline and source text.
 - Scroll to zoom, drag to pan, and use Fit to recover the whole view. Export the current graph as SVG.
 - Open **Mission status** for a progress breakdown by area. Filter the collection by layer activity, and pin roadmaps for your next visit.
 - Use **Browse** on a phone, or **⌘/Ctrl K** on a keyboard to search. View links preserve the current map.
 - Mathematics is typeset offline with native MathML; hover a formula to see its source.
 
-Subject branches organize the landscape visually. Dependency arrows point **prerequisite → consumer**. Branches and document-reference links are navigation aids; they do not add mathematical prerequisite claims.
+The outer atlas groups roadmap galaxies by their mathematical subject. Recorded cross-area dependencies influence the distance between regions; stronger connections bring related areas closer. Each roadmap has one primary home, with thematic links to other relevant areas.
+
+Inside a galaxy, layers form constellations. Faint lines attach key mathematical items to their layer. Actual prerequisite arrows point **prerequisite → consumer**; the Links tab provides supporting stage pairs. Dotted links are references to related plans or context for an unmapped area, and carry no prerequisite claim. Chart positions and decorative group lines are visual aids, not astronomical coordinates.
+
+The interface takes its cues from Tau Ceti and Voyager: a quiet star field, precise chart lines, ivory type, and brass instrument details. Reading panels use the same dark observatory palette. There are no external fonts, image downloads, or animated backgrounds.
 
 ## Included snapshot
 
 | Item | Count |
 | --- | ---: |
-| Subject groups | 13 |
+| Areas with roadmaps | 13 |
+| Additional subject regions | 4 |
+| Unmapped areas needing a roadmap | 16 |
 | Roadmaps | 180 |
-| Stage nodes | 1,604 |
+| Stage nodes / layer constellations | 1,604 |
+| Source-backed mathematical stars | 3,505 |
 | Terminal targets counted for progress | 1,543 |
 | Roadmap dependency links | 1,011 |
 | Stage dependency links | 3,508 |
 | Sanitized source Markdown documents | 214 |
 
 The September 2026 edition combines 152 revised number-theory campaign roadmaps with 28 roadmaps from [TauCetiRoadmap](https://github.com/TauCetiProject/TauCetiRoadmap). The source documents are bundled under [`content/`](content/). The 12 companion guides include the campaign execution protocol, conventions and scope. Reference PDFs and extracted book text are not included. [`data/PUBLICATION.json`](data/PUBLICATION.json) records the publication checks; the atlas and status data retain source hashes, reported commit IDs, and dates.
+
+All 180 overview summaries explain the mathematical objects, results and scope for readers of the atlas. Original roadmap texts remain available in full. Unmapped areas identify missing dedicated plans in this catalogue, not the absence of formal mathematics in Tau Ceti or mathlib.
 
 The source snapshot includes local working-tree material and older maintained progress reports. It is not a fresh verification of the Tau Ceti code or of every mathematical proof. Roadmap-level cycles can reflect dependencies between different early and late stages; the encoded stage dependency graph is acyclic.
 
@@ -64,6 +75,9 @@ The builder packages the checked-in snapshot. To update the published mathematic
 - `vendor/`: bundled D3, KaTeX, and their licences.
 - `data/atlas.json`: roadmap text, stage hierarchy, and graph relationships.
 - `data/status.json`: explicitly mapped source-status evidence.
+- `data/regions.json`: mathematical area descriptions and thematic links.
+- `data/opportunities.json`: additional areas with no dedicated roadmap in this atlas.
+- `src/landmarks.js`: source-faithful extraction of key definitions, results and constructions.
 - `content/`: sanitized source Markdown documents.
 - `scripts/build.py`: portable offline builder.
 - `index.html`: generated entry point for offline use and GitHub Pages.

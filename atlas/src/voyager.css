@@ -1,4 +1,5 @@
-/* Tau Ceti Atlas — a night chart beside an open field notebook.
+/* Tau Ceti Atlas — mathematics charted as constellations.
+   Deep observatory surfaces, engraved brass, and clear starlight.
    System fonts, CSS geometry, and embedded mathematics only. */
 :root {
   --night: #0c1521;
@@ -6,7 +7,9 @@
   --night-raised: #172431;
   --brass: #c6a46b;
   --brass-dim: #8f7956;
-  --paper: #f3eee3;
+  --paper: #101b28;
+  --starlight: #bed5e6;
+  --reading: #c4cdd2;
   --ink: #eae4d8;
   --muted: #a2adb5;
   --line: #2b3844;
@@ -124,7 +127,7 @@ button { transition: background-color .12s, color .12s, border-color .12s; }
 .sidebar-foot { border-color: #2d3a44; color: #b1b5ad; font-size: 9px; letter-spacing: .1px; line-height: 1.85; }
 .sidebar-foot span { color: #899ba8; }
 
-/* The working sky: sparse fixed stars, no moving background or remote assets. */
+/* The working sky. A calm, fixed chart with room for the mathematics. */
 .main-panel { background: #101b28; }
 .context-bar { border-color: #2a3844; background: #101b27; }
 .breadcrumbs { font-size: 10px; color: #a4afb8; }
@@ -149,22 +152,7 @@ button { transition: background-color .12s, color .12s, border-color .12s; }
   border-top-color: #5e5a4c;
   border-radius: 3px;
   background-color: #0b1420;
-  background-image:
-    radial-gradient(circle at 7% 17%, #d7d5c584 0 .65px, transparent 1.1px),
-    radial-gradient(circle at 16% 62%, #e8dac16b 0 .7px, transparent 1.15px),
-    radial-gradient(circle at 23% 8%, #b5c6d867 0 .65px, transparent 1px),
-    radial-gradient(circle at 32% 83%, #d4d1c769 0 .6px, transparent 1px),
-    radial-gradient(circle at 39% 37%, #b7c6ce62 0 .7px, transparent 1.1px),
-    radial-gradient(circle at 46% 13%, #dbcfb16b 0 .6px, transparent 1px),
-    radial-gradient(circle at 53% 69%, #d1d8d46b 0 .65px, transparent 1.1px),
-    radial-gradient(circle at 61% 92%, #becfd65c 0 .75px, transparent 1.15px),
-    radial-gradient(circle at 67% 29%, #e2d3b575 0 .7px, transparent 1.1px),
-    radial-gradient(circle at 74% 56%, #b7c8d365 0 .6px, transparent 1px),
-    radial-gradient(circle at 82% 11%, #d1d7d071 0 .7px, transparent 1.15px),
-    radial-gradient(circle at 88% 78%, #cfd4cc69 0 .6px, transparent 1px),
-    radial-gradient(circle at 95% 42%, #eadbbb78 0 .7px, transparent 1.1px),
-    radial-gradient(ellipse at 50% 42%, #20374a38, transparent 66%);
-  background-size: auto;
+  background-image: radial-gradient(ellipse at 44% 42%, #263c5230, transparent 72%);
   box-shadow: inset 0 0 75px #02070d33;
 }
 .tau-graph { background: transparent !important; }
@@ -175,35 +163,82 @@ button { transition: background-color .12s, color .12s, border-color .12s; }
 .tau-graph .tau-node.is-selected .tau-card,
 .tau-graph .tau-node:focus .tau-card { stroke: #d8b77a !important; }
 .tau-graph .tau-node.is-neighbor .tau-card { stroke: #bba574 !important; }
-/* Card text stays dark on its existing pale status tint. Only sky labels are pale. */
-.tau-graph[data-layout="vessels"] .tau-vessel-label text,
-.tau-graph[data-layout="vessels"] .tau-vessel-subject text { fill: #eee1c9 !important; }
-.tau-graph[data-layout="vessels"] .tau-vessel-subject > text:first-of-type {
+/* Roadmap and layer cards keep their pale progress tint and dark lettering.
+   The overview uses discrete stars, with text reserved for named constellations. */
+.tau-graph[data-layout="constellations"] .tau-constellation-link {
+  stroke: #8aa9bc !important;
+  stroke-opacity: .34;
+}
+.tau-graph[data-layout="constellations"] .tau-constellation-subject text {
+  fill: #e7e1d4 !important;
+}
+.tau-graph[data-layout="constellations"] .tau-constellation-subject > text:first-of-type {
   font-family: Georgia, "Times New Roman", serif !important;
   font-weight: 400 !important;
 }
-.tau-graph[data-layout="vessels"] .tau-vessel-subject > text:last-of-type {
+.tau-graph[data-layout="constellations"] .tau-constellation-subject > text:last-of-type {
   font-family: var(--mono) !important;
-  fill: #bdac8c !important;
+  fill: #a7b8c5 !important;
 }
-.tau-graph[data-layout="vessels"] .tau-vessel-subject rect {
-  fill: #111d2b !important;
-  fill-opacity: .95 !important;
+.tau-graph[data-layout="constellations"] .tau-constellation-subject rect {
+  fill: #101b28 !important;
+  fill-opacity: .94 !important;
   rx: 3px;
 }
-.tau-graph[data-layout="vessels"] .tau-vessel-node-label rect {
+.tau-graph[data-layout="constellations"] .tau-constellation-subject:hover text,
+.tau-graph[data-layout="constellations"] .tau-constellation-subject:focus text {
+  fill: #f1d6a0 !important;
+}
+.tau-graph[data-layout="constellations"] .tau-star-node-label rect {
   fill: #13212e !important;
-  stroke: #667061 !important;
-  fill-opacity: .97 !important;
+  stroke: #647d8c !important;
+  fill-opacity: .98 !important;
   rx: 3px;
 }
-.tau-graph[data-layout="vessels"] .tau-vessel-node-label text { fill: #eee6d6 !important; font-weight: 500 !important; }
-.tau-graph[data-layout="vessels"] .tau-leaf { stroke: #111d29 !important; }
-.tau-graph[data-layout="vessels"] .tau-node.is-selected .tau-leaf,
-.tau-graph[data-layout="vessels"] .tau-node.is-hovered .tau-leaf,
-.tau-graph[data-layout="vessels"] .tau-node:focus .tau-leaf { stroke: #f1d6a0 !important; }
-.tau-graph[data-layout="vessels"] .tau-leaf-ring { stroke: #dac08b !important; }
-.tau-graph[data-layout="vessels"] .is-selected .tau-leaf-ring { stroke: #f1d6a0 !important; }
+.tau-graph[data-layout="constellations"] .tau-star-node-label text {
+  fill: #eee6d6 !important;
+  font-weight: 500 !important;
+}
+.tau-graph[data-layout="constellations"] .tau-node.is-selected .tau-star-ring,
+.tau-graph[data-layout="constellations"] .tau-node.is-hovered .tau-star-ring,
+.tau-graph[data-layout="constellations"] .tau-node:focus .tau-star-ring {
+  stroke: #f1d6a0 !important;
+}
+.tau-graph[data-layout="constellations"] .tau-chart-star { fill: #cadbe7; }
+.tau-graph[data-layout="constellations"] .tau-chart-orbit { stroke: #829bac; }
+/* Each roadmap is a galaxy; its layers are local constellations.
+   Definition/theorem stars stay neutral: completion belongs to their layer. */
+.tau-layer-constellations-layout .tau-stage-label > text:first-of-type {
+  fill: #eee4d1 !important;
+  font-family: Georgia, "Times New Roman", serif !important;
+  font-weight: 400 !important;
+}
+.tau-layer-constellations-layout .tau-stage-label > text:last-of-type {
+  fill: #b9c7cd !important;
+  font-family: var(--mono) !important;
+  font-weight: 400 !important;
+}
+.tau-layer-constellations-layout .tau-stage-label rect,
+.tau-layer-constellations-layout .tau-landmark-label rect {
+  fill: #12212e !important;
+  fill-opacity: .97 !important;
+  stroke: #425d6e !important;
+  rx: 3px;
+}
+.tau-layer-constellations-layout .tau-landmark-label text {
+  fill: #d8e6ec !important;
+}
+.tau-layer-constellations-layout .tau-landmark-core { fill: #dfebf0 !important; }
+.tau-layer-constellations-layout .tau-layer-containment {
+  stroke: #87a2b5 !important;
+  stroke-opacity: .3;
+}
+.tau-layer-constellations-layout .tau-landmark-node.is-selected .tau-landmark-core,
+.tau-layer-constellations-layout .tau-landmark-node.is-hovered .tau-landmark-core,
+.tau-layer-constellations-layout .tau-landmark-node:focus .tau-landmark-core {
+  fill: #f5daad !important;
+  stroke: #f5daad !important;
+}
 .graph-tools { background: #152331; border-color: #46515b; border-radius: 3px; box-shadow: 0 3px 12px #03080e66; }
 .graph-tools button { color: #e4d5b9; }
 .graph-tools button:hover { background: #31404a; }
@@ -217,99 +252,116 @@ button { transition: background-color .12s, color .12s, border-color .12s; }
 .progress-legend .amber { background: #d9b06c; }
 .progress-legend .green { background: #81b59a; }
 
-/* Field notes: the warm, readable surface is reserved for actual mathematics. */
+/* Reading surfaces: the observatory palette continues into the mathematics.
+   Luminance, spacing, and restrained rules establish the hierarchy. */
 .inspector, dialog {
-  --ink: #273640;
-  --muted: #686e6d;
-  --line: #d3ccbd;
-  --surface: #faf6ed;
-  --teal: #765c2f;
-  --navy: #22394a;
-  background: var(--paper);
+  --ink: #e8e6dd;
+  --muted: #a2b1bd;
+  --line: #344654;
+  --surface: #162532;
+  --teal: #bed5e6;
+  --navy: #203847;
+  background: #101b28;
   color: var(--ink);
-  color-scheme: light;
-  scrollbar-color: #b1a793 transparent;
+  color-scheme: dark;
+  scrollbar-color: #506776 transparent;
 }
-.inspector { border-left-color: #a79b82; }
-.inspector-bar { border-bottom-color: #cdc4b3; color: #74674e; font-size: 9px; letter-spacing: 1.5px; }
-.icon-button { color: #786f5d; border-radius: 3px; }
-.icon-button:hover { background: #e4ddce; color: #273640; }
+.inspector { border-left-color: #425461; }
+.inspector-bar { border-bottom-color: #334550; color: #bcac8c; font-size: 9px; letter-spacing: 1.5px; }
+.icon-button { color: #b6c5ce; border-radius: 3px; }
+.icon-button:hover { background: #223543; color: #f2dfba; }
 #inspector-content { padding-top: 27px; }
-.detail-color { height: 3px; width: 47px; border-radius: 0; margin-bottom: 19px; box-shadow: 0 1px #c9c1b0; }
-.detail-title { font: 400 27px/1.2 Georgia, "Times New Roman", serif; letter-spacing: -.45px; color: #27323a; text-wrap: balance; }
-.detail-subtitle { font: 10px/1.7 var(--mono); color: #736b5a; }
-.detail-summary { font-size: 13px; line-height: 1.85; color: #4f5a5e; }
-.detail-stats { border-color: #d2c8b5; padding-block: 14px; }
-.detail-stats strong, .progress-caption strong { font-family: Georgia, "Times New Roman", serif; font-weight: 400; font-size: 25px; }
-.detail-stats span, .progress-caption span { color: #6f7065; font-size: 10px; }
+.detail-color { height: 3px; width: 47px; border-radius: 0; margin-bottom: 19px; box-shadow: 0 1px #060e17; }
+.detail-title { font: 400 27px/1.2 Georgia, "Times New Roman", serif; letter-spacing: -.45px; color: #f0e7d6; text-wrap: balance; }
+.detail-subtitle { font: 10px/1.7 var(--mono); color: #b6ad9b; }
+.detail-summary { font-size: 13px; line-height: 1.85; color: #c1ccd3; }
+.detail-stats { border-color: #384c5a; padding-block: 14px; }
+.detail-stats strong, .progress-caption strong { font-family: Georgia, "Times New Roman", serif; font-weight: 400; font-size: 25px; color: #eee2c9; }
+.detail-stats span, .progress-caption span { color: #afbdc7; font-size: 10px; }
 .primary { background: #cfb07c; color: #14212c; border-radius: 3px; font-size: 11px; font-weight: 600; }
 .primary:hover { background: #e1c89b; }
-.inspector .primary, dialog .primary { background: #243b4b; color: #f5ecda; }
-.inspector .primary:hover, dialog .primary:hover { background: #355364; }
-.secondary { color: #625137; border-color: #bdb094; border-radius: 3px; font-size: 11px; }
-.secondary:hover { background: #e8dfcd; border-color: #9f8963; }
+.inspector .primary, dialog .primary { background: #cfb07c; color: #14212c; }
+.inspector .primary:hover, dialog .primary:hover { background: #e1c89b; }
+.secondary { color: #d9c69f; border-color: #71664f; border-radius: 3px; font-size: 11px; }
+.secondary:hover { background: #283744; border-color: #b89a66; }
 .view-actions .secondary { color: #e2c99c; border-color: #7b6b4e; }
 .view-actions .secondary:hover { background: #2c3440; }
-.inspector .quiet, dialog .quiet { color: #6a6355; }
-.inspector .quiet:hover, dialog .quiet:hover { background: #e6decd; color: #253c4a; }
-.detail-tabs { border-color: #cfc5b2; gap: 20px; }
-.detail-tabs button { color: #726e61; font-size: 11px; }
-.detail-tabs button.active { color: #6f542a; border-bottom-color: #9b783f; }
-.section-label { color: #756447; font-size: 9px; letter-spacing: 1.3px; }
-.item-link { background: #f8f4eb; border-color: #d7cebd; border-radius: 3px; color: #35444b; padding-block: 10px; }
-.item-link:hover { background: #e9e2d2; border-color: #b7a27a; }
-.item-link .item-key { color: #866329; font-size: 9px; }
-.item-link .arrow, .item-link small { color: #706f63; }
-.stage-tree summary { color: #756244; font-family: var(--mono); font-size: 9px; padding-block: 7px; }
-.stage-tree .substage { border-color: #baac8e; }
-.stage-state-dot { box-shadow: 0 0 0 1px #7f78661a; }
-.status-chip { background: #e8dfcd; border-color: #c9bc9f; border-radius: 3px; color: #655334; font-size: 9px; line-height: 1.6; }
-.inline-owner { color: #70572f; text-decoration: underline; text-decoration-color: #baa783; text-underline-offset: 3px; }
-.detail-note { color: #696e69; line-height: 1.8; }
-.progress-track { background: #dbd4c5; height: 4px; border-radius: 1px; }
-.progress-controls { background: #eae3d5; border-color: #cdbfa7; border-radius: 3px; padding: 15px; }
-.progress-controls select, .progress-controls textarea { background: #faf7f0; border-color: #bcb29d; border-radius: 3px; color: #263943; }
-.progress-controls textarea::placeholder { color: #77776d; }
-.progress-evidence summary { color: #786444; }
-.progress-evidence a { text-underline-offset: 3px; }
+.inspector .quiet, dialog .quiet { color: #b7c6ce; }
+.inspector .quiet:hover, dialog .quiet:hover { background: #223442; color: #f1dfba; }
+.detail-tabs { border-color: #3a4b56; gap: 20px; }
+.detail-tabs button { color: #afbdc7; font-size: 11px; }
+.detail-tabs button.active { color: #e2c28d; border-bottom-color: #c6a46b; }
+.section-label { color: #c5b28c; font-size: 9px; letter-spacing: 1.3px; }
+.item-link { background: #142330; border-color: #324856; border-radius: 3px; color: #d7e0e4; padding-block: 10px; }
+.item-link:hover { background: #1f3443; border-color: #8095a2; }
+.item-link .item-key { color: #d9bc83; font-size: 9px; }
+.item-link .arrow, .item-link small { color: #a7b8c3; }
+.stage-tree summary { color: #bfaf90; font-family: var(--mono); font-size: 9px; padding-block: 7px; }
+.stage-tree .substage { border-color: #50616a; }
+.stage-state-dot { box-shadow: 0 0 0 1px #dee5e51a; }
+.status-chip { background: #24313a; border-color: #6c624e; border-radius: 3px; color: #dcc698; font-size: 9px; line-height: 1.6; }
+.inline-owner { color: #c2d8e7; text-decoration: underline; text-decoration-color: #617d90; text-underline-offset: 3px; }
+.inline-owner:hover { color: #f0d8ac; }
+.detail-note { color: #a9b8c0; line-height: 1.8; }
+.landmark-kind {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  color: #d8bd88;
+  font: 10px/1.6 var(--mono);
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  margin-bottom: 12px;
+}
+.landmark-kind::before { content: "✦"; font-size: 11px; }
+.landmark-source { color: #a9bdcb; font-size: 11px; line-height: 1.8; }
+.landmark-source a { color: #c0d8e7; text-underline-offset: 3px; }
+.progress-track { background: #304450; height: 4px; border-radius: 1px; }
+.progress-controls { background: #142431; border-color: #3a5261; border-radius: 3px; padding: 15px; }
+.progress-controls select, .progress-controls textarea { background: #0c1924; border-color: #536877; border-radius: 3px; color: #e4e6e1; }
+.progress-controls textarea::placeholder { color: #9aabb6; opacity: 1; }
+.progress-evidence summary { color: #c7b58f; }
+.progress-evidence a { color: #bed5e6; text-underline-offset: 3px; }
 
-.md-content { color: #38464d; font-size: 13px; line-height: 1.85; }
+.md-content { color: #c6d0d6; font-size: 13px; line-height: 1.85; }
 .md-content h1, .md-content h2, .md-content h3, .md-content h4, .md-content h5 {
   font-family: Georgia, "Times New Roman", serif;
-  color: #28353d;
+  color: #eee6d6;
   font-weight: 400;
   letter-spacing: -.15px;
 }
-.md-content h2 { border-top: 1px solid #d4cbb9; padding-top: 22px; margin-top: 1.8em; }
+.md-content h2 { border-top: 1px solid #344a58; padding-top: 22px; margin-top: 1.8em; }
 .md-content h3 { font-size: 19px; }
-.md-content a { color: #7c5929; text-decoration-thickness: 1px; text-underline-offset: 3px; }
-.md-content a:hover { color: #263e4d; }
-.md-content pre { background: #e9e4d8; border-color: #ccc2af; border-radius: 3px; color: #29424b; }
-.md-content code { background: #e6e0d2; color: #34444b; border-radius: 2px; font-size: .85em; }
+.md-content a { color: #bbd6e7; text-decoration-thickness: 1px; text-underline-offset: 3px; }
+.md-content a:hover { color: #efcfa1; }
+.md-content strong { color: #e4e6df; font-weight: 600; }
+.md-content pre { background: #0a1620; border-color: #304956; border-radius: 3px; color: #c5d9df; }
+.md-content code { background: #223542; color: #d7e0dd; border-radius: 2px; font-size: .85em; }
 .md-content pre code { background: transparent; font-size: inherit; color: inherit; }
-.md-content td, .md-content th { border-color: #c9beaa; }
-.md-content th { background: #e6ddcc; color: #3f433c; }
-.md-content blockquote { border-left-color: #aa8851; color: #656350; }
-.md-content hr { border-color: #d2c7b4; }
+.md-content td, .md-content th { border-color: #3b5361; }
+.md-content th { background: #203440; color: #dddcca; }
+.md-content blockquote { border-left-color: #b79b69; color: #b7c3c8; }
+.md-content hr { border-color: #344a58; }
+.md-content math { color: #e2e3df; }
 .md-anchor { scroll-margin-top: 24px; }
 .md-table-scroll { max-width: 100%; overflow-x: auto; }
-dialog { border-color: #9e8c6b; border-radius: 4px; box-shadow: 0 20px 100px #000b; }
-dialog::backdrop { background: #030914c9; backdrop-filter: blur(3px); }
-.reader-header { border-color: #c7bba3; background: #efe8d8; padding-block: 22px; }
-.reader-header .eyebrow, .help-inner > .eyebrow { color: #8a6a34; }
-.reader-header h2 { font: 400 22px/1.35 Georgia, "Times New Roman", serif; color: #2c3940; }
-#reader-toc { background: #e9e2d4; border-color: #ccc1ab; padding-top: 25px; }
-#reader-toc button { color: #636553; border-radius: 2px; line-height: 1.55; padding-block: 8px; }
-#reader-toc button:hover { background: #dad1bd; color: #57411f; }
-#reader-body { background: #f5f0e5; font-size: 14px; line-height: 1.9; padding: 24px 42px 80px; }
+dialog { border-color: #5f6c72; border-radius: 4px; box-shadow: 0 20px 100px #000c; }
+dialog::backdrop { background: #030914d9; backdrop-filter: blur(3px); }
+.reader-header { border-color: #3b4f5c; background: #0d1924; padding-block: 22px; }
+.reader-header .eyebrow, .help-inner > .eyebrow { color: #c8ac78; }
+.reader-header h2 { font: 400 22px/1.35 Georgia, "Times New Roman", serif; color: #eee5d5; }
+#reader-toc { background: #0c1823; border-color: #354a59; padding-top: 25px; }
+#reader-toc button { color: #b4c4ce; border-radius: 2px; line-height: 1.55; padding-block: 8px; }
+#reader-toc button:hover { background: #233845; color: #f0d8ac; }
+#reader-body { background: #111e2a; font-size: 14px; line-height: 1.9; padding: 24px 42px 80px; }
 #reader-body > * { max-width: 78ch; }
 #reader-body h1 { font-size: 31px; }
 #reader-body h2 { font-size: 24px; }
-.help-inner h2 { font: 400 30px/1.2 Georgia, "Times New Roman", serif; color: #2c3940; }
-.help-inner p, .help-inner li { color: #546065; }
-.help-inner li::marker { font-family: var(--mono); color: #98753b; }
-.scope-note { border-color: #cfc4b0; }
-#toast { background: #eadbbd; color: #263744; border: 1px solid #ad9366; border-radius: 3px; box-shadow: 0 5px 30px #0005; }
+.help-inner h2 { font: 400 30px/1.2 Georgia, "Times New Roman", serif; color: #eee5d5; }
+.help-inner p, .help-inner li { color: #c3ced4; }
+.help-inner li::marker { font-family: var(--mono); color: #d5b77e; }
+.scope-note { border-color: #3c5260; }
+#toast { background: #d9c49c; color: #152837; border: 1px solid #e3d2b1; border-radius: 3px; box-shadow: 0 5px 30px #0007; }
 
 /* Mission readings stay in the instrument rail; saved places stay in the index. */
 #stats-button { color: #dcc59b; }
@@ -338,15 +390,15 @@ dialog::backdrop { background: #030914c9; backdrop-filter: blur(3px); }
 .pin-item:hover { background: #21313e; color: #f0dfbd; }
 .pin-button {
   padding: 8px 11px;
-  border: 1px solid #bfb194;
+  border: 1px solid #776b52;
   border-radius: 3px;
-  color: #705936;
+  color: #d7bd8e;
   font-size: 11px;
   line-height: 1.4;
 }
 .pin-button::before { content: "✧"; margin-right: 6px; }
-.pin-button:hover { background: #e8dfcd; border-color: #a98a57; }
-.pin-button[aria-pressed="true"] { background: #e7d8ba; border-color: #b0935e; color: #60451f; }
+.pin-button:hover { background: #293b47; border-color: #c0a470; }
+.pin-button[aria-pressed="true"] { background: #343c3a; border-color: #b79a65; color: #efd39f; }
 .pin-button[aria-pressed="true"]::before { content: "✦"; }
 .stat-strip {
   display: flex;
@@ -378,38 +430,38 @@ dialog::backdrop { background: #030914c9; backdrop-filter: blur(3px); }
 /* A single ruled progress ledger, rather than a wall of metric cards. */
 #stats-dialog { width: min(880px, 94vw); max-width: none; max-height: 90dvh; overflow-y: auto; }
 .stats-inner { position: relative; padding: 34px 38px 32px; }
-.stats-inner > .eyebrow { color: #8b6931; }
-.stats-inner h2 { font: 400 32px/1.2 Georgia, "Times New Roman", serif; color: #293841; letter-spacing: -.55px; margin: 12px 36px 16px 0; text-wrap: balance; }
-.stats-scope { font-size: 13px; line-height: 1.8; color: #59615f; max-width: 76ch; margin: 0 0 21px; }
+.stats-inner > .eyebrow { color: #c7ac7a; }
+.stats-inner h2 { font: 400 32px/1.2 Georgia, "Times New Roman", serif; color: #eee5d4; letter-spacing: -.55px; margin: 12px 36px 16px 0; text-wrap: balance; }
+.stats-scope { font-size: 13px; line-height: 1.8; color: #bdcbd2; max-width: 76ch; margin: 0 0 21px; }
 .stats-summary {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(115px, 1fr));
   gap: 0;
-  border-top: 1px solid #bcaa88;
-  border-bottom: 1px solid #bcaa88;
+  border-top: 1px solid #69736f;
+  border-bottom: 1px solid #69736f;
   margin: 22px 0 17px;
 }
-.metric { min-width: 0; padding: 17px 15px 18px; border-right: 1px solid #d1c7b1; }
+.metric { min-width: 0; padding: 17px 15px 18px; border-right: 1px solid #3b515e; }
 .metric:last-child { border-right: 0; }
-.metric strong { display: block; font: 400 32px/1.15 Georgia, "Times New Roman", serif; color: #293d47; }
-.metric > span { display: block; font: 500 9px/1.55 var(--mono); text-transform: uppercase; letter-spacing: .8px; color: #776341; margin-top: 8px; }
-.metric small { display: block; font-size: 10px; line-height: 1.6; color: #6c7067; margin-top: 6px; }
-.stats-sources { border-left: 2px solid #b0945f; padding: 2px 0 2px 12px; margin: 18px 0 26px; font-size: 11px; line-height: 1.8; color: #6a6c5f; }
-.stats-sources strong { color: #424b47; font-weight: 600; }
-.stats-inner h3 { margin: 27px 0 8px; font: 400 22px/1.4 Georgia, "Times New Roman", serif; color: #354047; }
-.area-progress { border-top: 1px solid #c9bda5; }
-.area-stat { display: block; width: 100%; text-align: left; padding: 14px 10px 13px; border-bottom: 1px solid #d6cdbb; border-radius: 0; color: #35434a; }
-.area-stat:hover { background: #eae1cf; }
+.metric strong { display: block; font: 400 32px/1.15 Georgia, "Times New Roman", serif; color: #eee2c7; }
+.metric > span { display: block; font: 500 9px/1.55 var(--mono); text-transform: uppercase; letter-spacing: .8px; color: #c9b48d; margin-top: 8px; }
+.metric small { display: block; font-size: 10px; line-height: 1.6; color: #b4c2c9; margin-top: 6px; }
+.stats-sources { border-left: 2px solid #c4a76f; padding: 2px 0 2px 12px; margin: 18px 0 26px; font-size: 11px; line-height: 1.8; color: #b2c0c7; }
+.stats-sources strong { color: #e6e1d3; font-weight: 600; }
+.stats-inner h3 { margin: 27px 0 8px; font: 400 22px/1.4 Georgia, "Times New Roman", serif; color: #e3e4dc; }
+.area-progress { border-top: 1px solid #526771; }
+.area-stat { display: block; width: 100%; text-align: left; padding: 14px 10px 13px; border-bottom: 1px solid #344a58; border-radius: 0; color: #d7e0e2; }
+.area-stat:hover { background: #203340; }
 .area-stat-label { display: flex; justify-content: space-between; align-items: baseline; gap: 18px; margin-bottom: 9px; }
-.area-name { font: 400 16px/1.4 Georgia, "Times New Roman", serif; min-width: 0; color: #34404a; }
-.area-count { flex: none; font: 10px/1.5 var(--mono); color: #6b644f; white-space: nowrap; }
-.area-bar { display: flex; height: 6px; width: 100%; overflow: hidden; background: #d9d3c5; border-radius: 1px; }
+.area-name { font: 400 16px/1.4 Georgia, "Times New Roman", serif; min-width: 0; color: #e0e5e2; }
+.area-count { flex: none; font: 10px/1.5 var(--mono); color: #c1b79d; white-space: nowrap; }
+.area-bar { display: flex; height: 6px; width: 100%; overflow: hidden; background: #2c414e; border-radius: 1px; }
 .area-bar > span { display: block; height: 100%; flex: none; min-width: 0; }
-.area-bar .complete { background: #3c8568; }
-.area-bar .active { background: #bc9044; }
-.area-bar .planned { background: #b96857; }
-.area-bar .unknown { background: repeating-linear-gradient(135deg, #c9c5b8 0 3px, #ddd7c8 3px 6px); }
-.area-stat-detail { display: block; color: #6d7066; font: 9px/1.65 var(--mono); margin-top: 8px; }
+.area-bar .complete { background: #82b59b; }
+.area-bar .active { background: #d9b06c; }
+.area-bar .planned { background: #e38a7c; }
+.area-bar .unknown { background: repeating-linear-gradient(135deg, #354c5b 0 3px, #415969 3px 6px); }
+.area-stat-detail { display: block; color: #adbfc9; font: 9px/1.65 var(--mono); margin-top: 8px; }
 .stats-inner > .detail-note { margin-top: 22px; max-width: 86ch; }
 
 @media (max-width: 1200px) {
@@ -456,7 +508,7 @@ dialog::backdrop { background: #030914c9; backdrop-filter: blur(3px); }
   .stats-inner { padding: 28px 21px; }
   .stats-inner h2 { font-size: 27px; }
   .stats-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .metric { padding: 14px 11px; border-bottom: 1px solid #d1c7b1; }
+  .metric { padding: 14px 11px; border-bottom: 1px solid #3b515e; }
   .metric:nth-child(2n) { border-right: 0; }
   .metric strong { font-size: 28px; }
   .area-stat { padding-inline: 5px; }
@@ -468,3 +520,16 @@ dialog::backdrop { background: #030914c9; backdrop-filter: blur(3px); }
   button, .progress-track > div, #toast { transition: none; }
   #reader-body { scroll-behavior: auto; }
 }
+
+/* A roadmap galaxy opens into its mathematical contents. */
+.graph-shell.is-entering{transition:filter .28s;filter:brightness(1.12)}
+.connection-card{margin:8px 0;border-bottom:1px solid #304353;padding:8px 0}.connection-card summary{cursor:pointer;font-size:12px;line-height:1.5}.connection-card summary small{display:block;color:#a8b8c8;font:10px var(--mono);margin:4px 0}.connection-witness{display:grid;grid-template-columns:1fr 14px 1fr;align-items:start;gap:5px;padding:9px 0;border-top:1px solid #263848;font-size:11px}.connection-witness button{text-align:left;color:#c3dced;padding:0}.connection-witness button:hover{text-decoration:underline}.region-topics{padding-left:17px;font-size:12px;line-height:1.8;color:#c3d0dc}.topic-link{display:inline-block;padding:4px 7px;margin:3px 4px 3px 0;border:1px solid #3c5163;color:#b9d0e4;font-size:10px;border-radius:3px}.related-subjects{margin:12px 0}.item-link .landmark-kind{font:9px var(--mono);text-transform:uppercase;min-width:64px;color:#bfa981}.landmark-description{margin-top:18px}
+@media(prefers-reduced-motion:reduce){*,*::before,*::after{scroll-behavior:auto!important;transition:none!important}}
+
+.graph-shell{background-size:100% 100%;background-repeat:no-repeat}
+.tau-layer-constellations-layout .tau-stage-label rect{stroke:none!important;fill:#0c1825!important;fill-opacity:.92!important}
+.tau-layer-constellations-layout .tau-layer-containment{stroke:#9db9d0;stroke-opacity:.65}
+.unmapped-toggle{padding:13px 19px 0}.unmapped-toggle input{flex:none}.progress-legend i.unmapped{background:transparent;border:1px dashed #9aafbf}
+.tau-graph .tau-unmapped-node .tau-star-halo{opacity:0}.tau-graph .tau-unmapped-node .tau-star-ring{stroke:#9aaebf!important;stroke-dasharray:3 3;opacity:.8}.tau-graph .tau-unmapped-node .tau-star-core{fill:#0b1420!important;stroke:#9aaebf!important;stroke-width:1.1}.tau-graph .tau-unmapped-node .tau-galaxy-arm{stroke:#9aaebf!important;opacity:.5}.unmapped-index{border-bottom:1px solid #314557;padding-bottom:9px;margin-bottom:10px}
+
+.reader-summary{border-bottom:1px solid #395064;padding:8px 0 18px;margin-bottom:20px;font-size:15px;line-height:1.85;color:#dbe4e9}

@@ -26,12 +26,15 @@ def comment_text(text: str) -> str:
 def build(output: Path) -> dict:
     atlas = json.loads(read_text("data/atlas.json"))
     atlas["progress"] = json.loads(read_text("data/status.json"))
+    atlas["regions"] = json.loads(read_text("data/regions.json"))
+    atlas["opportunities"] = json.loads(read_text("data/opportunities.json"))
     assets = {
         "D3": "vendor/d3.v5.15.0.min.js",
         "KATEX": "vendor/katex.v0.16.28.min.js",
         "MARKDOWN": "src/markdown.js",
         "GRAPH": "src/graph.js",
         "PROGRESS": "src/progress.js",
+        "LANDMARKS": "src/landmarks.js",
         "APP": "src/app.js",
     }
     style_paths = ["src/style.css"]
@@ -66,12 +69,15 @@ def build(output: Path) -> dict:
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text(page, encoding="utf-8")
     parent_ids = {stage.get("parentStageId") for stage in atlas["stages"] if stage.get("parentStageId")}
-    source_paths = ["src/shell.html", *style_paths, *assets.values(), "data/atlas.json", "data/status.json", "NOTICE", "LICENSE", "vendor/D3-LICENSE.txt", "vendor/KaTeX-LICENSE.txt"]
+    source_paths = ["src/shell.html", *style_paths, *assets.values(), "data/atlas.json", "data/status.json", "data/regions.json", "data/opportunities.json", "NOTICE", "LICENSE", "vendor/D3-LICENSE.txt", "vendor/KaTeX-LICENSE.txt"]
     report = {
         "roadmaps": len(atlas["roadmaps"]),
         "stages": len(atlas["stages"]),
         "terminalTargets": sum(stage["id"] not in parent_ids for stage in atlas["stages"]),
         "groups": len(atlas["groups"]),
+        "unmappedAreas": len(atlas["opportunities"]["areas"]),
+        "additionalRegions": len(atlas["opportunities"]["groups"]),
+        "mathematicalSummaries": len(atlas["roadmaps"]),
         "roadmapEdges": len(atlas["edges"]),
         "stageEdges": len(atlas["stageEdges"]),
         "sourceDocuments": sum(1 for _ in (ROOT / "content").rglob("*.md")),
