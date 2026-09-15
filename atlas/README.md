@@ -19,11 +19,11 @@ The atlas also runs entirely offline. Download `index.html` and open it in a bro
 - Use **Browse** on a phone, or **⌘/Ctrl K** on a keyboard to search. Mobile details share the screen with the chart; pinch, tap and back controls remain available. View links preserve the current roadmap and planetary system.
 - Mathematics is typeset offline with native MathML; hover a formula to see its source.
 
-The outer atlas groups roadmap galaxies by their mathematical subject. Recorded cross-area dependencies influence the distance between regions; stronger connections bring related areas closer. Each roadmap has one primary home, with thematic links to other relevant areas.
+The outer atlas groups roadmap galaxies into named mathematical regions, with clear space between them. Recorded cross-area dependencies influence their placement. At overview scale, routes between regions summarize real roadmap prerequisites; their labels give the number of underlying connections. Each roadmap has one primary home, with thematic links to other relevant areas.
 
-Real prerequisite paths remain visible between galaxies. Inside a galaxy, layer stars form an irregular constellation shaped by their recorded dependencies. Prerequisite arrows point **prerequisite → consumer**; the Links tab provides supporting stage pairs. Inside a layer, planetary orbits express membership in that layer, not additional prerequisites. Dotted paths are references to related plans or context for an unmapped area, and carry no prerequisite claim. Positions, galaxy shapes and orbits are visual aids, not astronomical coordinates or mathematical measurements.
+Zoom closer or select a roadmap to inspect its individual prerequisite paths. Inside a galaxy, stars name mathematical topics and form an irregular constellation shaped by their recorded dependencies. Prerequisite arrows point **prerequisite → consumer**; the Links tab provides supporting stage pairs. Inside a layer, planetary orbits express membership in that layer, not additional prerequisites. Dotted paths are references to related plans or context for an unmapped area, and carry no prerequisite claim. Positions, galaxy shapes and orbits are visual aids, not astronomical coordinates or mathematical measurements.
 
-The interface takes its cues from Tau Ceti, Voyager and deep-space imagery: varied luminous galaxies, dust lanes, soft starlight, ivory type and brass instrument details. Scene artwork is generated locally as SVG and remains sharp while zooming. Reading panels use the same dark observatory palette. There are no external fonts or image downloads, and reduced-motion preferences are respected.
+The interface takes its cues from Tau Ceti, Voyager and deep-space imagery: diffuse clouds of galactic light, soft starlight, shaded spherical planets, ivory type and brass instrument details. Scene artwork is generated locally as SVG and remains sharp while zooming. Reading panels use the same dark observatory palette. There are no external fonts or image downloads, and reduced-motion preferences are respected.
 
 ## Included snapshot
 
@@ -33,8 +33,9 @@ The interface takes its cues from Tau Ceti, Voyager and deep-space imagery: vari
 | Additional subject regions | 4 |
 | Unmapped areas needing a roadmap | 16 |
 | Roadmaps | 180 |
-| Stage nodes / layer stars | 1,604 |
-| Source-backed mathematical planets | 3,505 |
+| Recorded stage entries | 1,604 |
+| Mathematical layer stars | 1,538 |
+| Source-backed mathematical planets | 3,440 |
 | Terminal targets counted for progress | 1,543 |
 | Roadmap dependency links | 1,011 |
 | Stage dependency links | 3,508 |
@@ -42,7 +43,7 @@ The interface takes its cues from Tau Ceti, Voyager and deep-space imagery: vari
 
 The September 2026 edition combines 152 revised number-theory campaign roadmaps with 28 roadmaps from [TauCetiRoadmap](https://github.com/TauCetiProject/TauCetiRoadmap). The source documents are bundled under [`content/`](content/). The 12 companion guides include the campaign execution protocol, conventions and scope. Reference PDFs and extracted book text are not included. [`data/PUBLICATION.json`](data/PUBLICATION.json) records the publication checks; the atlas and status data retain source hashes, reported commit IDs, and dates.
 
-All 180 overview summaries explain the mathematical objects, results and scope for readers of the atlas. Original roadmap texts remain available in full. Unmapped areas identify missing dedicated plans in this catalogue, not the absence of formal mathematics in Tau Ceti or mathlib.
+All 180 overview summaries explain the mathematical objects, results and scope for readers of the atlas. Star names and descriptions present mathematics first; curated entries in `data/stage-presentation.json` replace administrative wording without changing source records. Other descriptions use mathematical passages from the source. The 64 duplicate readiness checkpoints and two library/build administration tasks remain in the full source and progress totals, and are accessible under Project tasks in the Layers tab. They do not appear as mathematical stars. Original roadmap texts remain available in full. Unmapped areas identify missing dedicated plans in this catalogue, not the absence of formal mathematics in Tau Ceti or mathlib.
 
 The source snapshot includes local working-tree material and older maintained progress reports. It is not a fresh verification of the Tau Ceti code or of every mathematical proof. Roadmap-level cycles can reflect dependencies between different early and late stages; the encoded stage dependency graph is acyclic.
 

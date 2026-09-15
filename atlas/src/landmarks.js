@@ -279,5 +279,9 @@
     return output;
   }
 
-  window.TauLandmarks = Object.freeze({ build });
+  function passages(stage, children) {
+    const { original, ranges } = scope(stage, children);
+    return blocks(original, ranges).map(block => block.text);
+  }
+  window.TauLandmarks = Object.freeze({ build, passages });
 })();

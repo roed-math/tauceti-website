@@ -28,6 +28,17 @@ def build(output: Path) -> dict:
     atlas["progress"] = json.loads(read_text("data/status.json"))
     atlas["regions"] = json.loads(read_text("data/regions.json"))
     atlas["opportunities"] = json.loads(read_text("data/opportunities.json"))
+    atlas["stagePresentation"] = json.loads(read_text("data/stage-presentation.json"))
+    stage_ids = {stage["id"] for stage in atlas["stages"]}
+    if set(atlas["stagePresentation"]) - stage_ids:
+        raise ValueError("Stage presentation contains an unknown stage ID.")
+    for stage_id, item in atlas["stagePresentation"].items():
+        if not isinstance(item.get("summary"), str) or not item["summary"].strip():
+            raise ValueError("Missing mathematical presentation summary: " + stage_id)
+        if "hidden" in item and not isinstance(item["hidden"], bool):
+            raise ValueError("Stage visibility must be a boolean: " + stage_id)
+        if "title" in item and (not isinstance(item["title"], str) or not item["title"].strip()):
+            raise ValueError("Empty mathematical presentation title: " + stage_id)
     assets = {
         "D3": "vendor/d3.v5.15.0.min.js",
         "KATEX": "vendor/katex.v0.16.28.min.js",
@@ -36,6 +47,7 @@ def build(output: Path) -> dict:
         "CAMERA": "src/camera.js",
         "PROGRESS": "src/progress.js",
         "LANDMARKS": "src/landmarks.js",
+        "PRESENTATION": "src/presentation.js",
         "APP": "src/app.js",
     }
     style_paths = ["src/style.css"]
@@ -70,7 +82,7 @@ def build(output: Path) -> dict:
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text(page, encoding="utf-8")
     parent_ids = {stage.get("parentStageId") for stage in atlas["stages"] if stage.get("parentStageId")}
-    source_paths = ["src/shell.html", *style_paths, *assets.values(), "data/atlas.json", "data/status.json", "data/regions.json", "data/opportunities.json", "NOTICE", "LICENSE", "vendor/D3-LICENSE.txt", "vendor/KaTeX-LICENSE.txt"]
+    source_paths = ["src/shell.html", *style_paths, *assets.values(), "data/atlas.json", "data/status.json", "data/regions.json", "data/opportunities.json", "data/stage-presentation.json", "NOTICE", "LICENSE", "vendor/D3-LICENSE.txt", "vendor/KaTeX-LICENSE.txt"]
     report = {
         "roadmaps": len(atlas["roadmaps"]),
         "stages": len(atlas["stages"]),
@@ -79,6 +91,9 @@ def build(output: Path) -> dict:
         "unmappedAreas": len(atlas["opportunities"]["areas"]),
         "additionalRegions": len(atlas["opportunities"]["groups"]),
         "mathematicalSummaries": len(atlas["roadmaps"]),
+        "curatedStagePresentations": len(atlas["stagePresentation"]),
+        "administrativeStages": sum(bool(item.get("hidden")) for item in atlas["stagePresentation"].values()),
+        "mathematicalStars": sum(not atlas["stagePresentation"].get(stage["id"], {}).get("hidden") for stage in atlas["stages"]),
         "roadmapEdges": len(atlas["edges"]),
         "stageEdges": len(atlas["stageEdges"]),
         "sourceDocuments": sum(1 for _ in (ROOT / "content").rglob("*.md")),

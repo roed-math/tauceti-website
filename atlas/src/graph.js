@@ -109,6 +109,7 @@
         .tau-graph .tau-star-spark { fill: #fff4dc; opacity: .9; }
         .tau-graph .tau-node.is-selected .tau-star-ring, .tau-graph .tau-node.is-hovered .tau-star-ring, .tau-graph .tau-node:focus .tau-star-ring { stroke: #dfc48e; stroke-width: 1.7; opacity: 1; }
         .tau-graph .tau-star-ring { fill: none; stroke-width: .7; opacity: .5; }
+        .tau-graph .tau-planet-node .tau-star-ring { opacity: 0; }
         .tau-graph .tau-star-hit { fill: transparent; pointer-events: all; }
         .tau-graph .tau-star-node-label { pointer-events: none; }
         .tau-graph .tau-stage-label rect { pointer-events: all; cursor: pointer; }
@@ -123,10 +124,10 @@
         Object.entries(extra).forEach(([key,value])=>gradient.attr(key,value));
         stops.forEach(([offset,color,opacity])=>gradient.append('stop').attr('offset',offset).attr('stop-color',color).attr('stop-opacity',opacity));
       };
-      radial('galaxy-glow',[[0,'#fff2da',.72],[.14,'#dccbbb',.48],[.42,'#778cab',.19],[1,'#425671',0]]);
-      radial('galaxy-disk',[[0,'#fff9e8',1],[.13,'#efd6b6',.91],[.37,'#a9a5ad',.54],[.72,'#66809f',.14],[1,'#425671',0]]);
-      radial('galaxy-disk-cool',[[0,'#f5f4ff',1],[.13,'#cad7ed',.91],[.37,'#8a9fc7',.54],[.72,'#496f9e',.14],[1,'#334768',0]]);
-      radial('galaxy-disk-warm',[[0,'#fff3d6',1],[.13,'#ecd0a9',.91],[.37,'#b09a8e',.54],[.72,'#876b81',.14],[1,'#59465b',0]]);
+      radial('galaxy-glow',[[0,'#dce2ec',.38],[.24,'#bac5d7',.26],[.58,'#778cab',.11],[1,'#425671',0]]);
+      radial('galaxy-cloud',[[0,'#f2e8da',.73],[.22,'#d9d1ca',.54],[.52,'#a4adbd',.24],[.8,'#66809f',.06],[1,'#425671',0]]);
+      radial('galaxy-cloud-cool',[[0,'#e8eafa',.73],[.22,'#c5d2e8',.54],[.52,'#8c9fc3',.24],[.8,'#496f9e',.06],[1,'#334768',0]]);
+      radial('galaxy-cloud-warm',[[0,'#f4e5cc',.73],[.22,'#dfc9b2',.54],[.52,'#b39c99',.24],[.8,'#876b81',.06],[1,'#59465b',0]]);
       radial('stellar-light',[[0,'#fffdf4',1],[.22,'#fff6d3',1],[.48,'#f0c884',.82],[1,'#b97742',.14]]);
       radial('stellar-glow',[[0,'#fff3d0',.65],[.12,'#eacb95',.26],[.4,'#cf9b62',.07],[1,'#a27e5d',0]]);
       radial('nebula-blue',[[0,'#46688d',.19],[.35,'#29496a',.08],[1,'#112034',0]]);
@@ -167,7 +168,10 @@
         this.svg.attr('viewBox', '0 0 ' + this.width + ' ' + this.height);
         this.zoom.extent([[0, 0], [this.width, this.height]]);
         if (this.awaitingFit && box.width > 0 && box.height > 0) { this.awaitingFit = false; this.fit(false); }
-        else if(this.nodes.length&&!this.semantic.busy&&previousWidth&&previousHeight&&(Math.abs(this.width/previousWidth-1)>.2||Math.abs(this.height/previousHeight-1)>.2))this.fit(false);
+        else if(this.nodes.length&&!this.semantic.busy&&previousWidth&&previousHeight&&(Math.abs(this.width/previousWidth-1)>.2||Math.abs(this.height/previousHeight-1)>.2)){
+          if(this.layout==='constellations'){this.layoutConstellations();this.draw();this.applyEmphasis();}
+          this.fit(false);
+        }
         else this.updateConstellationLabels();
       };
       this.resize();
@@ -194,7 +198,7 @@
         kind: edge.kind || 'stage', weight: Math.max(1, finite(edge.stageCount, 1)), id: index
       })).filter(edge => edge.source && edge.target && edge.source !== edge.target);
       this.relatedEdges = (data.relatedEdges || []).map(edge => ({ source: this.nodeMap.get(edge.source), target: this.nodeMap.get(edge.target), kind: 'reference', weight: .2 })).filter(edge => edge.source && edge.target);
-      this.groupConnections = [];
+      this.groupConnections = [];this.sectorRoutes=[];this.sectorRouteSelection=null;
       this.clusters = [];
       this.constellationLinks = []; this.constellationSubjects = []; this.constellationBounds = null; this.hoveredId = null; this.subjectLeaders = null;
       this.isSkyLayout = ['constellations', 'layer-constellations', 'solar-system'].includes(this.layout);
@@ -259,75 +263,96 @@
         else { link.dependencies++; link.weight += Math.sqrt(edge.weight); }
       });
       this.groupConnections = Array.from(connections.values());
-      subjects.forEach((subject, index) => {
-        const angle = index * Math.PI * (3 - Math.sqrt(5));
-        const seed = subjects.length === 1 ? [0, 0] : sectors[subject.label] || [Math.cos(angle) * 790, Math.sin(angle) * 420];
-        Object.assign(subject, { x: seed[0], y: seed[1], seedX: seed[0], seedY: seed[1], radius: Math.max(54, Math.sqrt(subject.nodes.length) * 34) });
+      this.constellationLinks=[];this.constellationSubjects=[];this.sectorRoutes=[];
+      if(!subjects.length){this.constellationBounds=null;return;}
+      // The area map is a cartographic index. Separate survey sectors reserve
+      // space for their names; their contents remain organic galaxy clusters.
+      // Semantic coordinates determine the assignment, rather than alphabetic
+      // ordering or the progress score of a roadmap.
+      const small=this.width<600,bottomReserve=small||this.height<300?60:0;
+      const usableHeight=Math.max(70,this.height-bottomReserve),shortWide=!small&&this.width/usableHeight>3.6;
+      const cols=Math.min(subjects.length,subjects.length===1?1:small?3:shortWide?Math.ceil(subjects.length/2):5);
+      const rows=Math.ceil(subjects.length/cols),unit=4;
+      const chartW=subjects.length===1?Math.max(650,Math.sqrt(this.nodes.length)*190):Math.max(200,(this.width-44)*unit-60);
+      const chartH=subjects.length===1?Math.max(510,chartW*.63):Math.max(100,(usableHeight-44)*unit-60);
+      const cellW=chartW/cols,cellH=chartH/rows,gap=shortWide?14:small?26:46;
+      const slots=Array.from({length:cols*rows},(_,index)=>({col:index%cols,row:Math.floor(index/cols),
+        x:(index%cols+.5)*cellW-chartW/2,y:(Math.floor(index/cols)+.5)*cellH-chartH/2}));
+      const seedValues=subjects.map((subject,index)=>sectors[subject.label]||[index*170,0]);
+      const minX=Math.min(...seedValues.map(p=>p[0])),maxX=Math.max(...seedValues.map(p=>p[0]));
+      const minY=Math.min(...seedValues.map(p=>p[1])),maxY=Math.max(...seedValues.map(p=>p[1]));
+      subjects.forEach((subject,index)=>{const seed=seedValues[index];
+        subject.seedX=((seed[0]-minX)/Math.max(1,maxX-minX)-.5)*(chartW-cellW);
+        subject.seedY=((seed[1]-minY)/Math.max(1,maxY-minY)-.5)*(chartH-cellH);
       });
-      // A bounded spring relaxation brings areas with more mathematical links
-      // closer, while the anchor force keeps a stable navigable subject atlas.
-      // Collision spacing reserves room for both stars and screen-sized labels.
-      for (let step = 0; step < 160; step++) {
-        const forces = new Map(subjects.map(subject => [subject.label, { x: (subject.seedX-subject.x)*.035, y: (subject.seedY-subject.y)*.035 }]));
-        this.groupConnections.forEach(link => {
-          const a = subjectMap.get(link.source), b = subjectMap.get(link.target);
-          const dx = b.x-a.x, dy = b.y-a.y, length = Math.max(1, Math.hypot(dx, dy));
-          const strength = Math.min(.024, Math.log1p(link.weight)*.005);
-          const pull = Math.max(0, length - 490) * strength;
-          forces.get(a.label).x += dx/length*pull; forces.get(a.label).y += dy/length*pull;
-          forces.get(b.label).x -= dx/length*pull; forces.get(b.label).y -= dy/length*pull;
-        });
-        subjects.forEach((a, i) => subjects.slice(i+1).forEach(b => {
-          const dx = b.x-a.x, dy = (b.y-a.y)*1.16, length = Math.max(1, Math.hypot(dx, dy));
-          const clearance = Math.max(390, a.radius+b.radius+140);
-          const push = Math.max(0, clearance-length)*.2;
-          forces.get(a.label).x -= dx/length*push; forces.get(a.label).y -= dy/length*push;
-          forces.get(b.label).x += dx/length*push; forces.get(b.label).y += dy/length*push;
-        }));
-        subjects.forEach(subject => { subject.x += forces.get(subject.label).x; subject.y += forces.get(subject.label).y; });
+      const available=new Set(slots),assignment=new Map();
+      subjects.slice().sort((a,b)=>Math.hypot(b.seedX/chartW,b.seedY/chartH)-Math.hypot(a.seedX/chartW,a.seedY/chartH)||a.label.localeCompare(b.label)).forEach(subject=>{
+        const slot=Array.from(available).sort((a,b)=>Math.hypot((a.x-subject.seedX)/chartW,(a.y-subject.seedY)/chartH)-Math.hypot((b.x-subject.seedX)/chartW,(b.y-subject.seedY)/chartH))[0];
+        assignment.set(subject.label,slot);available.delete(slot);
+      });
+      const assignmentCost=()=>{
+        let cost=0;subjects.forEach(subject=>{const slot=assignment.get(subject.label);cost+=Math.pow((slot.x-subject.seedX)/chartW,2)+Math.pow((slot.y-subject.seedY)/chartH,2);});
+        this.groupConnections.forEach(link=>{const a=assignment.get(link.source),b=assignment.get(link.target);
+          cost+=Math.log1p(link.weight)*.008*Math.hypot((a.x-b.x)/chartW,(a.y-b.y)/chartH);});
+        return cost;
+      };
+      // Small deterministic swaps keep strongly linked areas nearby without
+      // letting an attractive force collapse their separate plotting regions.
+      for(let pass=0;pass<5;pass++){
+        let improved=false;subjects.forEach((a,index)=>subjects.slice(index+1).forEach(b=>{
+          const before=assignmentCost(),sa=assignment.get(a.label),sb=assignment.get(b.label);
+          assignment.set(a.label,sb);assignment.set(b.label,sa);
+          if(assignmentCost()<before-1e-8)improved=true;else{assignment.set(a.label,sa);assignment.set(b.label,sb);}
+        }));if(!improved)break;
       }
-      const adjacency = new Set();
-      this.edges.forEach(edge => { if (edge.kind !== 'reference') adjacency.add([edge.source.id, edge.target.id].sort().join('\n')); });
-      subjects.forEach((subject, subjectIndex) => {
-        const seed = hash(subject.label);
-        const slot = [subject.x, subject.y];
-        const radius = Math.max(54, Math.sqrt(subject.nodes.length) * 34);
-        const rotation = (seed % 360) * Math.PI / 180;
-        const stretch = .86 + (seed % 5) * .045;
-        subject.nodes.forEach((node, index) => {
-          const angle = index * Math.PI * (3 - Math.sqrt(5)) + rotation;
-          const distance = subject.nodes.length === 1 ? 0 : radius * Math.sqrt((index + .45) / subject.nodes.length);
-          const wobble = .91 + (hash(node.id) % 17) / 100;
-          node.x = slot[0] + Math.cos(angle) * distance * wobble * 1.15;
-          node.y = slot[1] + Math.sin(angle) * distance * wobble * stretch;
-          node.constellationGroup = subject.label;
+      const adjacency=new Set();this.edges.forEach(edge=>{if(!/reference|contains/.test(edge.kind))adjacency.add([edge.source.id,edge.target.id].sort().join('\n'));});
+      subjects.forEach(subject=>{
+        const slot=assignment.get(subject.label),seed=hash(subject.label);
+        const header=shortWide?Math.min(72,cellH-gap-18):Math.min(cellH*.46,small?92:196),left=slot.x-cellW/2+gap/2,top=slot.y-cellH/2+gap/2;
+        const w=cellW-gap,h=cellH-gap,cx=slot.x,cy=top+header+(h-header)/2;
+        const cut=.08+(seed%7)*.012;
+        const outline=[[left+w*cut,top+h*.025],[left+w*.73,top],[left+w*.98,top+h*.16],
+          [left+w,top+h*.67],[left+w*(.88-cut*.2),top+h*.98],[left+w*.28,top+h],
+          [left+w*.015,top+h*.81],[left,top+h*.25]].map(point=>point.join(',')).join('L');
+        const rx=Math.max(25,w/2-(shortWide?14:42)),ry=Math.max(9,(h-header)/2-(shortWide?5:small?8:32)),rotation=(seed%360)*Math.PI/180;
+        // Golden-angle packing has no artificial row or prerequisite direction.
+        // A roadmap's real links are represented in the edge layer below.
+        subject.nodes.forEach((node,index)=>{
+          const angle=index*Math.PI*(3-Math.sqrt(5))+rotation,distance=subject.nodes.length===1?0:Math.sqrt((index+.45)/subject.nodes.length)*.92;
+          node.x=cx+Math.cos(angle)*rx*distance;node.y=cy+Math.sin(angle)*ry*distance;
+          node.constellationGroup=subject.label;
+          node.surveySize=Math.min(1,Math.max(.18,Math.sqrt((rx*ry)/(Math.max(1,subject.nodes.length)*3500))));
         });
-        // A minimum spanning tree makes one readable geometric asterism per area.
-        // These undirected lines group the chart; real proof dependencies remain
-        // in the separate edge layer and are revealed by node selection.
-        const connected = new Set(subject.nodes.slice(0, 1));
-        const pending = new Set(subject.nodes.slice(1));
-        while (pending.size) {
-          let nearest = null, minimum = Infinity;
-          connected.forEach(source => pending.forEach(target => {
-            const sourceEdge = adjacency.has([source.id, target.id].sort().join('\n'));
-            const distance = Math.hypot(source.x - target.x, source.y - target.y) * (sourceEdge ? .2 : 1);
-            if (distance < minimum) { minimum = distance; nearest = { source, target, group: subject.label, sourceEdge }; }
-          }));
-          this.constellationLinks.push(nearest);
-          connected.add(nearest.target); pending.delete(nearest.target);
+        const connected=new Set(subject.nodes.slice(0,1)),pending=new Set(subject.nodes.slice(1));
+        while(pending.size){let nearest=null,minimum=Infinity;
+          connected.forEach(source=>pending.forEach(target=>{const sourceEdge=adjacency.has([source.id,target.id].sort().join('\n'));
+            const distance=Math.hypot(source.x-target.x,source.y-target.y)*(sourceEdge?.2:1);
+            if(distance<minimum){minimum=distance;nearest={source,target,group:subject.label,sourceEdge};}}));
+          this.constellationLinks.push(nearest);connected.add(nearest.target);pending.delete(nearest.target);
         }
-        const minY = Math.min(...subject.nodes.map(node => node.y));
-        this.constellationSubjects.push({ label: subject.label, x: slot[0], y: slot[1],
-          labelX: slot[0], labelY: minY - 31, radius, count: subject.nodes.length,
-          color: subject.nodes[0].color || '#9aabc1' });
+        this.constellationSubjects.push({label:subject.label,x:cx,y:slot.y,labelX:cx,labelY:top+(shortWide?2:8),
+          sector:{x:left,y:top,w,h,header,col:slot.col,row:slot.row,outline},radius:Math.max(rx,ry),count:subject.nodes.length,color:subject.nodes[0].color||'#9aabc1'});
       });
-      if (subjects.length > 1) {
-        this.nodes.forEach(node => { node.x *= 1.25; node.y *= .9; });
-        this.constellationSubjects.forEach(subject => { subject.x *= 1.25; subject.labelX *= 1.25; subject.y *= .9; subject.labelY *= .9; });
-        const left = Math.min(...this.nodes.map(node => node.x)) - 75, top = Math.min(...this.nodes.map(node => node.y)) - 150;
-        this.constellationBounds = { x: left, y: top, w: Math.max(...this.nodes.map(node => node.x)) - left + 75, h: Math.max(...this.nodes.map(node => node.y)) - top + 75 };
-      }
+      const regionMap=new Map(this.constellationSubjects.map(subject=>[subject.label,subject])),routes=new Map();
+      this.edges.forEach(edge=>{
+        if(/reference|contains/.test(edge.kind))return;
+        const a=edge.source.group||'Roadmaps',b=edge.target.group||'Roadmaps';if(a===b)return;
+        const pair=[a,b].sort(),key=pair.join('\n');
+        if(!routes.has(key))routes.set(key,{source:pair[0],target:pair[1],dependencies:0,witnesses:[]});
+        const route=routes.get(key);route.dependencies++;route.witnesses.push({source:edge.source.id,target:edge.target.id,kind:edge.kind});
+      });
+      this.sectorRoutes=Array.from(routes.values()).map(route=>{
+        const a=regionMap.get(route.source),b=regionMap.get(route.target),ar=a.sector,br=b.sector;
+        // Rectilinear routes use the empty corridors; sector fills mask any
+        // intermediate sector crossing, so clouds never become an edge tangle.
+        const dx=b.x-a.x,dy=b.y-a.y;
+        let points;
+        if(ar.row===br.row){const sign=Math.sign(dx),sx=a.x+sign*ar.w/2,tx=b.x-sign*br.w/2;points=[[sx,a.y],[tx,b.y]];}
+        else if(ar.col===br.col){const sign=Math.sign(dy),sy=a.y+sign*ar.h/2,ty=b.y-sign*br.h/2;points=[[a.x,sy],[b.x,ty]];}
+        else{const sign=Math.sign(dy),sy=a.y+sign*ar.h/2,ty=b.y-sign*br.h/2,corridor=sy+sign*gap/2;points=[[a.x,sy],[a.x,corridor],[b.x,corridor],[b.x,ty]];}
+        return {...route,points};
+      });
+      this.constellationBounds={x:-chartW/2,y:-chartH/2,w:chartW,h:chartH};
     }
 
     constellationPath(link) {
@@ -335,31 +360,24 @@
     }
 
     drawConstellations() {
-      const field = this.clusterLayer.append('g').attr('class', 'tau-chart-field').attr('aria-hidden', 'true');
-      if (this.constellationSubjects.length > 1) {
-        // Quiet reference arcs and fixed background stars give the map the texture
-        // of a celestial chart without motion, image assets or filter effects.
-        field.append('path').attr('class', 'tau-chart-orbit')
-          .attr('d', 'M-1110,370C-680,-490 360,-735 1050,-145').attr('fill', 'none')
-          .attr('stroke', '#72859e').attr('stroke-width', .8).attr('stroke-dasharray', '3 13').attr('opacity', .19);
-        field.append('path').attr('class', 'tau-chart-orbit')
-          .attr('d', 'M-1040,535C-380,830 525,640 1035,-400').attr('fill', 'none')
-          .attr('stroke', '#72859e').attr('stroke-width', .8).attr('stroke-dasharray', '3 13').attr('opacity', .14);
-        const stars = Array.from({ length: 74 }, (_, index) => ({
-          x: -1080 + ((index * 613 + 179) % 2117),
-          y: -540 + ((index * 347 + 67) % 1181),
-          r: index % 11 === 0 ? 1.4 : .8,
-          opacity: index % 7 === 0 ? .42 : .2
-        }));
-        field.selectAll('circle').data(stars).enter().append('circle').attr('class', 'tau-chart-star')
-          .attr('cx', star => star.x).attr('cy', star => star.y).attr('r', star => star.r)
-          .attr('fill', '#a9bad2').attr('opacity', star => star.opacity);
-      }
-      this.constellationSelection = this.clusterLayer.selectAll('path.tau-constellation-link').data(this.constellationLinks).enter().append('path')
-        .attr('class', link => 'tau-constellation-link' + (link.sourceEdge ? ' is-mathematical' : ' is-grouping'))
-        .attr('data-source-edge', link => link.sourceEdge ? 'true' : 'false').attr('d', link => this.constellationPath(link))
-        .attr('fill', 'none').attr('stroke', '#70869e').attr('stroke-width', 1.25)
-        .attr('stroke-dasharray', link => link.sourceEdge ? null : '2 8').attr('opacity', 0);
+      const routes=this.clusterLayer.append('g').attr('class','tau-sector-routes');
+      this.sectorRouteSelection=routes.selectAll('path').data(this.sectorRoutes||[]).enter().append('path')
+        .attr('class','tau-sector-route').attr('data-source-area',route=>route.source).attr('data-target-area',route=>route.target)
+        .attr('d',route=>'M'+route.points.map(point=>point.join(',')).join('L')).attr('fill','none')
+        .attr('stroke','#7e9cb1').attr('stroke-width',route=>.7+Math.min(1.4,Math.log1p(route.dependencies)*.25))
+        .attr('vector-effect','non-scaling-stroke').attr('stroke-linejoin','round').attr('opacity',.42)
+        .attr('role','img').attr('aria-label',route=>`Connections between ${route.source} and ${route.target}: ${route.dependencies} roadmap prerequisite links`)
+        .attr('pointer-events','stroke').on('mouseenter',route=>this.highlightSectorRoute(route)).on('mouseleave',()=>this.highlightSectorRoute(null));
+      this.sectorRouteSelection.append('title').text(route=>`Connections between ${route.source} and ${route.target}\n${route.dependencies} real roadmap prerequisite links. Select a roadmap to inspect their direction.`);
+      const regions=this.clusterLayer.append('g').attr('class','tau-survey-sectors').attr('aria-hidden','true');
+      regions.selectAll('path').data(this.constellationSubjects).enter().append('path').attr('class','tau-sector-boundary')
+        .attr('data-subject-label',subject=>subject.label).attr('d',subject=>'M'+subject.sector.outline+'Z')
+        .attr('fill',subject=>d3.interpolateRgb('#050a14',subject.color)(.035)).attr('fill-opacity',1)
+        .attr('stroke',subject=>subject.color).attr('stroke-opacity',.25).attr('stroke-width',.75).attr('vector-effect','non-scaling-stroke');
+      this.constellationSelection=this.clusterLayer.selectAll('path.tau-constellation-link').data(this.constellationLinks).enter().append('path')
+        .attr('class',link=>'tau-constellation-link'+(link.sourceEdge?' is-mathematical':' is-grouping'))
+        .attr('data-source-edge',link=>String(link.sourceEdge)).attr('d',link=>this.constellationPath(link))
+        .attr('fill','none').attr('stroke','#688697').attr('stroke-width',.7).attr('vector-effect','non-scaling-stroke').attr('opacity',link=>link.sourceEdge?.28:0);
       const captions = {
         'Shared foundations': ['Shared foundations'],
         'Classical, analytic and computational number theory': ['Classical & analytic', 'number theory'],
@@ -373,7 +391,11 @@
         'Function fields and higher local fields': ['Function & higher', 'local fields'],
         'Analysis, probability and PDE': ['Analysis, probability', '& PDE'],
         'Topology, manifolds and Floer theory': ['Topology &', 'Floer theory'],
-        'Algebra, representation theory and Lie groups': ['Algebra &', 'representations']
+        'Algebra, representation theory and Lie groups': ['Algebra &', 'representations'],
+        'Differential and complex geometry': ['Differential &', 'complex geometry'],
+        'Combinatorics and discrete structures': ['Combinatorics &', 'discrete structures'],
+        'Computation, optimization and control': ['Computation &', 'optimization'],
+        'Logic and foundations': ['Logic & foundations']
       };
       this.subjectLeaders = this.clusterLayer.append('g').attr('aria-hidden', 'true').selectAll('path').data(this.constellationSubjects).enter().append('path').attr('class', 'tau-caption-leader');
       const titles = this.clusterLayer.selectAll('g.tau-constellation-subject').data(this.constellationSubjects).enter().append('g')
@@ -403,6 +425,15 @@
           .attr('fill', '#8c9db3').attr('font-size', 8.5).text(subject.captionCount || subject.count + ' roadmaps');
         g.append('title').text(subject.label + '\n' + subject.captionCount + ' — click to explore');
       });
+    }
+
+    highlightSectorRoute(route) {
+      if(this.layout!=='constellations')return;
+      this.clusterLayer.selectAll('.tau-sector-boundary')
+        .attr('stroke-opacity',subject=>route&&(subject.label===route.source||subject.label===route.target)?.85:.25)
+        .attr('stroke-width',subject=>route&&(subject.label===route.source||subject.label===route.target)?1.4:.75);
+      if(this.sectorRouteSelection)this.sectorRouteSelection.attr('stroke',item=>item===route?'#e0c48c':'#7e9cb1')
+        .attr('opacity',item=>route?(item===route?.9:.13):.42);
     }
 
     labelPlacement(preferred, occupied, exhaustive) {
@@ -444,7 +475,11 @@
         let nearest=Infinity;
         this.nodes.forEach(other=>{if(node!==other)nearest=Math.min(nearest,Math.hypot(node.x-other.x,node.y-other.y)*scale);});
         const desired=Math.max(this.isCoarse&&this.layout!=='constellations'?22:7,(node.radius||10)*scale+3);
-        node.screenHitRadius=Math.min(desired,Math.max(5,nearest*.43));
+        // At atlas fit, dense sectors need disjoint hit regions: even a small
+        // minimum can cover a neighboring galaxy's exact tap position. Larger
+        // layer-star and planet targets remain available in the inner scenes.
+        node.screenHitRadius=this.layout==='constellations'?Math.min(desired,nearest*.44):Math.min(desired,Math.max(5,nearest*.43));
+        node.surveyMarkerRadius=Math.max(.65,Math.min(node.unmapped?1.7:2.15,nearest*.26));
       });
       const occupied = this.nodes.map(node=>({x:node.x*scale+tx-node.screenHitRadius,y:node.y*scale+ty-node.screenHitRadius,w:node.screenHitRadius*2,h:node.screenHitRadius*2,core:true}));
       const smallChart=this.width<600||this.height<300;
@@ -484,39 +519,42 @@
       };
       const graph=this;
       this.clusterLayer.selectAll('.tau-constellation-subject').each(function(subject) {
-        const g=d3.select(this), mode=graph.width<480?'small':compact?'compact':'full';
-        if(subject.captionMode!==mode) {
-          const lines=compact ? [(mode==='small'?smallNames[subject.label]:shortNames[subject.label]) || subject.captionLines[0]] : subject.captionLines;
-          const title=g.select('text'); title.selectAll('*').remove();
-          lines.forEach((line,index)=>title.append('tspan').attr('x',0).attr('y',index*13).text(line));
-          title.attr('font-size',compact?10:11);
-          g.select('.tau-constellation-count').attr('y',lines.length*13+1).attr('display',compact?'none':null);
-          const width=Math.max(...lines.map(line=>line.length))*(compact?5.3:6)+18;
-          subject.captionBox={w:width,h:compact?24:lines.length*13+21};
-          g.select('rect').attr('x',-width/2).attr('y',-13).attr('width',width).attr('height',subject.captionBox.h);
-          subject.captionMode=mode;
-        }
+        const g=d3.select(this),sector=subject.sector;
+        if(!sector)return;
+        const availableWidth=sector.w*scale-12,headerHeight=sector.header*scale;
+        const mode=availableWidth<135?'compact':'full';
+        const names=mode==='compact'?shortNames:null;
+        const lines=graph.width<600||headerHeight<30?[smallNames[subject.label]||subject.captionLines[0]]:mode==='compact'?wrapText(names[subject.label]||smallNames[subject.label]||subject.label,Math.max(12,Math.floor(availableWidth/5.4)),2):subject.captionLines;
+        const font=availableWidth<85?9.5:availableWidth<125?10.5:11.5;
+        const showCount=availableWidth>115&&headerHeight>44;
+        const lineHeight=font+2,h=lines.length*lineHeight+(showCount?11:0)+2;
+        const width=Math.min(Math.max(54,availableWidth),Math.max(...lines.map(line=>line.length))*font*.57+16);
         const anchor={x:subject.labelX*scale+tx,y:subject.labelY*scale+ty};
-        if(anchor.x < -180 || anchor.x>graph.width+180 || anchor.y < -110 || anchor.y>graph.height+110) {
-          g.attr('display','none'); subject.screenCaption=null; return;
-        }
-        const box=graph.labelPlacement({x:anchor.x-subject.captionBox.w/2,y:anchor.y-subject.captionBox.h,
-          ...subject.captionBox},occupied,true);
-        if(!box){g.attr('display','none');subject.screenCaption=null;return;}
-        occupied.push(box); subject.screenCaption=box;
-        const origin={x:box.x+box.w/2,y:box.y+13};
-        g.attr('display',null).attr('data-caption-compact',String(compact))
-          .attr('transform',`translate(${(origin.x-tx)/scale},${(origin.y-ty)/scale}) scale(${1/scale})`);
-        subject.captionLeader={
-          x1:subject.labelX,y1:subject.labelY+12,
-          x2:(Math.max(box.x,Math.min(box.x+box.w,anchor.x))-tx)/scale,
-          y2:(Math.max(box.y,Math.min(box.y+box.h,anchor.y))-ty)/scale,
-          moved:Math.hypot(box.x-(anchor.x-box.w/2),box.y-(anchor.y-box.h))>10
-        };
+        const box={x:anchor.x-width/2,y:anchor.y+2,w:width,h};
+        // At fit every label belongs to a disjoint header band. During zoom,
+        // headings leave the viewport with their sector instead of drifting
+        // onto other areas or covering their roadmap cores.
+        const visible=box.x+box.w>0&&box.x<graph.width&&box.y+box.h>0&&box.y<graph.height;
+        subject.screenCaption=visible?box:null;g.attr('display',visible?null:'none');if(!visible)return;
+        const title=g.select('text');title.selectAll('*').remove();
+        lines.forEach((line,index)=>title.append('tspan').attr('x',0).attr('y',font+index*lineHeight).text(line));
+        title.attr('font-size',font).style('font-family',"-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif").style('font-weight','500');
+        g.select('.tau-constellation-count').attr('x',0).attr('y',h-3).attr('display',showCount?null:'none').attr('font-size',8);
+        g.select('rect').attr('x',-width/2).attr('y',0).attr('width',width).attr('height',h).attr('fill','#08121d').attr('fill-opacity',0).attr('rx',0);
+        g.attr('data-caption-compact',String(mode==='compact')).attr('transform',`translate(${(anchor.x-tx)/scale},${(box.y-ty)/scale}) scale(${1/scale})`);
+        occupied.push({...box,core:true});subject.captionMode=mode;
       });
-      if(this.subjectLeaders) this.subjectLeaders.attr('display',subject=>subject.screenCaption&&subject.captionLeader.moved?null:'none')
-        .attr('d',subject=>{const p=subject.captionLeader;return p?`M${p.x1},${p.y1}L${p.x2},${p.y2}`:'';})
-        .attr('stroke-width',.65/scale);
+      if(this.subjectLeaders)this.subjectLeaders.attr('display','none');
+      if(this.layout==='constellations'){
+        const relative=scale/Math.max(.001,this.semantic.fitScale),detail=Math.max(0,Math.min(1,(relative-1.35)/1.2));
+        this.nodeSelection.select('.tau-space-art').attr('opacity',node=>.48+.52*detail)
+          .attr('transform',node=>`scale(${node.surveySize+(1-node.surveySize)*detail})`);
+        this.nodeSelection.select('.tau-survey-beacon').attr('opacity',1-detail).attr('r',node=>node.surveyMarkerRadius/scale).attr('stroke-width',.75/scale);
+        if(this.sectorRouteSelection)this.sectorRouteSelection.attr('opacity',route=>active?((route.source===graph.nodeMap.get(active)?.group||route.target===graph.nodeMap.get(active)?.group)?.55:.08):.42*(1-detail*.8));
+        if(this.constellationSelection)this.constellationSelection.attr('opacity',link=>link.sourceEdge?.26*(1-detail):0);
+        this.edgeSelection.attr('opacity',edge=>active?((edge.source.id===active||edge.target.id===active)?.85:.025):edge.kind==='reference'?.12:detail*.17)
+          .attr('stroke-width',edge=>(edge.source.id===active||edge.target.id===active?1.65:1)/scale);
+      }
       this.nodeSelection.select('.tau-star-hit').attr('r',node=>node.screenHitRadius/scale);
       // Layer titles retain their space before transient landmark previews.
       const ordered=this.nodes.slice().sort((a,b)=>(b.type==='stage')-(a.type==='stage')||(b.id===active)-(a.id===active));
@@ -631,10 +669,10 @@
       const cx=bounds.x+bounds.w/2,cy=bounds.y+bounds.h/2;
       const washes=[{x:cx-bounds.w*.17,y:cy-bounds.h*.07,rx:bounds.w*.54,ry:bounds.h*.32,angle:-24,paint:'nebula-blue'},
         {x:cx+bounds.w*.21,y:cy+bounds.h*.15,rx:bounds.w*.42,ry:bounds.h*.23,angle:31,paint:'nebula-dust'}];
-      field.selectAll('ellipse').data(washes).enter().append('ellipse').attr('class','tau-nebula-wash')
+      field.selectAll('ellipse').data(this.layout==='constellations'?[]:washes).enter().append('ellipse').attr('class','tau-nebula-wash')
         .attr('cx',d=>d.x).attr('cy',d=>d.y).attr('rx',d=>d.rx).attr('ry',d=>d.ry)
         .attr('transform',d=>`rotate(${d.angle} ${d.x} ${d.y})`).attr('fill',d=>`url(#${this.id}-${d.paint})`);
-      const stars=Array.from({length:this.layout==='constellations'?220:145},(_,index)=>({
+      const stars=Array.from({length:this.layout==='constellations'?70:145},(_,index)=>({
         x:bounds.x+(((index*619+89)%2017)/2017)*bounds.w,y:bounds.y+(((index*383+53)%1877)/1877)*bounds.h,
         r:index%23===0?1.5:index%7===0?.85:.43,opacity:index%11===0?.67:index%3===0?.3:.15}));
       field.selectAll('circle').data(stars).enter().append('circle').attr('class','tau-distant-star')
@@ -649,52 +687,27 @@
       const paint=name=>`url(#${this.id}-${name})`;
       const hash=Array.from(node.id).reduce((n,c)=>(n*31+c.charCodeAt(0))>>>0,7);
       if(node.type==='roadmap'||node.type==='unmapped'){
-        const types=['spiral','barred','edge-on','elliptical'];
-        const morphology=node.unmapped?'diffuse':types[hash%types.length];
         const size=.72+((hash>>>7)%53)/100,tilt=(hash%170)-85;
-        const disk=paint((hash>>>4)%3===0?'galaxy-disk-cool':(hash>>>4)%3===1?'galaxy-disk-warm':'galaxy-disk');
-        const body=art.append('g').attr('class','tau-galaxy-morphology-'+morphology).attr('transform',`rotate(${tilt}) scale(${size})`);
-        d3.select(element).attr('data-morphology',morphology);
-        node.visualMorphology=morphology;
-        if(morphology==='diffuse'){
-          body.append('ellipse').attr('class','tau-galaxy-glow').attr('rx',58).attr('ry',41).attr('fill',paint('galaxy-glow')).attr('opacity',.32);
-          body.append('ellipse').attr('class','tau-galaxy-dust').attr('cx',9).attr('cy',-4).attr('rx',34).attr('ry',23).attr('fill',disk).attr('opacity',.19);
-          body.append('ellipse').attr('class','tau-star-ring').attr('rx',39).attr('ry',29).attr('stroke','#92a4bd').attr('stroke-dasharray','2 7').attr('opacity',.4);
-        }else if(morphology==='elliptical'){
-          body.append('ellipse').attr('class','tau-galaxy-glow').attr('rx',44).attr('ry',34).attr('fill',paint('galaxy-glow'));
-          body.append('ellipse').attr('class','tau-galaxy-dust').attr('rx',29).attr('ry',22).attr('fill',disk).attr('opacity',.72);
-          body.append('ellipse').attr('class','tau-galaxy-core').attr('rx',10).attr('ry',8).attr('fill',disk).attr('opacity',.84);
-        }else if(morphology==='edge-on'){
-          body.append('ellipse').attr('class','tau-galaxy-glow').attr('rx',61).attr('ry',23).attr('fill',paint('galaxy-glow'));
-          body.append('ellipse').attr('class','tau-galaxy-dust').attr('rx',48).attr('ry',9).attr('fill',disk);
-          body.append('ellipse').attr('class','tau-galaxy-core').attr('rx',13).attr('ry',11).attr('fill',disk).attr('opacity',.87);
-          body.append('path').attr('class','tau-galaxy-dust-lane').attr('d','M-45,3Q-5,-2 46,-2').attr('fill','none').attr('stroke','#080f1a').attr('stroke-width',2.7).attr('stroke-opacity',.72);
-          body.append('path').attr('class','tau-galaxy-arm').attr('d','M-39,6Q0,12 39,2').attr('fill','none').attr('stroke','#adc1da').attr('stroke-width',1.1).attr('stroke-opacity',.18);
-        }else{
-          const flatten=.77+((hash>>>6)%4)*.06;
-          body.append('ellipse').attr('class','tau-galaxy-glow').attr('rx',56).attr('ry',49*flatten).attr('fill',paint('galaxy-glow')).attr('opacity',.81);
-          body.append('ellipse').attr('class','tau-galaxy-dust').attr('rx',41).attr('ry',38*flatten).attr('fill',disk).attr('opacity',.53);
-          const spiral=body.append('g').attr('transform',`scale(1 ${flatten})`);
-          spiral.append('path').attr('class','tau-galaxy-arm')
-            .attr('d','M-37,17C-45,-11 -14,-42 18,-26C40,-14 28,13 7,14C-8,15 -12,2 -4,-5M37,-17C45,11 14,42 -18,26C-40,14 -28,-13 -7,-14C8,-15 12,-2 4,5')
-            .attr('fill','none').attr('stroke',(hash>>>4)%3===1?'#e8d5bf':'#c6d7ed').attr('stroke-width',5).attr('stroke-opacity',.2);
-          spiral.append('path').attr('class','tau-galaxy-dust-lane')
-            .attr('d','M-34,13C-34,-12 -8,-32 14,-20C30,-11 23,8 8,10M34,-13C34,12 8,32 -14,20C-30,11 -23,-8 -8,-10')
-            .attr('fill','none').attr('stroke','#111a2b').attr('stroke-width',2.1).attr('stroke-opacity',.38);
-          if(morphology==='barred')spiral.append('ellipse').attr('class','tau-galaxy-bar').attr('rx',19).attr('ry',3.2).attr('transform','rotate(27)').attr('fill',disk).attr('opacity',.82);
-          body.append('ellipse').attr('class','tau-galaxy-core').attr('rx',9).attr('ry',7).attr('fill',disk);
-          const dust=Array.from({length:8},(_,i)=>{const angle=i*2.3+hash%9,radius=16+i*3;return{x:Math.cos(angle)*radius,y:Math.sin(angle)*radius*flatten,opacity:.14+(i%3)*.1};});
-          body.selectAll('circle').data(dust).enter().append('circle').attr('cx',d=>d.x).attr('cy',d=>d.y).attr('r',.65).attr('fill','#edf0e8').attr('opacity',d=>d.opacity);
-        }
-        if(!node.unmapped)art.append('path').attr('class','tau-star-ring')
+        const flatten=.58+((hash>>>6)%7)*.055;
+        const cloud=paint((hash>>>4)%3===0?'galaxy-cloud-cool':(hash>>>4)%3===1?'galaxy-cloud-warm':'galaxy-cloud');
+        const body=art.append('g').attr('class','tau-galaxy-morphology-diffuse')
+          .attr('transform',`rotate(${tilt}) scale(${size})`).attr('opacity',node.unmapped?.28:1);
+        d3.select(element).attr('data-morphology','diffuse');
+        node.visualMorphology='diffuse';
+        body.append('ellipse').attr('class','tau-galaxy-glow').attr('rx',62).attr('ry',49*flatten).attr('fill',paint('galaxy-glow'));
+        body.append('ellipse').attr('class','tau-galaxy-cloud').attr('rx',46).attr('ry',35*flatten).attr('fill',cloud).attr('opacity',.85);
+        // Overlapping, offset clouds give a soft, irregular envelope without arms.
+        body.append('ellipse').attr('class','tau-galaxy-cloud').attr('cx',-12).attr('cy',4)
+          .attr('rx',33).attr('ry',27*flatten).attr('fill',cloud).attr('opacity',.3);
+        body.append('ellipse').attr('class','tau-galaxy-cloud').attr('cx',13).attr('cy',-5)
+          .attr('rx',28).attr('ry',24*flatten).attr('fill',paint('galaxy-glow')).attr('opacity',.55);
+        if(node.unmapped)art.append('ellipse').attr('class','tau-star-ring').attr('rx',39).attr('ry',29)
+          .attr('stroke','#92a4bd').attr('stroke-dasharray','2 7').attr('opacity',.4);
+        else art.append('path').attr('class','tau-star-ring')
           .attr('d','M-29,25A39,32 0 0 0 29,25').attr('stroke',nodeAccent(node)).attr('stroke-width',1.05).attr('opacity',.66);
       }else if(node.type==='landmark'){
         const kind=['definition','theorem'].includes(node.landmarkKind)?node.landmarkKind:'construction',r=node.radius||24;
-        art.append('circle').attr('class','tau-planet-halo').attr('r',r*1.6).attr('fill',paint('stellar-glow')).attr('opacity',.3);
-        if(kind==='construction')art.append('ellipse').attr('class','tau-planet-ring').attr('rx',r*1.7).attr('ry',r*.53).attr('transform','rotate(-23)').attr('fill','none').attr('stroke','#8da6c6').attr('stroke-opacity',.48).attr('stroke-width',2.3);
         art.append('circle').attr('class','tau-planet-body tau-landmark-core').attr('r',r).attr('fill',paint('planet-'+kind));
-        art.append('path').attr('class','tau-planet-shade').attr('d',`M${-r*.73},${-r*.36}Q0,${-r*.75} ${r*.77},${-r*.3}M${-r*.92},${r*.05}Q0,${-r*.22} ${r*.89},${r*.12}`)
-          .attr('fill','none').attr('stroke',kind==='theorem'?'#efd4b2':'#d1e6ed').attr('stroke-width',r*.11).attr('stroke-opacity',.12);
         art.append('circle').attr('class','tau-star-ring').attr('r',r+5).attr('stroke','#d2dfed');
       }else{
         const r=node.radius||14,central=this.layout==='solar-system'&&node.solarCentral;
@@ -833,6 +846,7 @@
       if (this.isSkyLayout) {
         this.nodeSelection.append('circle').attr('class', 'tau-star-hit').attr('r', 13);
         this.nodeSelection.each((node,index,elements)=>this.drawSpaceNode(elements[index],node));
+        if(this.layout==='constellations')this.nodeSelection.append('circle').attr('class','tau-survey-beacon tau-space-art-marker').attr('fill',node=>node.unmapped?'#08121d':'#d7e2e6').attr('stroke',node=>node.unmapped?'#92a4bd':nodeAccent(node)).attr('pointer-events','none');
         this.nodeSelection.each(function(node) {
           const group = d3.select(this);
           group.append('path').attr('class','tau-node-label-leader').attr('display','none');
@@ -944,6 +958,9 @@
 
     bounds() {
       if (!this.nodes.length) return { x: 0, y: 0, w: 100, h: 100 };
+      // Survey labels are anchored inside their territories. Old free-label
+      // margins would distort the aspect ratio of a short landscape chart.
+      if(this.layout==='constellations'&&this.constellationBounds){const b=this.constellationBounds;return {x:b.x-30,y:b.y-30,w:b.w+60,h:b.h+60};}
       let left = Infinity, right = -Infinity, top = Infinity, bottom = -Infinity;
       this.nodes.forEach(node => { left = Math.min(left, node.x - node.w / 2); right = Math.max(right, node.x + node.w / 2); top = Math.min(top, node.y - node.h / 2); bottom = Math.max(bottom, node.y + node.h / 2); });
       if (this.layout === 'constellations') {
@@ -962,8 +979,10 @@
     fit(animate) {
       if (animate === undefined) animate = true;
       const box = this.bounds();
-      const scale = Math.max(.025, Math.min(1.15, (this.width - 36) / box.w, (this.height - 36) / box.h));
-      const transform = d3.zoomIdentity.translate(this.width / 2 - (box.x + box.w / 2) * scale, this.height / 2 - (box.y + box.h / 2) * scale).scale(scale);
+      const bottomReserve=this.layout==='constellations'&&(this.width<600||this.height<300)?60:0;
+      const usableHeight=this.height-bottomReserve;
+      const scale = Math.max(.025, Math.min(1.15, (this.width - 36) / box.w, (usableHeight - 36) / box.h));
+      const transform = d3.zoomIdentity.translate(this.width / 2 - (box.x + box.w / 2) * scale, usableHeight / 2 - (box.y + box.h / 2) * scale).scale(scale);
       this.semantic.fitScale=scale;this.semantic.diveThreshold=scale*2.35;this.semantic.ascendThreshold=scale*.68;
       this.semanticParentCamera={x:transform.x,y:transform.y,k:transform.k};
       if (animate) this.svg.transition().duration(260).call(this.zoom.transform, transform);
@@ -1079,7 +1098,7 @@
     }
 
     debugState() {
-      return { nodes: this.nodes.length, edges: this.edges.length, constellationLinks: this.constellationLinks.length, constellationSubjects: this.constellationSubjects.length, groupConnections: this.groupConnections || [],
+      return { nodes: this.nodes.length, edges: this.edges.length, constellationLinks: this.constellationLinks.length, constellationSubjects: this.constellationSubjects.length, groupConnections: this.groupConnections || [], sectorRoutes:(this.sectorRoutes||[]).map(({source,target,dependencies,witnesses})=>({source,target,dependencies,witnesses})), subjects:this.constellationSubjects.map(subject=>({label:subject.label,sector:subject.sector,caption:subject.screenCaption||null})),
         links: this.constellationLinks.map(link => ({group:link.group,sourceEdge:link.sourceEdge,source:{x:link.source.x,y:link.source.y},target:{x:link.target.x,y:link.target.y}})), layout: this.layout, selectedId: this.selectedId, semantic:{...this.semantic,canAscend:this.canAscend},orbits:(this.orbits||[]).length,
         width: this.width, height: this.height, transform: { x: this.transform.x, y: this.transform.y, k: this.transform.k },
         positions: this.nodes.map(node => ({ id: node.id, x: node.x, y: node.y, w: node.w, h: node.h, rank: node.rank == null ? null : node.rank, dependencyRank: node.rank == null ? null : node.rank, dependencyOrderValid: node.dependencyOrderValid, caption: node.screenCaption || null, progress: progressValue(node.progress), accent: nodeAccent(node) })) };
