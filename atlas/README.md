@@ -38,12 +38,12 @@ Roadmap layers can carry reviewed refinements: constructions, lemmas, theorems a
 | Unmapped areas needing a roadmap | 16 |
 | Roadmaps | 180 |
 | Recorded stage entries | 1,604 |
-| Reviewed source refinements | 56 (six roadmaps, partial coverage) |
+| Reviewed source refinements | 256 (21 roadmaps, partial coverage) |
 | Mathematical layer stars | 1,538 |
-| Source-backed mathematical planets | 3,440 extracted targets + 56 refinements |
+| Source-backed mathematical planets | 3,440 extracted targets + 256 refinements |
 | Terminal targets counted for progress | 1,543 |
 | Roadmap dependency links | 1,011 |
-| Stage dependency links | 3,508 recorded + 83 from reviewed refinements |
+| Stage dependency links | 3,508 recorded + 377 from reviewed refinements |
 | Sanitized source Markdown documents | 214 |
 
 The September 2026 edition combines 152 revised number-theory campaign roadmaps with 28 roadmaps from [TauCetiRoadmap](https://github.com/TauCetiProject/TauCetiRoadmap). The source documents are bundled under [`content/`](content/). The 12 companion guides include the campaign execution protocol, conventions and scope. Reference PDFs and extracted book text are not included. [`data/PUBLICATION.json`](data/PUBLICATION.json) records the publication checks; the atlas and status data retain source hashes, reported commit IDs, and dates.
