@@ -120,6 +120,12 @@ body.has-selection .app-layout{grid-template-columns:236px minmax(320px,1fr) 380
 .progress-legend .active{background:var(--active)}
 .progress-legend .planned{background:var(--planned)}
 .progress-legend .none{border:1.5px solid var(--grey)}
+.kind-legend{display:inline-flex;align-items:center;gap:12px}
+.kind-legend span{display:inline-flex;align-items:center;gap:5px}
+.kind-legend i{width:8px;height:8px;flex:none;box-sizing:border-box}
+.kind-legend .definition{background:#8fb0cf;border-radius:2px}
+.kind-legend .result{background:#b8a9dc;border-radius:50%}
+.kind-legend .theorem{background:#b8a9dc;border-radius:50%;box-shadow:0 0 0 1.5px var(--bg,#0b1016),0 0 0 2.5px #b8a9dc}
 .progress-legend .unmapped{border:1px dashed var(--muted)}
 .edge-legend{color:var(--faint);overflow:hidden;text-overflow:ellipsis}
 

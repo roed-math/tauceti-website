@@ -78,6 +78,104 @@
     galaxies.forEach(galaxy => { galaxy.rx = galaxy.w / 2; galaxy.ry = galaxy.h / 2; });
   }
 
+  // The radial layout: Mathlib sits at the centre, and each area and roadmap
+  // lies farther out the more theory must be built before its targets can be
+  // stated and proved. Areas keep a fixed clockwise order so that related
+  // areas are neighbours.
+  const CORE_RADIUS = 230;
+  // Each area has a direction from the core (degrees, clockwise from the
+  // right). Areas that build on one another share a direction, so a lineage
+  // fans outward: classical number theory, then arithmetic geometry, then
+  // modular and automorphic theory, and geometric Langlands farthest out.
+  const AREA_DIRECTION = {
+    'Shared foundations': -90, 'Analysis, probability and PDE': -145, 'Topology, manifolds and Floer theory': -35,
+    'Algebra, representation theory and Lie groups': 180, 'K-theory, motives, periods and Habiro': 168,
+    'Cohomology and nonarchimedean geometry': 205, 'Function fields and higher local fields': 138,
+    'Classical, analytic and computational number theory': 18, 'Iwasawa, Euler systems and BSD': 2,
+    'Arithmetic geometry and Diophantine methods': 42, 'Modular, Shimura and Galois theory': 66,
+    'General automorphic theory': 92, 'Diamonds and geometric Langlands': 112
+  };
+
+  function placeGalaxiesRadial(galaxies, constellationsOf, aspect) {
+    const sx = Math.max(.8, Math.min(1.45, Math.sqrt(aspect))), sy = 1 / Math.max(.8, Math.min(1.25, Math.sqrt(aspect)));
+    const ordered = galaxies.slice().sort((a, b) => a.label.localeCompare(b.label));
+    ordered.forEach(galaxy => {
+      const members = constellationsOf(galaxy);
+      const known = members.map(c => c.distance).filter(d => Number.isFinite(d));
+      galaxy.distance = known.length ? known.reduce((a, b) => a + b, 0) / known.length : 5;
+      galaxy.size = 230 + 92 * Math.sqrt(Math.max(1, galaxy.count));
+    });
+    ordered.forEach((galaxy, index) => {
+      const direction = AREA_DIRECTION[galaxy.label];
+      galaxy.angle = (direction == null ? (index * 137.5) % 360 : direction) * Math.PI / 180;
+      galaxy.targetRadius = CORE_RADIUS + 260 + galaxy.size * .45 + galaxy.distance * 210;
+      galaxy.x = Math.cos(galaxy.angle) * galaxy.targetRadius * sx;
+      galaxy.y = Math.sin(galaxy.angle) * galaxy.targetRadius * sy;
+      galaxy.w = galaxy.size * 1.08; galaxy.h = galaxy.size * .86;
+    });
+    // Separate overlapping areas; each area is held near its own radius, so
+    // resolving an overlap moves it around the core rather than inward.
+    for (let pass = 0; pass < 260; pass++) {
+      let moved = false;
+      ordered.forEach((a, index) => ordered.slice(index + 1).forEach(b => {
+        const dx = b.x - a.x, dy = b.y - a.y, distance = Math.max(.001, Math.hypot(dx, dy));
+        const needed = (Math.max(a.w, a.h) + Math.max(b.w, b.h)) / 2 + 70;
+        if (distance >= needed) return;
+        const push = (needed - distance) / 2 / distance;
+        a.x -= dx * push; a.y -= dy * push; b.x += dx * push; b.y += dy * push; moved = true;
+      }));
+      ordered.forEach(galaxy => {
+        const radius = Math.hypot(galaxy.x / sx, galaxy.y / sy);
+        const pull = (galaxy.targetRadius - radius) * .08;
+        galaxy.x += galaxy.x / Math.max(1, radius) * pull; galaxy.y += galaxy.y / Math.max(1, radius) * pull;
+        const minimum = CORE_RADIUS + 120 + Math.max(galaxy.w, galaxy.h) / 2;
+        if (radius < minimum) { galaxy.x *= minimum / radius; galaxy.y *= minimum / radius; }
+      });
+      if (!moved && pass > 40) break;
+    }
+    ordered.forEach(galaxy => { galaxy.rx = galaxy.w / 2; galaxy.ry = galaxy.h / 2; });
+  }
+
+  // Inside an area, a roadmap closer to Mathlib than the area's average sits
+  // on the side facing the core, and a farther one on the outer side.
+  function placeConstellationsRadial(galaxy, constellations) {
+    const seed = hash(galaxy.label), rotation = (seed % 360) * Math.PI / 180;
+    const length = Math.max(1, Math.hypot(galaxy.x, galaxy.y)), ux = galaxy.x / length, uy = galaxy.y / length;
+    const rx = Math.max(40, galaxy.rx * .8), ry = Math.max(30, galaxy.ry * .8);
+    constellations.forEach((constellation, index) => {
+      const angle = index * GOLDEN + rotation;
+      const spread = constellations.length === 1 ? 0 : Math.sqrt((index + .45) / constellations.length) * .78;
+      const offset = Number.isFinite(constellation.distance) ? Math.max(-.62, Math.min(.62, (constellation.distance - galaxy.distance) * .16)) : 0;
+      constellation.x = galaxy.x + Math.cos(angle) * rx * spread + ux * offset * rx;
+      constellation.y = galaxy.y + Math.sin(angle) * ry * spread + uy * offset * ry;
+    });
+    constellations.forEach(constellation => {
+      const n = constellation.starIds.length;
+      constellation.wanted = constellation.unmapped ? 14 : 10 + 5.4 * Math.sqrt(n);
+    });
+    for (let pass = 0; pass < 200; pass++) {
+      let moved = false;
+      constellations.forEach((a, index) => constellations.slice(index + 1).forEach(b => {
+        const dx = b.x - a.x, dy = b.y - a.y, distance = Math.max(.001, Math.hypot(dx, dy));
+        const needed = (a.wanted + b.wanted) * 1.02 + 16;
+        if (distance >= needed) return;
+        const push = (needed - distance) / 2 / distance;
+        a.x -= dx * push; a.y -= dy * push; b.x += dx * push; b.y += dy * push; moved = true;
+      }));
+      constellations.forEach(c => {
+        const ex = (c.x - galaxy.x) / (galaxy.rx * .9), ey = (c.y - galaxy.y) / (galaxy.ry * .9), e = Math.hypot(ex, ey);
+        if (e > 1) { c.x = galaxy.x + (c.x - galaxy.x) / e; c.y = galaxy.y + (c.y - galaxy.y) / e; }
+      });
+      if (!moved) break;
+    }
+    constellations.forEach(constellation => {
+      let nearest = Infinity;
+      constellations.forEach(other => { if (other !== constellation) nearest = Math.min(nearest, Math.hypot(other.x - constellation.x, other.y - constellation.y)); });
+      constellation.spacing = Number.isFinite(nearest) ? nearest : Math.min(rx, ry);
+      constellation.r = Math.max(8, Math.min(64, constellation.wanted, constellation.spacing * .48));
+    });
+  }
+
   function placeConstellations(galaxy, constellations) {
     const seed = hash(galaxy.label), rotation = (seed % 360) * Math.PI / 180;
     const rx = Math.max(40, galaxy.rx * .84), ry = Math.max(30, galaxy.ry * .72);
@@ -91,8 +189,10 @@
       let nearest = Infinity;
       constellations.forEach(other => { if (other !== constellation) nearest = Math.min(nearest, Math.hypot(other.x - constellation.x, other.y - constellation.y)); });
       constellation.spacing = Number.isFinite(nearest) ? nearest : Math.min(rx, ry);
-      const wanted = constellation.unmapped ? 14 : 12 + 4.2 * Math.sqrt(constellation.starIds.length);
-      constellation.r = Math.max(8, Math.min(48, wanted, constellation.spacing * .42));
+      // Large roadmaps get proportionally more room, so their layers keep the
+      // same spacing as a small roadmap's instead of being squeezed together.
+      const wanted = constellation.unmapped ? 14 : 10 + 5.4 * Math.sqrt(constellation.starIds.length);
+      constellation.r = Math.max(8, Math.min(64, wanted, constellation.spacing * .45));
     });
   }
 
@@ -140,8 +240,11 @@
       let nearest = Infinity;
       stars.forEach(other => { if (other !== star) nearest = Math.min(nearest, Math.hypot(other.x - star.x, other.y - star.y)); });
       star.nearest = Number.isFinite(nearest) ? nearest : constellation.r;
-      star.r = Math.max(1.1, Math.min(3.2, constellation.r * .055));
-      star.room = star.planetIds.length ? Math.max(star.r * 2.4, Math.min(star.nearest * .46, constellation.r * .42)) : star.r * 2.2;
+      // A star and its planetary system never reach a neighbour: both are
+      // bounded by the distance to the nearest other star, so a crowded
+      // roadmap draws smaller systems that separate as the camera closes in.
+      star.r = Math.max(.45, Math.min(3.2, constellation.r * .055, star.nearest * .15));
+      star.room = star.planetIds.length ? Math.max(star.r * 2.4, Math.min(star.nearest * .44, constellation.r * .42)) : star.r * 2.2;
     });
   }
 
@@ -256,9 +359,12 @@
       if (!galaxyLinks.has(key)) galaxyLinks.set(key, { source: [a.galaxyId, b.galaxyId].sort()[0], target: [a.galaxyId, b.galaxyId].sort()[1], weight: 0 });
       galaxyLinks.get(key).weight += Math.sqrt(Math.max(1, edge.count || 1));
     });
-    placeGalaxies(populated, Array.from(galaxyLinks.values()), aspect);
     const constellationById = new Map(constellations.map(item => [item.id, item]));
-    populated.forEach(galaxy => placeConstellations(galaxy, galaxy.constellationIds.map(id => constellationById.get(id)).sort((a, b) => a.id.localeCompare(b.id))));
+    const radial = input.layout === 'radial';
+    const membersOf = galaxy => galaxy.constellationIds.map(id => constellationById.get(id)).sort((a, b) => a.id.localeCompare(b.id));
+    if (radial) placeGalaxiesRadial(populated, membersOf, aspect);
+    else placeGalaxies(populated, Array.from(galaxyLinks.values()), aspect);
+    populated.forEach(galaxy => (radial ? placeConstellationsRadial : placeConstellations)(galaxy, membersOf(galaxy)));
     const stars = [], planets = [];
     constellations.forEach(constellation => {
       const members = constellation.starIds.map(id => ({ ...input.stars.get(id), id, level: 'star', constellationId: constellation.id, planetIds: (input.planets.get(id) || []).map(planet => planet.id) }));
@@ -277,12 +383,15 @@
     populated.forEach(galaxy => { galaxy.dust = galaxyDust(galaxy); });
     const byId = new Map();
     [...populated, ...constellations, ...stars, ...planets].forEach(node => byId.set(node.id, node));
-    const left = Math.min(...populated.map(galaxy => galaxy.x - galaxy.rx)), top = Math.min(...populated.map(galaxy => galaxy.y - galaxy.ry));
-    const right = Math.max(...populated.map(galaxy => galaxy.x + galaxy.rx)), bottom = Math.max(...populated.map(galaxy => galaxy.y + galaxy.ry));
+    const core = radial ? { id: 'core:mathlib', level: 'core', x: 0, y: 0, r: CORE_RADIUS, label: 'Mathlib' } : null;
+    const extents = populated.map(galaxy => ({ x0: galaxy.x - galaxy.rx, y0: galaxy.y - galaxy.ry, x1: galaxy.x + galaxy.rx, y1: galaxy.y + galaxy.ry }));
+    if (core) extents.push({ x0: -core.r * 3, y0: -core.r * 1.6, x1: core.r * 3, y1: core.r * 1.6 });
+    const left = Math.min(...extents.map(e => e.x0)), top = Math.min(...extents.map(e => e.y0));
+    const right = Math.max(...extents.map(e => e.x1)), bottom = Math.max(...extents.map(e => e.y1));
     const bounds = populated.length ? { x: left, y: top, w: right - left, h: bottom - top } : { x: -100, y: -100, w: 200, h: 200 };
     const starIds = new Set(stars.map(star => star.id));
     return {
-      galaxies: populated, constellations, stars, planets, byId, bounds, aspect,
+      galaxies: populated, constellations, stars, planets, byId, bounds, aspect, core, layout: radial ? 'radial' : 'areas',
       routes: routesBetween(populated, constellations, input.constellationEdges),
       constellationEdges: input.constellationEdges.filter(edge => constellationById.has(edge.source) && constellationById.has(edge.target)),
       starEdges: input.starEdges.filter(edge => starIds.has(edge.source) && starIds.has(edge.target)),

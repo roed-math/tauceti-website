@@ -8,7 +8,18 @@
   let instanceCount = 0;
   const SVG_NS = 'http://www.w3.org/2000/svg';
   const BACKGROUND = '#0b1016', ACCENT = '#dfc186', NO_PROGRESS = '#6f7f8c', CREAM = '#e8e4da', DUST = '#8ea1b6';
-  const KIND_FILL = { definition: '#7fb8bd', theorem: '#dba57f', construction: '#8fa8d0' };
+  // Planets carry no progress. Their shape and a muted tint, both outside the
+  // red-to-white progress ramp, say what they are: a rounded square is a
+  // definition or construction, a circle is a result, and a ringed circle is
+  // a named theorem.
+  const DEFINITION_FILL = '#8fb0cf', RESULT_FILL = '#b8a9dc';
+  const isDefinitionKind = kind => kind === 'definition' || kind === 'construction' || !kind;
+  const planetFill = d => isDefinitionKind(d.kind) ? DEFINITION_FILL : RESULT_FILL;
+  const planetShape = (d, r) => {
+    if (!isDefinitionKind(d.kind)) return `M${-r},0a${r},${r} 0 1,0 ${2 * r},0a${r},${r} 0 1,0 ${-2 * r},0Z`;
+    const h = r * .86, c = r * .28;
+    return `M${-h + c},${-h}H${h - c}Q${h},${-h} ${h},${-h + c}V${h - c}Q${h},${h} ${h - c},${h}H${-h + c}Q${-h},${h} ${-h},${h - c}V${-h + c}Q${-h},${-h} ${-h + c},${-h}Z`;
+  };
   const normalizeText = value => String(value == null ? '' : value).replace(/([a-z])([A-Z])/g, '$1 $2').replace(/_/g, ' ');
 
   function progressValue(value) {
@@ -93,8 +104,9 @@
         .tau-graph text { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif; pointer-events: none; paint-order: stroke fill; stroke: ${BACKGROUND}; stroke-linejoin: round; }
         .tau-graph .tau-node { cursor: pointer; outline: none; }
         .tau-graph .tau-hit { fill: transparent; pointer-events: all; }
-        .tau-graph .tau-galaxy-disc, .tau-graph .tau-dust, .tau-graph .tau-constellation-disc, .tau-graph .tau-figure, .tau-graph .tau-orbit, .tau-graph .tau-field, .tau-graph .tau-link, .tau-graph .tau-route, .tau-graph .tau-ring { pointer-events: none; }
-        .tau-graph .tau-label-galaxy text { fill: #b3bec9; font-weight: 500; letter-spacing: .2px; stroke-width: 2.5px; }
+        .tau-graph .tau-core, .tau-graph .tau-galaxy-disc, .tau-graph .tau-dust, .tau-graph .tau-constellation-disc, .tau-graph .tau-figure, .tau-graph .tau-orbit, .tau-graph .tau-field, .tau-graph .tau-link, .tau-graph .tau-route, .tau-graph .tau-ring { pointer-events: none; }
+        .tau-graph .tau-label-core text { fill: #efe3c8; font-weight: 600; letter-spacing: 2.5px; text-transform: uppercase; stroke-width: 3px; }
+        .tau-label-galaxy text { fill: #b3bec9; font-weight: 500; letter-spacing: .2px; stroke-width: 2.5px; }
         .tau-graph .tau-label-galaxy.is-active text { fill: #e2e6eb; }
         .tau-graph .tau-label-constellation text { fill: #c9d2da; font-weight: 400; stroke-width: 2.5px; }
         .tau-graph .tau-label-star text { fill: #dbe1e7; font-weight: 500; stroke-width: 3px; }
@@ -121,7 +133,7 @@
         .append('path').attr('d', 'M0,-3.5L8,0L0,3.5Z').attr('fill', '#7d8a99');
       this.viewport = this.svg.append('g').attr('class', 'tau-viewport');
       this.layers = {};
-      ['field', 'galaxy', 'route', 'constellation', 'figure', 'link', 'star', 'planet', 'label'].forEach(name => { this.layers[name] = this.viewport.append('g').attr('class', 'tau-layer-' + name); });
+      ['field', 'core', 'galaxy', 'route', 'constellation', 'figure', 'link', 'star', 'planet', 'label'].forEach(name => { this.layers[name] = this.viewport.append('g').attr('class', 'tau-layer-' + name); });
       // The universe spans thousands of times in scale, so a wheel or trackpad
       // step must move the camera a long way; a pinch keeps a gentler gain.
       this.zoom = d3.zoom().scaleExtent([.015, 900]).clickDistance(6)
@@ -162,10 +174,10 @@
       this.universe = universe; this.busy = false;
       this.selectedId = universe.byId.has(settings.selectedId) ? settings.selectedId : null;
       this.showReferences = !!settings.showReferences;
-      this.layers.field.selectAll('*').remove(); this.layers.galaxy.selectAll('*').remove(); this.layers.route.selectAll('*').remove();
+      this.layers.field.selectAll('*').remove(); this.layers.core.selectAll('*').remove(); this.layers.galaxy.selectAll('*').remove(); this.layers.route.selectAll('*').remove();
       this.layers.constellation.selectAll('*').remove(); this.layers.figure.selectAll('*').remove(); this.layers.link.selectAll('*').remove();
       this.layers.star.selectAll('*').remove(); this.layers.planet.selectAll('*').remove(); this.layers.label.selectAll('*').remove();
-      this.drawField(); this.drawGalaxies();
+      this.drawField(); this.drawCore(); this.drawGalaxies();
       if (settings.camera) this.restoreCamera(settings.camera);
       else if (settings.keepCamera && this.transform !== d3.zoomIdentity) this.scheduleRender();
       else { this.awaitingFit = true; this.resize(); }
@@ -196,6 +208,34 @@
         x: bounds.x + (((index * 619 + 89) % 2017) / 2017) * bounds.w, y: bounds.y + (((index * 383 + 53) % 1877) / 1877) * bounds.h,
         r: index % 23 === 0 ? 1.4 : index % 7 === 0 ? .9 : .5, opacity: index % 11 === 0 ? .4 : index % 3 === 0 ? .22 : .12 }));
       field.selectAll('circle').data(stars).enter().append('circle').attr('class', 'tau-field').attr('cx', d => d.x).attr('cy', d => d.y).attr('r', d => d.r).attr('fill', '#c7d3df').attr('opacity', d => d.opacity);
+    }
+
+    // Mathlib at the centre, drawn flat: a black disc with a thin photon ring,
+    // the far side of the accretion disc lensed into arcs above and below,
+    // and the near side crossing in front as a flattened band.
+    drawCore() {
+      const core = this.universe.core, layer = this.layers.core;
+      if (!core) return;
+      const r = core.r, g = layer.append('g').attr('class', 'tau-core').attr('data-node-id', core.id).attr('transform', `translate(${core.x},${core.y})`);
+      const WARM = '#dcc49b', BRIGHT = '#f1e6cc';
+      // The near side of the disc: long, thin, almost edge-on bands.
+      const front = [[2.9, .075, .75, 2.4], [2.5, .06, .5, 1.4], [3.3, .095, .28, 1]];
+      const half = (rx, ry, sweep) => `M${-rx},0A${rx},${ry} 0 0,${sweep} ${rx},0`;
+      front.forEach(([a, b, opacity, width]) => g.append('path').attr('class', 'tau-core-band').attr('d', half(r * a, r * b, 1)).attr('fill', 'none')
+        .attr('stroke', WARM).attr('stroke-width', width).attr('vector-effect', 'non-scaling-stroke').attr('opacity', opacity * .6));
+      // The far side, lensed over the top of the hole and, faintly, beneath it.
+      [[1.18, 1.16, .9, 3.2], [1.28, 1.24, .55, 2], [1.42, 1.36, .28, 1.3], [1.6, 1.5, .14, 1]].forEach(([a, b, opacity, width]) =>
+        g.append('path').attr('class', 'tau-core-lens').attr('d', half(r * a, r * b, 1)).attr('fill', 'none').attr('stroke', WARM)
+          .attr('stroke-width', width).attr('vector-effect', 'non-scaling-stroke').attr('opacity', opacity));
+      [[1.1, 1.06, .45, 1.6], [1.2, 1.12, .2, 1]].forEach(([a, b, opacity, width]) =>
+        g.append('path').attr('class', 'tau-core-lens').attr('d', half(r * a, r * b, 0)).attr('fill', 'none').attr('stroke', WARM)
+          .attr('stroke-width', width).attr('vector-effect', 'non-scaling-stroke').attr('opacity', opacity));
+      g.append('circle').attr('class', 'tau-core-disc').attr('r', r).attr('fill', '#010203');
+      g.append('circle').attr('class', 'tau-core-ring').attr('r', r * 1.03).attr('fill', 'none').attr('stroke', BRIGHT)
+        .attr('stroke-width', 1.6).attr('vector-effect', 'non-scaling-stroke').attr('opacity', .9);
+      front.forEach(([a, b, opacity, width]) => g.append('path').attr('class', 'tau-core-band').attr('d', half(r * a, r * b, 0)).attr('fill', 'none')
+        .attr('stroke', index => BRIGHT).attr('stroke-width', width).attr('vector-effect', 'non-scaling-stroke').attr('opacity', opacity));
+      g.append('title').text('Mathlib and Tau Ceti: the formalised baseline. Areas and roadmaps lie farther out the more theory must be built before their targets can be stated and proved.');
     }
 
     dustPath(points, radius) {
@@ -272,6 +312,11 @@
       const centred = (x, y) => x >= chart.x && x <= chart.x + chart.w && y >= chart.y && y <= chart.y + chart.h;
       const galaxies = universe.galaxies.filter(g => intersects(g.x, g.y, Math.max(g.rx, g.ry) * 1.2));
       const constellations = [], stars = [], planets = [], labels = [];
+      if (universe.core && intersects(universe.core.x, universe.core.y, universe.core.r * 3)) {
+        const core = universe.core;
+        labels.push({ id: 'core:' + core.id, nodeId: core.id, kind: 'core', x: core.x, y: core.y + core.r * 1.62 + 12 / k, lines: ['Mathlib'], font: T.small ? 11 : 12,
+          anchor: 'middle', above: false, priority: 200, active: false, alternatives: [{ x: core.x, y: core.y + core.r * 1.05 + 12 / k, above: false }] });
+      }
       galaxies.forEach(galaxy => {
         const screenW = galaxy.w * k;
         galaxy.headingVisible = screenW < this.width * 1.6 && intersects(galaxy.x, galaxy.y - galaxy.ry, galaxy.rx);
@@ -295,10 +340,13 @@
             const s = universe.byId.get(starId);
             if (!intersects(s.x, s.y, s.room + 30 / k)) return;
             s.systemVisible = s.room * k >= T.system && s.planetIds.length > 0;
-            s.nameVisible = (s.nearest * k >= T.starName || active === s.id) && centred(s.x, s.y);
+            // Whole layers are named before their milestones.
+            s.nameVisible = (s.nearest * k >= T.starName * (s.top === false ? 1 : .7) || active === s.id) && centred(s.x, s.y);
             stars.push(s);
-            if (s.nameVisible) labels.push({ id: 'star:' + s.id, nodeId: s.id, kind: 'star', x: s.x, y: s.systemVisible ? s.y - s.room * 1.02 - 4 / k : s.y + s.r * 1.9 + 11 / k, lines: wrapText(s.label, 24, 2), font: 11, anchor: 'middle', above: s.systemVisible, priority: 40 + (active === s.id ? 50 : 0), active: active === s.id,
-              alternatives: [{ x: s.x, y: s.systemVisible ? s.y + s.room * 1.02 + 11 / k : s.y - s.r * 1.9 - 4 / k, above: !s.systemVisible }] });
+            const side = (s.systemVisible ? s.room : s.r * 1.6) + 5 / k;
+            if (s.nameVisible) labels.push({ id: 'star:' + s.id, nodeId: s.id, kind: 'star', x: s.x, y: s.systemVisible ? s.y - s.room * 1.02 - 4 / k : s.y + s.r * 1.9 + 11 / k, lines: wrapText(s.label, T.small ? 18 : 24, 2), font: 11, anchor: 'middle', above: s.systemVisible, priority: 40 + (s.top === false ? 0 : 8) + (active === s.id ? 50 : 0), active: active === s.id,
+              alternatives: [{ x: s.x, y: s.systemVisible ? s.y + s.room * 1.02 + 11 / k : s.y - s.r * 1.9 - 4 / k, above: !s.systemVisible },
+                { x: s.x + side, y: s.y + 3.5 / k, above: false, anchor: 'start' }, { x: s.x - side, y: s.y + 3.5 / k, above: false, anchor: 'end' }] });
             if (!s.systemVisible) return;
             s.planetIds.forEach(planetId => {
               const p = universe.byId.get(planetId), detail = p.r * k;
@@ -411,14 +459,16 @@
       const enter = join.enter().append('g').attr('class', 'tau-node tau-planet').attr('data-node-id', d => d.id).attr('data-level', 'planet').attr('data-kind', d => d.kind)
         .attr('transform', d => `translate(${d.x},${d.y})`).attr('tabindex', 0).attr('role', 'button').attr('aria-label', d => normalizeText(d.label) + '. ' + (d.kind || 'target') + (d.refinement ? ', source refinement' : ''));
       enter.append('circle').attr('class', 'tau-hit');
-      enter.append('circle').attr('class', 'tau-planet-body').attr('stroke', BACKGROUND).attr('vector-effect', 'non-scaling-stroke').attr('stroke-width', 1);
+      enter.append('path').attr('class', 'tau-planet-body').attr('stroke', BACKGROUND).attr('vector-effect', 'non-scaling-stroke').attr('stroke-width', 1);
+      enter.append('circle').attr('class', 'tau-planet-halo').attr('fill', 'none').attr('stroke', RESULT_FILL).attr('vector-effect', 'non-scaling-stroke').attr('stroke-width', 1);
       enter.append('circle').attr('class', 'tau-ring tau-select-ring').attr('fill', 'none').attr('stroke', ACCENT).attr('vector-effect', 'non-scaling-stroke').attr('stroke-width', 1.5);
       enter.append('title').text(d => normalizeText(d.label) + '\n' + (d.kind || 'target') + (d.refinement ? ' · source refinement' : '') + '\nClick to read');
       this.bindInteractions(enter);
       const all = enter.merge(join);
       all.classed('is-selected', d => d.id === this.selectedId).classed('is-hovered', d => d.id === this.hoveredId);
       all.select('.tau-hit').attr('r', d => { const star = graph.universe.byId.get(d.starId); return Math.min(Math.max(d.r * 1.5, (graph.isCoarse ? 12 : 8) / k), (star && star.planetGap ? star.planetGap : d.r * 4) * .48); });
-      all.select('.tau-planet-body').attr('r', d => d.r).attr('fill', d => KIND_FILL[d.kind] || KIND_FILL.construction).attr('stroke-dasharray', d => d.refinement ? `${1.5 / k} ${1.5 / k}` : null);
+      all.select('.tau-planet-body').attr('d', d => planetShape(d, d.r)).attr('fill', planetFill).attr('stroke-dasharray', d => d.refinement ? `${1.5 / k} ${1.5 / k}` : null);
+      all.select('.tau-planet-halo').attr('r', d => d.r * 1.42).attr('opacity', d => d.kind === 'theorem' ? .9 : 0);
       all.select('.tau-select-ring').attr('r', d => d.r * 1.9).attr('opacity', d => active === d.id ? 1 : 0);
       // Deep zoom: a reviewed refinement shows its hypotheses (open), proof
       // steps (filled) and acceptance checks (accent) as moons, and the

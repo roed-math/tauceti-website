@@ -59,6 +59,7 @@ def build(output: Path) -> dict:
     atlas["stagePresentation"] = json.loads(read_text("data/stage-presentation.json"))
     atlas["landmarkLabels"] = json.loads(read_text("data/landmark-labels.json"))
     atlas["landmarkHidden"] = json.loads(read_text("data/landmark-hidden.json"))
+    atlas["roadmapClassification"] = json.loads(read_text("data/roadmap-classification.json"))
     # Edited overview summaries: mathematical prose for readers, keyed by roadmap id.
     atlas["roadmapSummaries"] = json.loads(read_text("data/roadmap-summaries.json"))
     roadmap_ids = {roadmap["id"] for roadmap in atlas["roadmaps"]}
@@ -146,7 +147,7 @@ def build(output: Path) -> dict:
     # progress targets, so the parent stays terminal for progress accounting.
     refinements = [stage for stage in atlas["stages"] if stage.get("expansion")]
     parent_ids = {stage.get("parentStageId") for stage in atlas["stages"] if stage.get("parentStageId") and not stage.get("expansion")}
-    source_paths = ["src/shell.html", *style_paths, *assets.values(), "data/atlas.json", "data/status.json", "data/regions.json", "data/opportunities.json", "data/stage-presentation.json", "data/landmark-labels.json", "data/landmark-hidden.json", "data/roadmap-summaries.json", "data/bibliography.json", "NOTICE", "LICENSE", "vendor/D3-LICENSE.txt", "vendor/KaTeX-LICENSE.txt"]
+    source_paths = ["src/shell.html", *style_paths, *assets.values(), "data/atlas.json", "data/status.json", "data/regions.json", "data/opportunities.json", "data/stage-presentation.json", "data/landmark-labels.json", "data/landmark-hidden.json", "data/roadmap-summaries.json", "data/roadmap-classification.json", "data/bibliography.json", "NOTICE", "LICENSE", "vendor/D3-LICENSE.txt", "vendor/KaTeX-LICENSE.txt"]
     source_paths += [str(path.relative_to(ROOT)) for path in sorted((ROOT / "data" / "decompositions").glob("*.json"))] if (ROOT / "data" / "decompositions").is_dir() else []
     report = {
         "roadmaps": len(atlas["roadmaps"]),
