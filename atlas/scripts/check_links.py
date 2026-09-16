@@ -64,6 +64,8 @@ def check(path, world, others):
         errors.append(f"unknown roadmap {rid!r}")
     if packet.get("protocol") != "links-v1":
         errors.append("protocol must be 'links-v1'")
+    if packet.get("status") not in ("partial", "complete"):
+        warnings.append("status should be 'partial' or 'complete' (a missing status counts as partial)")
     edges = defaultdict(set, {k: set(v) for k, v in base_edges.items()})
     for other in others:
         for link in other.get("links", []):
@@ -115,7 +117,7 @@ def check(path, world, others):
             errors.append(f"overlap {ids}: missing detail")
     if not packet.get("examined"):
         errors.append("examined list is empty")
-    summary = {"packet": str(path), "roadmap": rid, "links": len(packet.get("links", [])),
+    summary = {"packet": str(path), "roadmap": rid, "status": packet.get("status", "partial"), "links": len(packet.get("links", [])),
                "overlaps": len(packet.get("overlaps", [])), "examined": len(packet.get("examined", []))}
     return errors, warnings, summary
 
