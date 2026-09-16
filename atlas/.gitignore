@@ -20,3 +20,7 @@ local-progress*.json
 HANDOVER.md
 research/expansion/EXTERNAL_AGENTS.md
 research/expansion/prompts/
+
+research/blueprint/prompts/
+research/blueprint/.queue.lock
+research/blueprint/queue.json.tmp
