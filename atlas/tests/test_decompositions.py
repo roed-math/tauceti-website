@@ -5,7 +5,7 @@ import sys
 import unittest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
-from decompositions import merge_decompositions
+from decompositions import merge_decompositions, merge_links
 
 
 class DecompositionIntegrity(unittest.TestCase):
@@ -123,6 +123,51 @@ class DecompositionIntegrity(unittest.TestCase):
         self.assertFalse(node["expansion"]["reviewed"])
         self.assertEqual(node["expansion"]["addedBy"], "reviewer")
         self.assertEqual(result["decompositions"][0]["review"]["status"], "accepted")
+
+
+
+
+class ReviewedLinks(unittest.TestCase):
+    def setUp(self):
+        self.atlas = {
+            "meta": {}, "external": [], "edges": [], "stageEdges": [],
+            "roadmaps": [{"id": "A", "stages": ["A:0"]}, {"id": "B", "stages": ["B:0"]}],
+            "stages": [{"id": "A:0", "owner": "A", "requires": [], "consumers": []},
+                       {"id": "B:0", "owner": "B", "requires": [], "consumers": []}],
+        }
+        self.link = {"source": "A:0", "target": "B:0", "reason": "A supplies the object B uses.", "confidence": "explicit",
+                     "evidence": [{"stageId": "A:0", "quote": "constructs the object"},
+                                  {"stageId": "B:0", "quote": "uses the object"}]}
+
+    def packet(self, **changes):
+        packet = {"roadmapId": "A", "protocol": "links-v1", "links": [deepcopy(self.link)],
+                  "review": {"status": "accepted", "reviewer": "independent-review-test"}}
+        packet.update(changes)
+        return packet
+
+    def test_accepted_link_becomes_a_stage_dependency_with_evidence(self):
+        atlas = merge_links(self.atlas, [self.packet()])
+        edge = atlas["stageEdges"][0]
+        self.assertEqual((edge["source"], edge["target"]), ("A:0", "B:0"))
+        self.assertEqual(edge["evidence"][0]["reviewer"], "independent-review-test")
+        self.assertIn("A:0", next(s for s in atlas["stages"] if s["id"] == "B:0")["requires"])
+        self.assertEqual(self.atlas["stageEdges"], [])
+
+    def test_unreviewed_link_packet_is_refused(self):
+        with self.assertRaises(ValueError):
+            merge_links(self.atlas, [self.packet(review={"status": "needs_changes", "reviewer": "x"})])
+
+    def test_one_sided_evidence_is_refused(self):
+        packet = self.packet()
+        packet["links"][0]["evidence"] = packet["links"][0]["evidence"][:1]
+        with self.assertRaises(ValueError):
+            merge_links(self.atlas, [packet])
+
+    def test_link_that_closes_a_cycle_is_refused(self):
+        reverse = deepcopy(self.link)
+        reverse["source"], reverse["target"] = "B:0", "A:0"
+        with self.assertRaises(ValueError):
+            merge_links(self.atlas, [self.packet(links=[deepcopy(self.link), reverse])])
 
 
 if __name__ == "__main__":

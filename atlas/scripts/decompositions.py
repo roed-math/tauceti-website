@@ -262,3 +262,42 @@ def merge_decompositions(snapshot, packets):
     atlas["meta"].update(stageCount=len(stages), stageEdgeCount=len(edges), edgeCount=len(map_edges),
                          sourceExpansionRoadmaps=len(packets), sourceExpansionNodes=len(new_nodes))
     return atlas, rendered
+
+
+def merge_links(snapshot, packets):
+    """Merge independently reviewed link packets (research/blueprint/PROTOCOL.md section 10).
+
+    Each accepted link becomes a stage dependency with its quoted evidence; roadmap
+    links are recomputed by merge_decompositions. A link that duplicates a recorded
+    one adds its evidence; a link that would create a cycle is refused.
+    """
+    atlas = deepcopy(snapshot)
+    stages = {stage["id"]: stage for stage in atlas["stages"]}
+    edges = {(edge["source"], edge["target"]): edge for edge in atlas["stageEdges"]}
+    merged = 0
+    for packet in packets:
+        review = packet.get("review") or {}
+        if review.get("status") != "accepted" or not review.get("reviewer"):
+            raise ValueError(f"Link packet without an accepted review: {packet.get('roadmapId')}")
+        for link in packet.get("links", []):
+            source, target = link["source"], link["target"]
+            if source not in stages or target not in stages or source == target:
+                raise ValueError(f"Invalid reviewed link: {source} -> {target}")
+            require_text(link.get("reason"), f"Link {source} -> {target}")
+            evidence = link.get("evidence") or []
+            if len({item.get("stageId") for item in evidence} & {source, target}) < 2:
+                raise ValueError(f"Link without two-sided evidence: {source} -> {target}")
+            edge = edges.setdefault((source, target), {"source": source, "target": target, "kind": "reviewed_link"})
+            edge.setdefault("evidence", []).append({"reason": link["reason"], "confidence": link.get("confidence"),
+                                                   "quotes": evidence, "packet": packet["roadmapId"],
+                                                   "reviewer": review.get("reviewer")})
+            merged += 1
+    acyclic(set(stages), edges, "reviewed roadmap links")
+    atlas["stageEdges"] = list(edges.values())
+    for source, target in edges:
+        if source not in stages[target].setdefault("requires", []):
+            stages[target]["requires"].append(source)
+        if target not in stages[source].setdefault("consumers", []):
+            stages[source]["consumers"].append(target)
+    atlas.setdefault("meta", {})["reviewedLinks"] = merged
+    return atlas

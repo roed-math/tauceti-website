@@ -11,7 +11,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
-from decompositions import merge_decompositions  # noqa: E402
+from decompositions import merge_decompositions, merge_links  # noqa: E402
 
 
 def load_decompositions() -> list:
@@ -40,6 +40,10 @@ def build(output: Path) -> dict:
     # time, so nothing is appended twice and the originals remain the record.
     decompositions = load_decompositions()
     original_stage_count = len(atlas["stages"])
+    link_folder = ROOT / "data" / "links"
+    link_packets = [json.loads(path.read_text(encoding="utf-8")) for path in sorted(link_folder.glob("*.json"))] if link_folder.is_dir() else []
+    if link_packets:
+        atlas = merge_links(atlas, link_packets)
     atlas, _expanded_documents = merge_decompositions(atlas, decompositions)
     atlas.setdefault("decompositions", [])
     atlas["meta"]["originalStageCount"] = original_stage_count
@@ -173,6 +177,7 @@ def build(output: Path) -> dict:
         "bibliographicSources": len(atlas["bibliography"]["works"]),
         "roadmapEdges": len(atlas["edges"]),
         "stageEdges": len(atlas["stageEdges"]),
+        "reviewedLinkPackets": len(link_packets),
         "sourceDocuments": sum(1 for _ in (ROOT / "content").rglob("*.md")),
         "htmlBytes": output.stat().st_size,
         "htmlSha256": hashlib.sha256(output.read_bytes()).hexdigest(),
