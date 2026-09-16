@@ -76,18 +76,17 @@
 
   function placeGalaxiesRadial(galaxies, constellationsOf, aspect) {
     if (!galaxies.length) return;
-    // A wide chart spreads the universe sideways, a tall one upward.
-    const sx = Math.max(.8, Math.min(1.9, Math.sqrt(aspect))), sy = 1 / Math.max(.8, Math.min(1.6, Math.sqrt(aspect)));
-    // The number-theory fan points along the longer side of the chart:
-    // rightward on a wide screen, upward on a tall one.
-    const rotation = aspect < 1 ? -Math.PI / 2 : 0;
+    // A wide chart spreads the universe sideways and a tall one upward; the
+    // orientation never changes, so the map reads the same on every screen.
+    const spread = aspect >= 1 ? Math.sqrt(aspect) : Math.pow(aspect, .75);
+    const sx = Math.max(.6, Math.min(1.9, spread)), sy = 1 / Math.max(.6, Math.min(1.6, spread));
     galaxies.forEach((galaxy, index) => {
       const known = constellationsOf(galaxy).map(c => c.distance).filter(d => Number.isFinite(d));
       galaxy.distance = known.length ? known.reduce((a, b) => a + b, 0) / known.length : 5;
       galaxy.size = galaxySize(galaxy.count);
       galaxy.w = galaxy.size * 1.08; galaxy.h = galaxy.size * .86;
       galaxy.targetRadius = Math.max(CORE_RADIUS * 3.6 + galaxy.size / 2, radiusFor(galaxy.distance));
-      galaxy.preferred = (Number.isFinite(galaxy.direction) ? galaxy.direction : index * 360 / galaxies.length) * Math.PI / 180 + rotation;
+      galaxy.preferred = (Number.isFinite(galaxy.direction) ? galaxy.direction : index * 360 / galaxies.length) * Math.PI / 180;
       galaxy.angle = galaxy.preferred; galaxy.radius = galaxy.targetRadius;
     });
     const place = galaxy => { galaxy.x = Math.cos(galaxy.angle) * galaxy.radius * sx; galaxy.y = Math.sin(galaxy.angle) * galaxy.radius * sy; };
