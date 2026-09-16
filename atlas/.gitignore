@@ -24,3 +24,4 @@ research/expansion/prompts/
 research/blueprint/prompts/
 research/blueprint/.queue.lock
 research/blueprint/queue.json.tmp
+research/blueprint/issues-preview/
