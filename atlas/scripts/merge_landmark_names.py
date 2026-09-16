@@ -20,6 +20,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 FORBIDDEN_START = re.compile(r"^(?:construct|prove|define|state|record|consume|supply|implement|identify|establish|derive|compute|show|introduce|use|reuse|import|export|own|check|verify|assert|do not|then|that|this|these|those|thus|so|if|for|by|of|on|with|and|or|where|which|when|here|there|it|its|we)\b", re.I)
+FUNCTION_WORDS = {'over', 'with', 'from', 'into', 'under', 'onto', 'upon', 'between', 'along', 'their', 'that', 'this', 'these', 'those', 'through', 'without', 'within', 'about', 'after', 'before', 'versus'}
 BOOKKEEPING = re.compile(r"\b(?:owners?|roadmaps?|supply|supplies|supplied|consume[sd]?|API|milestones?|checkpoints?|tickets?|download(?:ed|s)?|Mathlib|Lean|sorry|placeholder)\b", re.I)
 
 
@@ -29,7 +30,8 @@ def fold(text):
 
 
 def words(text):
-    return set(re.findall(r"[a-z][a-z'\-]{1,}", fold(text)))
+    # Hyphens and dashes separate words: "Harder--Narasimhan" yields both names.
+    return set(re.findall(r"[a-z][a-z']{1,}", re.sub(r"[-\u2010-\u2015]+", " ", fold(text))))
 
 
 def vocabulary_ok(name, pool):
@@ -37,7 +39,7 @@ def vocabulary_ok(name, pool):
     stems = {w[:4] for w in pool_words if len(w) >= 4} | {w[:5] for w in pool_words if len(w) >= 5}
     missing = []
     for w in words(name):
-        if len(w) < 4 or w in pool_words:
+        if len(w) < 4 or w in pool_words or w in FUNCTION_WORDS:
             continue
         if any(w.startswith(s) and len(s) >= 4 for s in stems) or any(p.startswith(w) for p in pool_words):
             continue

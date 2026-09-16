@@ -266,6 +266,10 @@
       const active = this.isCoarse ? (this.selectedId || this.hoveredId) : (this.hoveredId || this.selectedId);
       const activeNode = universe.byId.get(active) || null;
       const intersects = (x, y, r) => x + r > rect.x && x - r < rect.x + rect.w && y + r > rect.y && y - r < rect.y + rect.h;
+      // A name is drawn only for an object whose centre is on the chart: a name
+      // beside a disc hidden under the chart's edge would float unexplained.
+      const chart = this.visibleRect(0);
+      const centred = (x, y) => x >= chart.x && x <= chart.x + chart.w && y >= chart.y && y <= chart.y + chart.h;
       const galaxies = universe.galaxies.filter(g => intersects(g.x, g.y, Math.max(g.rx, g.ry) * 1.2));
       const constellations = [], stars = [], planets = [], labels = [];
       galaxies.forEach(galaxy => {
@@ -291,7 +295,7 @@
             const s = universe.byId.get(starId);
             if (!intersects(s.x, s.y, s.room + 30 / k)) return;
             s.systemVisible = s.room * k >= T.system && s.planetIds.length > 0;
-            s.nameVisible = s.nearest * k >= T.starName || active === s.id;
+            s.nameVisible = (s.nearest * k >= T.starName || active === s.id) && centred(s.x, s.y);
             stars.push(s);
             if (s.nameVisible) labels.push({ id: 'star:' + s.id, nodeId: s.id, kind: 'star', x: s.x, y: s.systemVisible ? s.y - s.room * 1.02 - 4 / k : s.y + s.r * 1.9 + 11 / k, lines: wrapText(s.label, 24, 2), font: 11, anchor: 'middle', above: s.systemVisible, priority: 40 + (active === s.id ? 50 : 0), active: active === s.id,
               alternatives: [{ x: s.x, y: s.systemVisible ? s.y + s.room * 1.02 + 11 / k : s.y - s.r * 1.9 - 4 / k, above: !s.systemVisible }] });
@@ -300,7 +304,7 @@
               const p = universe.byId.get(planetId), detail = p.r * k;
               // Each planet reveals more as it grows on screen: its name, then
               // its kind and a statement excerpt, then its own structure.
-              p.nameVisible = detail >= 8 || s.room * k >= T.planetName || active === p.id;
+              p.nameVisible = (detail >= 8 || s.room * k >= T.planetName || active === p.id) && centred(p.x, p.y);
               p.kindVisible = detail >= 14 && (p.refinement || p.showKind !== false);
               p.cardVisible = detail >= 34 && !!p.summary;
               p.moonsVisible = detail >= 60 && p.moons.length > 0;
