@@ -8,18 +8,23 @@
   let instanceCount = 0;
   const SVG_NS = 'http://www.w3.org/2000/svg';
   const BACKGROUND = '#0b1016', ACCENT = '#dfc186', NO_PROGRESS = '#6f7f8c', CREAM = '#e8e4da', DUST = '#8ea1b6';
-  // Planets carry no progress. Their shape and a muted tint, both outside the
-  // red-to-white progress ramp, say what they are: a rounded square is a
-  // definition or construction, a circle is a result, and a ringed circle is
-  // a named theorem.
-  const DEFINITION_FILL = '#8fb0cf', RESULT_FILL = '#b8a9dc';
+  // Planets carry no progress. They are all round and flat, and what they
+  // look like says what they are: a definition or construction is an Earth
+  // (a blue disc with green land), and a result is a Saturn (a sand disc with
+  // a tilted ring), drawn a little larger, most of all for a named theorem.
+  // Their colours lie outside the red-to-white progress ramp.
+  const OCEAN = '#6f9fcf', LAND = '#9cc59a', SAND = '#d9c391', RING = '#ece0bf';
+  const DEFINITION_FILL = OCEAN, RESULT_FILL = SAND;
+  const REFERENCE_CHART = { width: 1204, height: 782 };
   const isDefinitionKind = kind => kind === 'definition' || kind === 'construction' || !kind;
-  const planetFill = d => isDefinitionKind(d.kind) ? DEFINITION_FILL : RESULT_FILL;
-  const planetShape = (d, r) => {
-    if (!isDefinitionKind(d.kind)) return `M${-r},0a${r},${r} 0 1,0 ${2 * r},0a${r},${r} 0 1,0 ${-2 * r},0Z`;
-    const h = r * .86, c = r * .28;
-    return `M${-h + c},${-h}H${h - c}Q${h},${-h} ${h},${-h + c}V${h - c}Q${h},${h} ${h - c},${h}H${-h + c}Q${-h},${h} ${-h},${h - c}V${-h + c}Q${-h},${-h} ${-h + c},${-h}Z`;
-  };
+  const planetFill = d => isDefinitionKind(d.kind) ? OCEAN : SAND;
+  const nameHash = text => Array.from(String(text)).reduce((seed, character) => ((seed * 31 + character.charCodeAt(0)) >>> 0), 7);
+  // Two continents on a unit disc, kept well inside its rim.
+  const LAND_PATH = 'M-.55,-.35Q-.3,-.75 .05,-.55Q.3,-.4 .1,-.15Q-.1,.05 -.35,-.05Q-.7,0 -.55,-.35Z' +
+    'M.2,.25Q.55,.1 .65,.35Q.6,.65 .3,.7Q.05,.6 .2,.25Z';
+  const RING_TILT = -18;
+  // The far half of a ring passes behind the planet and the near half in front.
+  const ringArc = (r, near) => `M${-1.75 * r},0A${1.75 * r},${.42 * r} 0 0,${near ? 0 : 1} ${1.75 * r},0`;
   const normalizeText = value => String(value == null ? '' : value).replace(/([a-z])([A-Z])/g, '$1 $2').replace(/_/g, ' ');
 
   function progressValue(value) {
@@ -279,7 +284,9 @@
       // beside a disc hidden under the chart's edge would float unexplained.
       const chart = this.visibleRect(0);
       const centred = (x, y) => x >= chart.x && x <= chart.x + chart.w && y >= chart.y && y <= chart.y + chart.h;
-      const galaxies = universe.galaxies.filter(g => intersects(g.x, g.y, Math.max(g.rx, g.ry) * 1.2));
+      // A galaxy is considered whenever any of its roadmaps could be: the
+      // roadmap test below allows its own radius plus a screen margin.
+      const galaxies = universe.galaxies.filter(g => intersects(g.x, g.y, Math.max(g.rx, g.ry) * 1.2 + 64 + 40 / k));
       const constellations = [], stars = [], planets = [], labels = [];
       // A very short chart leaves the centre unnamed so the nearest subjects keep theirs.
       if (universe.core && this.height >= 330 && intersects(universe.core.x, universe.core.y, universe.core.r * 3)) {
@@ -436,16 +443,22 @@
       const enter = join.enter().append('g').attr('class', 'tau-node tau-planet').attr('data-node-id', d => d.id).attr('data-level', 'planet').attr('data-kind', d => d.kind)
         .attr('transform', d => `translate(${d.x},${d.y})`).attr('tabindex', 0).attr('role', 'button').attr('aria-label', d => normalizeText(d.label) + '. ' + (d.kind || 'target') + (d.refinement ? ', source refinement' : ''));
       enter.append('circle').attr('class', 'tau-hit');
-      enter.append('path').attr('class', 'tau-planet-body').attr('stroke', BACKGROUND).attr('vector-effect', 'non-scaling-stroke').attr('stroke-width', 1);
-      enter.append('circle').attr('class', 'tau-planet-halo').attr('fill', 'none').attr('stroke', RESULT_FILL).attr('vector-effect', 'non-scaling-stroke').attr('stroke-width', 1);
+      enter.append('path').attr('class', 'tau-planet-ring tau-ring-far').attr('fill', 'none').attr('stroke', RING).attr('vector-effect', 'non-scaling-stroke').attr('stroke-width', 1.1).attr('transform', `rotate(${RING_TILT})`);
+      enter.append('circle').attr('class', 'tau-planet-body').attr('stroke', BACKGROUND).attr('vector-effect', 'non-scaling-stroke').attr('stroke-width', 1);
+      enter.append('path').attr('class', 'tau-planet-land').attr('d', LAND_PATH).attr('fill', LAND);
+      enter.append('path').attr('class', 'tau-planet-ring tau-ring-near').attr('fill', 'none').attr('stroke', RING).attr('vector-effect', 'non-scaling-stroke').attr('stroke-width', 1.1).attr('transform', `rotate(${RING_TILT})`);
       enter.append('circle').attr('class', 'tau-ring tau-select-ring').attr('fill', 'none').attr('stroke', ACCENT).attr('vector-effect', 'non-scaling-stroke').attr('stroke-width', 1.5);
       enter.append('title').text(d => normalizeText(d.label) + '\n' + (d.kind || 'target') + (d.refinement ? ' · source refinement' : '') + '\nClick to read');
       this.bindInteractions(enter);
       const all = enter.merge(join);
       all.classed('is-selected', d => d.id === this.selectedId).classed('is-hovered', d => d.id === this.hoveredId);
       all.select('.tau-hit').attr('r', d => { const star = graph.universe.byId.get(d.starId); return Math.min(Math.max(d.r * 1.5, (graph.isCoarse ? 12 : 8) / k), (star && star.planetGap ? star.planetGap : d.r * 4) * .48); });
-      all.select('.tau-planet-body').attr('d', d => planetShape(d, d.r)).attr('fill', planetFill).attr('stroke-dasharray', d => d.refinement ? `${1.5 / k} ${1.5 / k}` : null);
-      all.select('.tau-planet-halo').attr('r', d => d.r * 1.42).attr('opacity', d => d.kind === 'theorem' ? .9 : 0);
+      all.select('.tau-planet-body').attr('r', d => d.r).attr('fill', planetFill).attr('stroke-dasharray', d => d.refinement ? `${1.5 / k} ${1.5 / k}` : null);
+      // Land is drawn only once it is large enough to see.
+      all.select('.tau-planet-land').attr('transform', d => `rotate(${nameHash(d.id) % 360}) scale(${d.r})`)
+        .attr('display', d => isDefinitionKind(d.kind) && d.r * k >= 3 ? null : 'none');
+      all.select('.tau-ring-far').attr('d', d => ringArc(d.r, false)).attr('display', d => isDefinitionKind(d.kind) ? 'none' : null);
+      all.select('.tau-ring-near').attr('d', d => ringArc(d.r, true)).attr('display', d => isDefinitionKind(d.kind) ? 'none' : null);
       all.select('.tau-select-ring').attr('r', d => d.r * 1.9).attr('opacity', d => active === d.id ? 1 : 0);
       // Deep zoom: a reviewed refinement shows its hypotheses (open), proof
       // steps (filled) and acceptance checks (accent) as moons, and the
@@ -656,11 +669,30 @@
       const headroom = node && node.level === 'galaxy' ? 44 : node && node.level === 'constellation' ? 36 : 24;
       return this.travel(this.transformWithHeadroom(rect, headroom, 8), animate !== false);
     }
-    fitAll(animate) { if (!this.universe) return this; const b = this.universe.bounds; return this.travel(this.transformWithHeadroom({ x: b.x - 40, y: b.y, w: b.w + 80, h: b.h }, 48, 12), animate !== false); }
+    // The whole universe at the scale a desktop chart gives it. A chart much
+    // smaller than that (a phone) keeps the scale instead of shrinking the map,
+    // with Mathlib a third of the way across, and the reader pans to see the rest.
+    overviewTransform() {
+      const b = this.universe.bounds, rect = { x: b.x - 40, y: b.y, w: b.w + 80, h: b.h };
+      const fit = this.transformWithHeadroom(rect, 48, 12);
+      const core = this.universe.core;
+      if (!core) return fit;
+      const reference = (width, height) => {
+        const first = Math.min((width - 36) / rect.w, (height - 36) / rect.h);
+        return Math.min((width - 36) / rect.w, (height - 36) / (rect.h + 60 / first));
+      };
+      const k = reference(REFERENCE_CHART.width, REFERENCE_CHART.height);
+      // A chart that shows everything at two thirds of that scale or more
+      // (a laptop) still shows everything.
+      if (fit.k >= k * .65) return fit;
+      const reserve = this.width < 600 ? 56 : this.height < 400 ? 24 : 0;
+      return d3.zoomIdentity.translate(this.width * .35 - core.x * k, (this.height - reserve) / 2 - core.y * k).scale(k);
+    }
+    fitAll(animate) { if (!this.universe) return this; return this.travel(this.overviewTransform(), animate !== false); }
     fit(animate) { return this.lastFocus && this.lastFocus.id ? this.zoomTo(this.lastFocus.id, animate) : this.fitAll(animate); }
     // Whether the camera shows (about) the whole universe: its scale is at most
     // the given multiple of the scale that fits everything.
-    atOverview(factor) { if (!this.universe) return true; const b = this.universe.bounds; return this.transform.k <= this.transformFor({ x: b.x - 40, y: b.y, w: b.w + 80, h: b.h }).k * (factor || 1.25); }
+    atOverview(factor) { if (!this.universe) return true; return this.transform.k <= this.overviewTransform().k * (factor || 1.25); }
     zoomIn() { this.svg.transition().duration(140).call(this.zoom.scaleBy, 2.4); return this; }
     zoomOut() { this.svg.transition().duration(140).call(this.zoom.scaleBy, 1 / 2.4); return this; }
     captureCamera() { return { x: this.transform.x, y: this.transform.y, k: this.transform.k, width: this.width, height: this.height }; }

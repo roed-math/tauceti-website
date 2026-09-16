@@ -67,6 +67,8 @@
   // neighbours. Overlaps are resolved by turning galaxies around the core,
   // so distance from the centre keeps its meaning.
   const CORE_RADIUS = 60;
+  const RESULT_SCALE = { theorem: 1.25, lemma: 1.1, comparison: 1.1, application: 1.1 };
+  const REFERENCE_ASPECT = 1204 / 782;
   const GALAXY_GAP = 70;
   // Distance from the centre grows faster than the distance score, so the
   // subjects farthest from Mathlib stand clearly apart from the rest.
@@ -265,7 +267,9 @@
         const planet = planets[index], angle = (slot / count) * Math.PI * 2 + ring * .7 + (hash(star.id) % 100) / 100;
         planet.x = star.x + Math.cos(angle) * radius; planet.y = star.y + Math.sin(angle) * radius * .82;
         planet.orbit = { rx: radius, ry: radius * .82, ring };
-        planet.r = Math.max(.3, Math.min(star.r * .62, step * .15, radius * Math.PI / Math.max(3, count) * .34));
+        // Results are drawn as ringed planets, a little larger than definitions.
+        const scale = RESULT_SCALE[planet.kind] || 1;
+        planet.r = Math.max(.3, Math.min(star.r * .62, step * .15, radius * Math.PI / Math.max(3, count) * .3)) * scale;
       }
     });
     // The closest pair of planets bounds every hit target of this system.
@@ -349,7 +353,9 @@
     const constellationById = new Map(constellations.map(item => [item.id, item]));
     const radial = input.layout !== 'areas';
     const membersOf = galaxy => galaxy.constellationIds.map(id => constellationById.get(id)).sort((a, b) => a.id.localeCompare(b.id));
-    if (radial) placeGalaxiesRadial(populated, membersOf, aspect);
+    // The Mathlib-centred map is the same on every screen: it is laid out for
+    // a desktop chart, and a smaller screen shows part of it at the same scale.
+    if (radial) placeGalaxiesRadial(populated, membersOf, REFERENCE_ASPECT);
     else placeGalaxies(populated, Array.from(galaxyLinks.values()), aspect);
     populated.forEach(galaxy => (radial ? placeConstellationsRadial : placeConstellations)(galaxy, membersOf(galaxy)));
     const stars = [], planets = [];

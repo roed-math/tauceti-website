@@ -39,6 +39,7 @@ from retirements import apply_retirements  # noqa: E402
 from theory_graph import structure, tfidf_similarity  # noqa: E402
 
 MIN_JUDGEMENTS = 4
+FRONTIER = 7.0
 PRIOR_SD = 1.5
 LAYER_SHARE = 0.6
 MIN_CALIBRATION = 8
@@ -231,6 +232,55 @@ def main() -> None:
         ranked = sorted((g for g in galaxy_info if g != gid), key=lambda g: (-similarity.get((gid, g), 0.0), g))
         neighbours[gid] = [{"galaxy": g, "similarity": round(similarity.get((gid, g), 0.0), 3)} for g in ranked[:4]]
 
+    # Why each galaxy is here: which other subjects use its roadmaps directly,
+    # and which frontier roadmaps (distance >= FRONTIER) rest on them through
+    # a chain of layer prerequisites.
+    consumers = defaultdict(set)
+    for edge in atlas["edges"]:
+        if edge["source"] in roadmaps and edge["target"] in roadmaps and edge["source"] != edge["target"]:
+            consumers[edge["source"]].add(edge["target"])
+    # Reach is followed along layer links, which have no cycles; roadmap-level
+    # links do, and would make every roadmap seem to support nearly all others.
+    later = defaultdict(set)
+    for target, sources in graph.prereqs.items():
+        for source in sources:
+            later[source].add(target)
+    downstream = {}
+    for rid in roadmaps:
+        seen, stack = set(), [sid for sid in graph.by_owner.get(rid, ())]
+        while stack:
+            sid = stack.pop()
+            for nxt in later[sid]:
+                if nxt not in seen:
+                    seen.add(nxt)
+                    stack.append(nxt)
+        downstream[rid] = {graph.owner[sid] for sid in seen if graph.owner[sid] in roadmaps} - {rid}
+    use = {}
+    for gid, rids in members.items():
+        direct = defaultdict(list)
+        for rid in rids:
+            for other in sorted(consumers[rid]):
+                if membership[other] != gid:
+                    direct[membership[other]].append({"supplier": rid, "consumer": other})
+        frontier = defaultdict(set)
+        for rid in rids:
+            for other in downstream[rid]:
+                if membership[other] != gid and roadmaps[other]["distance"] >= FRONTIER:
+                    frontier[membership[other]].add(other)
+        use[gid] = {
+            "supplies": [{"galaxy": g, "links": len(pairs), "examples": pairs[:3]}
+                         for g, pairs in sorted(direct.items(), key=lambda kv: (-len(kv[1]), kv[0]))],
+            "frontier": [{"galaxy": g, "roadmaps": len(found)} for g, found in sorted(frontier.items(), key=lambda kv: (-len(kv[1]), kv[0]))],
+            "frontierRoadmaps": len(set().union(*frontier.values())) if frontier else 0,
+            "upstreamOnly": all(rid.startswith("tauceti:") for rid in rids),
+        }
+    for rid, record in roadmaps.items():
+        outside = defaultdict(int)
+        for other in consumers[rid]:
+            if membership[other] != membership[rid]:
+                outside[membership[other]] += 1
+        record["usedBy"] = [{"galaxy": g, "roadmaps": n} for g, n in sorted(outside.items(), key=lambda kv: (-kv[1], kv[0]))]
+
     ids = sorted(roadmap_ids)
     validation = {
         "classificationVsMissingLayers": spearman([classification[r]["distance"] for r in ids], [measured[r]["missingLayers"] for r in ids]),
@@ -262,7 +312,7 @@ def main() -> None:
         "pairwise": pairwise_summary,
         "validation": validation,
         "roadmaps": roadmaps,
-        "galaxies": {gid: {"distance": round(info["distance"], 2), "roadmaps": info["count"]} for gid, info in sorted(galaxy_info.items())},
+        "galaxies": {gid: {"distance": round(info["distance"], 2), "roadmaps": info["count"], **use[gid]} for gid, info in sorted(galaxy_info.items())},
     }
     (ROOT / "data" / "roadmap-distances.json").write_text(json.dumps(document, indent=1, ensure_ascii=False) + "\n", encoding="utf-8")
     layout_document = {
