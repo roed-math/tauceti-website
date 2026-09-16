@@ -23,9 +23,11 @@ def apply_galaxies(atlas: dict, galaxies: list, classification: dict) -> dict:
     known = {galaxy["id"]: galaxy for galaxy in galaxies}
     if len(known) != len(galaxies):
         raise ValueError("Galaxy ids must be unique.")
-    clusters = Counter(cluster for galaxy in galaxies for cluster in galaxy["clusters"])
+    # Each cluster has exactly one default galaxy; galaxies with primaryMsc
+    # prefixes take a part of a cluster (see scripts/classification.py).
+    clusters = Counter(cluster for galaxy in galaxies if not galaxy.get("primaryMsc") for cluster in galaxy["clusters"])
     if any(count > 1 for count in clusters.values()):
-        raise ValueError("A subject cluster belongs to exactly one galaxy.")
+        raise ValueError("A subject cluster has exactly one default galaxy.")
     records = classification.get("roadmaps", {})
     roadmaps = {roadmap["id"]: roadmap for roadmap in atlas["roadmaps"]}
     galaxy_of = {}
@@ -47,7 +49,8 @@ def apply_galaxies(atlas: dict, galaxies: list, classification: dict) -> dict:
                 for galaxy in galaxies if members[galaxy["id"]]}
     ordered = sorted((galaxy for galaxy in galaxies if members[galaxy["id"]]), key=lambda galaxy: (distance[galaxy["id"]], galaxy["id"]))
     atlas["groups"] = [{"id": galaxy["id"], "label": galaxy["label"], "short": galaxy["short"], "caption": galaxy["caption"],
-                        "color": galaxy["color"], "direction": galaxy["direction"], "distance": round(distance[galaxy["id"]], 2),
+                        "color": galaxy["color"], "direction": galaxy["direction"], "family": galaxy.get("family", "other"),
+                        "distance": round(distance[galaxy["id"]], 2),
                         "roadmapIds": members[galaxy["id"]]}
                        for galaxy in ordered]
     atlas["meta"]["groupCount"] = len(atlas["groups"])

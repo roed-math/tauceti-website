@@ -67,7 +67,10 @@
   // neighbours. Overlaps are resolved by turning galaxies around the core,
   // so distance from the centre keeps its meaning.
   const CORE_RADIUS = 60;
-  const RADIUS_AT_ZERO = 300, RADIUS_PER_UNIT = 185, GALAXY_GAP = 70;
+  const GALAXY_GAP = 70;
+  // Distance from the centre grows faster than the distance score, so the
+  // subjects farthest from Mathlib stand clearly apart from the rest.
+  const radiusFor = distance => 260 + 95 * distance + 17 * distance * distance;
   const galaxySize = count => 170 + 80 * Math.sqrt(Math.max(1, count));
   const turn = angle => Math.atan2(Math.sin(angle), Math.cos(angle));
 
@@ -75,13 +78,16 @@
     if (!galaxies.length) return;
     // A wide chart spreads the universe sideways, a tall one upward.
     const sx = Math.max(.8, Math.min(1.9, Math.sqrt(aspect))), sy = 1 / Math.max(.8, Math.min(1.6, Math.sqrt(aspect)));
+    // The number-theory fan points along the longer side of the chart:
+    // rightward on a wide screen, upward on a tall one.
+    const rotation = aspect < 1 ? -Math.PI / 2 : 0;
     galaxies.forEach((galaxy, index) => {
       const known = constellationsOf(galaxy).map(c => c.distance).filter(d => Number.isFinite(d));
       galaxy.distance = known.length ? known.reduce((a, b) => a + b, 0) / known.length : 5;
       galaxy.size = galaxySize(galaxy.count);
       galaxy.w = galaxy.size * 1.08; galaxy.h = galaxy.size * .86;
-      galaxy.targetRadius = Math.max(CORE_RADIUS * 3.6 + galaxy.size / 2, RADIUS_AT_ZERO + galaxy.distance * RADIUS_PER_UNIT);
-      galaxy.preferred = (Number.isFinite(galaxy.direction) ? galaxy.direction : index * 360 / galaxies.length) * Math.PI / 180;
+      galaxy.targetRadius = Math.max(CORE_RADIUS * 3.6 + galaxy.size / 2, radiusFor(galaxy.distance));
+      galaxy.preferred = (Number.isFinite(galaxy.direction) ? galaxy.direction : index * 360 / galaxies.length) * Math.PI / 180 + rotation;
       galaxy.angle = galaxy.preferred; galaxy.radius = galaxy.targetRadius;
     });
     const place = galaxy => { galaxy.x = Math.cos(galaxy.angle) * galaxy.radius * sx; galaxy.y = Math.sin(galaxy.angle) * galaxy.radius * sy; };

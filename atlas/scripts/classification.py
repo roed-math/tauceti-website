@@ -38,9 +38,37 @@ def msc_galaxy(code: str, prefixes: dict) -> str | None:
     return best[1] if best else None
 
 
+def galaxy_rule(galaxies: list):
+    """A function from (cluster, primary MSC) to galaxy id.
+
+    Each cluster has one default galaxy; a galaxy with primaryMsc prefixes takes
+    the roadmaps of its clusters whose primary class starts with one of them.
+    """
+    defaults, splits = {}, {}
+    for galaxy in galaxies:
+        for cluster in galaxy["clusters"]:
+            if galaxy.get("primaryMsc"):
+                for prefix in galaxy["primaryMsc"]:
+                    splits.setdefault(cluster, []).append((prefix, galaxy["id"]))
+            elif cluster in defaults:
+                raise SystemExit(f"cluster {cluster!r} has two default galaxies")
+            else:
+                defaults[cluster] = galaxy["id"]
+    missing = set(splits) - set(defaults)
+    if missing:
+        raise SystemExit("clusters without a default galaxy: " + ", ".join(sorted(missing)))
+
+    def rule(cluster: str, primary: str | None):
+        if cluster not in defaults:
+            return None
+        matches = [(len(prefix), galaxy) for prefix, galaxy in splits.get(cluster, []) if primary and primary.startswith(prefix)]
+        return max(matches)[1] if matches else defaults[cluster]
+    return rule
+
+
 def main() -> None:
     galaxies = load(ROOT / "data" / "galaxies.json")["galaxies"]
-    cluster_galaxy = {cluster: galaxy["id"] for galaxy in galaxies for cluster in galaxy["clusters"]}
+    galaxy_for = galaxy_rule(galaxies)
     prefixes = {prefix: galaxy["id"] for galaxy in galaxies for prefix in galaxy.get("msc", [])}
     roadmaps = {roadmap["id"]: roadmap for roadmap in load(ROOT / "data" / "atlas.json")["roadmaps"]}
     estimates = load(ROOT / "data" / "classification-estimates.json")["estimates"]
@@ -64,13 +92,14 @@ def main() -> None:
         else:
             missing.append(roadmap_id)
             continue
-        if record["cluster"] not in cluster_galaxy:
+        galaxy = galaxy_for(record["cluster"], record["primaryMsc"])
+        if galaxy is None:
             raise SystemExit(f"{roadmap_id}: cluster {record['cluster']!r} belongs to no galaxy")
         if not isinstance(record["distance"], (int, float)) or not 0 <= record["distance"] <= 10:
             raise SystemExit(f"{roadmap_id}: distance must lie between 0 and 10")
         if PRIVATE.search(record["rationale"]):
             raise SystemExit(f"{roadmap_id}: the rationale names a private local path")
-        record["galaxy"] = cluster_galaxy[record["cluster"]]
+        record["galaxy"] = galaxy
         tags = []
         for code in record["secondaryMsc"]:
             galaxy = msc_galaxy(code, prefixes)

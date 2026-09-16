@@ -5,6 +5,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 from galaxies import apply_galaxies  # noqa: E402
+from classification import galaxy_rule  # noqa: E402
 
 
 def galaxy(identifier, clusters, direction):
@@ -59,6 +60,25 @@ class ApplyGalaxies(unittest.TestCase):
     def test_a_cluster_belongs_to_one_galaxy(self):
         with self.assertRaises(ValueError):
             apply_galaxies(snapshot(), GALAXIES + [galaxy("twin", ["a"], 270)], classification())
+
+
+class GalaxyRule(unittest.TestCase):
+    RULES = [{"id": "nt", "clusters": ["elementary"]}, {"id": "computational", "clusters": ["elementary"], "primaryMsc": ["11Y"]},
+             {"id": "fields", "clusters": ["elementary"], "primaryMsc": ["11T", "11T7"]}]
+
+    def test_a_primary_class_selects_a_split_galaxy(self):
+        rule = galaxy_rule(self.RULES)
+        self.assertEqual(rule("elementary", "11Y16"), "computational")
+        self.assertEqual(rule("elementary", "11T71"), "fields")
+        self.assertEqual(rule("elementary", "11A07"), "nt")
+        self.assertEqual(rule("elementary", None), "nt")
+        self.assertIsNone(rule("unknown", "11A"))
+
+    def test_every_split_cluster_needs_one_default(self):
+        with self.assertRaises(SystemExit):
+            galaxy_rule(self.RULES[1:])
+        with self.assertRaises(SystemExit):
+            galaxy_rule(self.RULES + [{"id": "again", "clusters": ["elementary"]}])
 
 
 if __name__ == "__main__":
