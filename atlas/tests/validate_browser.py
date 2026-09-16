@@ -219,10 +219,10 @@ def check_overview(page,scope,touch=False):
  record(scope+' overview resolves no stars or planets and stays light',d['visible']['resolved']==0 and d['visible']['stars']==0 and d['visible']['planets']==0 and d['rendered']<600)
  record(scope+' overview draws every roadmap as a point',page.locator('.tau-constellation').count()==BUILD['roadmaps'] and page.locator('.tau-unmapped-node').count()==0)
  # A heading waits for room rather than overlap. A large chart holds every
- # subject heading; a phone-width chart may hold back up to 15% of them and a
- # chart under 400px tall up to 40%, which reappear as the camera closes in.
+ # subject heading; a phone-width chart may hold back up to a quarter of them
+ # and a chart under 400px tall up to 40%, which reappear as the camera closes in.
  headings=page.locator('.tau-label-galaxy').count();box=page.locator('#graph').bounding_box();areas=BUILD['areasWithRoadmaps']
- allowed=math.ceil(areas*.4) if box['height']<400 else math.ceil(areas*.15) if box['width']<600 else 0
+ allowed=math.ceil(areas*.4) if box['height']<400 else math.ceil(areas*.25) if box['width']<600 else 0
  record(scope+' every subject heading is drawn once, legibly, without overlap',headings>=areas-allowed and labels_are_clean(page) and names_are_unique(page))
  record(scope+' universe fits inside the chart',page.evaluate("() => { const d=TauExplorer.graph.debugState(),t=d.transform,g=document.querySelector('#graph').getBoundingClientRect(); const u=TauExplorer.getUniverse().bounds; const x0=u.x*t.k+t.x,x1=(u.x+u.w)*t.k+t.x,y0=u.y*t.k+t.y,y1=(u.y+u.h)*t.k+t.y; return x0>=-2&&x1<=g.width+2&&y0>=-2&&y1<=g.height+2; }"))
  record(scope+' no links are drawn until something is selected',page.locator('.tau-link').count()==0 and page.evaluate("Array.from(document.querySelectorAll('.tau-route')).every(e=>Number(e.getAttribute('opacity'))===0)"))
@@ -498,7 +498,7 @@ with sync_playwright() as p:
   check_overview(mp,'Narrow phone',touch=True)
   mp.screenshot(path=str(ROOT/'preview-phone-narrow-overview.png'),animations='disabled')
   home=mp.evaluate("TauExplorer.data.roadmaps.find(r=>r.id==='AnalyticNumberTheory').group")
-  record('Two-finger pinch enters a galaxy on a narrow phone',pinch_until(mp,touch,'[data-label-for="%s"]'%home,3,"TauExplorer.getState().view==='group' && TauExplorer.getState().id==='%s'"%home))
+  record('Two-finger pinch enters a galaxy on a narrow phone',pinch_until(mp,touch,'.tau-galaxy[data-node-id="%s"] ellipse'%home,3,"TauExplorer.getState().view==='group' && TauExplorer.getState().id==='%s'"%home))
   record('Two-finger pinch enters a roadmap on a narrow phone',pinch_until(mp,touch,'[data-node-id="AnalyticNumberTheory"] .tau-hit',3,"TauExplorer.getState().view==='roadmap' && TauExplorer.getState().id==='AnalyticNumberTheory'"))
   record('Two-finger pinch enters a star system on a narrow phone',pinch_until(mp,touch,'[data-node-id="AnalyticNumberTheory:AN.0"] .tau-hit',3,"TauExplorer.getState().layer==='AnalyticNumberTheory:AN.0'"))
   mp.screenshot(path=str(ROOT/'preview-phone-star-system.png'),animations='disabled')

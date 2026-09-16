@@ -61,7 +61,14 @@ def build(output: Path) -> dict:
     # Roadmaps are grouped into subject galaxies by the classification of their
     # references; the snapshot's own area assignment is superseded.
     galaxies = json.loads(read_text("data/galaxies.json"))["galaxies"]
-    atlas["regions"] = apply_galaxies(atlas, galaxies, atlas["roadmapClassification"])
+    # Distances from Mathlib and galaxy directions are measured by
+    # scripts/measure_distances.py from the theory graph and the judgements.
+    atlas["roadmapDistances"] = json.loads(read_text("data/roadmap-distances.json"))
+    atlas["galaxyLayout"] = json.loads(read_text("data/galaxy-layout.json"))
+    missing = sorted({roadmap["id"] for roadmap in atlas["roadmaps"]} - set(atlas["roadmapDistances"]["roadmaps"]))
+    if missing:
+        raise ValueError("Roadmaps without a measured distance; run scripts/measure_distances.py: " + ", ".join(missing[:5]))
+    atlas["regions"] = apply_galaxies(atlas, galaxies, atlas["roadmapClassification"], atlas["roadmapDistances"], atlas["galaxyLayout"])
     atlas["opportunities"] = json.loads(read_text("data/opportunities.json"))
     # Areas without a roadmap are not drawn: the atlas maps roadmaps that exist.
     atlas["opportunities"]["areas"] = []
@@ -156,7 +163,7 @@ def build(output: Path) -> dict:
     # progress targets, so the parent stays terminal for progress accounting.
     refinements = [stage for stage in atlas["stages"] if stage.get("expansion")]
     parent_ids = {stage.get("parentStageId") for stage in atlas["stages"] if stage.get("parentStageId") and not stage.get("expansion")}
-    source_paths = ["src/shell.html", *style_paths, *assets.values(), "data/atlas.json", "data/status.json", "data/galaxies.json", "data/opportunities.json", "data/stage-presentation.json", "data/landmark-labels.json", "data/landmark-hidden.json", "data/roadmap-summaries.json", "data/roadmap-classification.json", "data/classification-estimates.json", "data/bibliography.json", "NOTICE", "LICENSE", "vendor/D3-LICENSE.txt", "vendor/KaTeX-LICENSE.txt"]
+    source_paths = ["src/shell.html", *style_paths, *assets.values(), "data/atlas.json", "data/status.json", "data/galaxies.json", "data/opportunities.json", "data/stage-presentation.json", "data/landmark-labels.json", "data/landmark-hidden.json", "data/roadmap-summaries.json", "data/roadmap-classification.json", "data/classification-estimates.json", "data/roadmap-distances.json", "data/galaxy-layout.json", "data/bibliography.json", "NOTICE", "LICENSE", "vendor/D3-LICENSE.txt", "vendor/KaTeX-LICENSE.txt"]
     source_paths += [str(path.relative_to(ROOT)) for path in sorted((ROOT / "data" / "decompositions").glob("*.json"))] if (ROOT / "data" / "decompositions").is_dir() else []
     report = {
         "roadmaps": len(atlas["roadmaps"]),
@@ -170,6 +177,8 @@ def build(output: Path) -> dict:
         "groups": len(atlas["groups"]),
         "classifiedRoadmaps": atlas["roadmapClassification"]["counts"]["classified"],
         "estimatedRoadmaps": atlas["roadmapClassification"]["counts"]["estimated"],
+        "distanceBases": atlas["roadmapDistances"]["bases"],
+        "pairwiseJudgements": atlas["roadmapDistances"]["pairwise"]["judgements"],
         "unmappedAreas": len(atlas["opportunities"]["areas"]),
         "areasWithRoadmaps": sum(1 for group in atlas["groups"] + atlas["opportunities"]["groups"] if any(roadmap.get("group") == group["id"] for roadmap in atlas["roadmaps"])),
         "additionalRegions": len(atlas["opportunities"]["groups"]),
