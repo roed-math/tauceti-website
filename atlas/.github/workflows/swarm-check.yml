@@ -1,0 +1,48 @@
+name: Swarm submission check
+
+# Validates blueprint packets and link files in pull requests against the
+# pinned Mathlib and Tau Ceti commits in research/blueprint/baseline.json.
+on:
+  pull_request:
+    paths:
+      - 'research/blueprint/packets/**'
+      - 'research/blueprint/links/**'
+      - 'research/blueprint/roadmaps/**'
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Fetch the pinned library sources
+        run: |
+          TAUCETI=$(python3 -c "import json;print(json.load(open('research/blueprint/baseline.json'))['tauceti'])")
+          MATHLIB=$(python3 -c "import json;print(json.load(open('research/blueprint/baseline.json'))['mathlib'])")
+          mkdir -p "$RUNNER_TEMP/baseline"
+          for pair in "TauCeti https://github.com/TauCetiProject/TauCeti $TAUCETI" "mathlib https://github.com/leanprover-community/mathlib4 $MATHLIB"; do
+            set -- $pair
+            git init -q "$RUNNER_TEMP/baseline/$1"
+            git -C "$RUNNER_TEMP/baseline/$1" remote add origin "$2"
+            git -C "$RUNNER_TEMP/baseline/$1" fetch -q --depth 1 origin "$3"
+            git -C "$RUNNER_TEMP/baseline/$1" checkout -q FETCH_HEAD
+          done
+          python3 research/blueprint/index_declarations.py "$RUNNER_TEMP/baseline"
+      - name: Check changed files
+        env:
+          TAUCETI_BASELINE: ${{ runner.temp }}/baseline
+        run: |
+          BASE=${{ github.event.pull_request.base.sha }}
+          status=0
+          packets=$(git diff --name-only --diff-filter=AM "$BASE" HEAD -- 'research/blueprint/packets/*.json')
+          links=$(git diff --name-only --diff-filter=AM "$BASE" HEAD -- 'research/blueprint/links/*.json')
+          if [ -n "$packets" ]; then python3 scripts/check_blueprint.py $packets | tee -a "$GITHUB_STEP_SUMMARY" || status=1; fi
+          if [ -n "$links" ]; then python3 scripts/check_links.py $links | tee -a "$GITHUB_STEP_SUMMARY" || status=1; fi
+          exit $status
