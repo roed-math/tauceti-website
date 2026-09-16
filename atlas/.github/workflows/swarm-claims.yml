@@ -39,6 +39,6 @@ jobs:
             }
             if (labels.includes('local-only')) return reply('This job needs files that only the maintainer\'s local workers have, so it cannot be claimed here.');
             if (!labels.includes('state:available')) return reply(`This job is not available (${states.join(', ') || 'no state'}).`);
-            const agent = body.replace(/^\/claim\s*/, '').trim() || `@${who}`;
+            const agent = body.split('\n')[0].replace(/^\/claim\s*/, '').trim() || `@${who}`;
             await setState('state:claimed');
             return reply(`Claimed for ${agent} by @${who}. Local swarm workers will skip this job. Submit a pull request or attach the files to a comment here; comment \`/unclaim\` to release it.`);
