@@ -56,37 +56,6 @@
     return lines.length ? lines : ['Untitled'];
   }
 
-  const CAPTIONS = {
-    'Shared foundations': ['Shared foundations'],
-    'Classical, analytic and computational number theory': ['Classical & analytic', 'number theory'],
-    'Arithmetic geometry and Diophantine methods': ['Arithmetic geometry', '& Diophantine'],
-    'Modular, Shimura and Galois theory': ['Modular, Shimura', '& Galois'],
-    'General automorphic theory': ['Automorphic theory'],
-    'Diamonds and geometric Langlands': ['Diamonds & geometric', 'Langlands'],
-    'Cohomology and nonarchimedean geometry': ['Cohomology &', 'nonarchimedean geometry'],
-    'K-theory, motives, periods and Habiro': ['K-theory, motives', '& periods'],
-    'Iwasawa, Euler systems and BSD': ['Iwasawa, Euler', 'systems & BSD'],
-    'Function fields and higher local fields': ['Function & higher', 'local fields'],
-    'Analysis, probability and PDE': ['Analysis, probability', '& PDE'],
-    'Topology, manifolds and Floer theory': ['Topology &', 'Floer theory'],
-    'Algebra, representation theory and Lie groups': ['Algebra &', 'representations'],
-    'Differential and complex geometry': ['Differential &', 'complex geometry'],
-    'Combinatorics and discrete structures': ['Combinatorics &', 'discrete structures'],
-    'Computation, optimization and control': ['Computation &', 'optimization'],
-    'Logic and foundations': ['Logic & foundations']
-  };
-  const SMALL_CAPTIONS = {
-    'Shared foundations': 'Foundations', 'Classical, analytic and computational number theory': 'Number theory',
-    'Arithmetic geometry and Diophantine methods': 'Arith. geometry', 'Modular, Shimura and Galois theory': 'Modular / Galois',
-    'General automorphic theory': 'Automorphic', 'Diamonds and geometric Langlands': 'Geom. Langlands',
-    'Cohomology and nonarchimedean geometry': 'Cohomology', 'K-theory, motives, periods and Habiro': 'K-theory / motives',
-    'Iwasawa, Euler systems and BSD': 'Iwasawa', 'Function fields and higher local fields': 'Function fields',
-    'Analysis, probability and PDE': 'Analysis', 'Topology, manifolds and Floer theory': 'Topology',
-    'Algebra, representation theory and Lie groups': 'Algebra', 'Differential and complex geometry': 'Geometry',
-    'Combinatorics and discrete structures': 'Combinatorics', 'Computation, optimization and control': 'Computation',
-    'Logic and foundations': 'Logic'
-  };
-
   class TauGraph {
     constructor(container, options) {
       if (!window.d3) throw new Error('The local graph library did not load. Keep the vendor folder beside the explorer.');
@@ -235,7 +204,7 @@
         .attr('stroke-width', 1.6).attr('vector-effect', 'non-scaling-stroke').attr('opacity', .9);
       front.forEach(([a, b, opacity, width]) => g.append('path').attr('class', 'tau-core-band').attr('d', half(r * a, r * b, 0)).attr('fill', 'none')
         .attr('stroke', index => BRIGHT).attr('stroke-width', width).attr('vector-effect', 'non-scaling-stroke').attr('opacity', opacity));
-      g.append('title').text('Mathlib and Tau Ceti: the formalised baseline. Areas and roadmaps lie farther out the more theory must be built before their targets can be stated and proved.');
+      g.append('title').text('Mathlib: the formalised baseline. Subjects and roadmaps lie farther out the more theory must be built before their targets can be stated and proved.');
     }
 
     dustPath(points, radius) {
@@ -312,19 +281,27 @@
       const centred = (x, y) => x >= chart.x && x <= chart.x + chart.w && y >= chart.y && y <= chart.y + chart.h;
       const galaxies = universe.galaxies.filter(g => intersects(g.x, g.y, Math.max(g.rx, g.ry) * 1.2));
       const constellations = [], stars = [], planets = [], labels = [];
-      if (universe.core && intersects(universe.core.x, universe.core.y, universe.core.r * 3)) {
+      // A very short chart leaves the centre unnamed so the nearest subjects keep theirs.
+      if (universe.core && this.height >= 330 && intersects(universe.core.x, universe.core.y, universe.core.r * 3)) {
         const core = universe.core;
         labels.push({ id: 'core:' + core.id, nodeId: core.id, kind: 'core', x: core.x, y: core.y + core.r * 1.62 + 12 / k, lines: ['Mathlib'], font: T.small ? 11 : 12,
-          anchor: 'middle', above: false, priority: 200, active: false, alternatives: [{ x: core.x, y: core.y + core.r * 1.05 + 12 / k, above: false }] });
+          anchor: 'middle', above: false, priority: 200, active: false, alternatives: [{ x: core.x, y: core.y + core.r * 1.05 + 12 / k, above: false }, { x: core.x, y: core.y - core.r * 1.5 - 6 / k, above: true }] });
       }
       galaxies.forEach(galaxy => {
         const screenW = galaxy.w * k;
         galaxy.headingVisible = screenW < this.width * 1.6 && intersects(galaxy.x, galaxy.y - galaxy.ry, galaxy.rx);
         if (galaxy.headingVisible) {
           const compact = galaxy.w * k < 150 || T.small;
-          const lines = compact ? [SMALL_CAPTIONS[galaxy.label] || wrapText(galaxy.label, 16, 1)[0]] : (CAPTIONS[galaxy.label] || wrapText(galaxy.label, 21, 2));
-          labels.push({ id: 'galaxy:' + galaxy.id, nodeId: galaxy.id, kind: 'galaxy', x: galaxy.x, y: galaxy.y - galaxy.ry - 20 / k, lines, font: T.small ? 10 : 11, anchor: 'middle', above: true, priority: 100 + galaxy.count, active: active === galaxy.id,
-            alternatives: [{ x: galaxy.x, y: galaxy.y + galaxy.ry + 6 / k, above: false }, { x: galaxy.x - galaxy.rx * .5, y: galaxy.y - galaxy.ry - 20 / k, above: true }, { x: galaxy.x + galaxy.rx * .5, y: galaxy.y - galaxy.ry - 20 / k, above: true }, { x: galaxy.x, y: galaxy.y - 4 / k, above: true }] });
+          const lines = compact ? [galaxy.short || wrapText(galaxy.label, 16, 1)[0]] : (galaxy.caption || wrapText(galaxy.label, 21, 2));
+          const edge = (value, fallback) => Number.isFinite(value) ? value : fallback;
+          const top = edge(galaxy.top, galaxy.y - galaxy.ry) - 8 / k, bottom = edge(galaxy.bottom, galaxy.y + galaxy.ry) + 12 / k;
+          const left = edge(galaxy.left, galaxy.x - galaxy.rx) - 6 / k, right = edge(galaxy.right, galaxy.x + galaxy.rx) + 6 / k, middle = galaxy.y + 3.5 / k;
+          // Above the galaxy, then below it, then flush with either side of
+          // it, then beside it: a heading steps aside rather than vanish.
+          labels.push({ id: 'galaxy:' + galaxy.id, nodeId: galaxy.id, kind: 'galaxy', x: galaxy.x, y: top, lines, font: T.small ? 10 : 11, anchor: 'middle', above: true, priority: 100 + galaxy.count, active: active === galaxy.id,
+            alternatives: [{ x: galaxy.x, y: bottom, above: false }, { x: left + 6 / k, y: top, above: true, anchor: 'start' }, { x: right - 6 / k, y: top, above: true, anchor: 'end' },
+              { x: right, y: middle, above: false, anchor: 'start' }, { x: left, y: middle, above: false, anchor: 'end' },
+              { x: left + 6 / k, y: bottom, above: false, anchor: 'start' }, { x: right - 6 / k, y: bottom, above: false, anchor: 'end' }] });
         }
         galaxy.constellationIds.forEach(id => {
           const c = universe.byId.get(id);
@@ -504,6 +481,9 @@
       const solids = [];
       (this.visible ? this.visible.stars : []).forEach(s => { const r = s.r * k; if (r >= 2.5) solids.push({ owner: s.id, x: s.x * k + t.x, y: s.y * k + t.y, r }); });
       (this.visible ? this.visible.planets : []).forEach(p => { const r = p.r * k; if (r >= 2.5) solids.push({ owner: p.id, x: p.x * k + t.x, y: p.y * k + t.y, r }); });
+      // A roadmap drawn as a point, and Mathlib at the centre, are solid too.
+      (this.visible ? this.visible.constellations : []).forEach(c => { if (c.resolved) return; const r = Math.max(2.4, Math.min(c.r * k * .9, 2.4 + Math.min(2.4, c.r * k * .1))); solids.push({ owner: c.id, x: c.x * k + t.x, y: c.y * k + t.y, r: r + 1.5 }); });
+      if (this.universe && this.universe.core) { const c = this.universe.core; solids.push({ owner: c.id, x: c.x * k + t.x, y: c.y * k + t.y, r: c.r * k * 1.1 + 1 }); }
       const overlays = this.overlayBoxes();
       const onSolid = (box, own) => solids.some(s => s.owner !== own && Math.hypot(Math.max(box.x, Math.min(s.x, box.x + box.w)) - s.x, Math.max(box.y, Math.min(s.y, box.y + box.h)) - s.y) < s.r - 1)
         || overlays.some(o => Math.min(box.x + box.w, o.x + o.w) - Math.max(box.x, o.x) > 0 && Math.min(box.y + box.h, o.y + o.h) - Math.max(box.y, o.y) > 0);
@@ -536,10 +516,15 @@
             { screen: { x: b.x + b.w + 6, y: b.y } }, { screen: { x: b.x - w - 6, y: b.y } }, { screen: { x: b.x, y: b.y - h - 2 } }, { screen: { x: b.x + b.w - w, y: b.y - h - 2 } });
         }
         for (const spot of spots) {
-          const anchor = spot.screen ? 'start' : spot.anchor || label.anchor, sx = spot.screen ? spot.screen.x : spot.x * k + t.x, sy = spot.screen ? spot.screen.y + label.font : spot.y * k + t.y;
+          const anchor = spot.screen ? 'start' : spot.anchor || label.anchor, sy = spot.screen ? spot.screen.y + label.font : spot.y * k + t.y;
+          let sx = spot.screen ? spot.screen.x : spot.x * k + t.x;
           const box = { x: anchor === 'middle' ? sx - w / 2 : anchor === 'end' ? sx - w : sx, y: spot.above ? sy - h + 3 : sy - label.font, w, h };
+          // An area heading at the edge of the chart slides inward rather
+          // than vanish, by at most half its width, so it stays by its galaxy.
+          const shift = label.kind === 'galaxy' ? Math.max(0, 2 - box.x) - Math.max(0, box.x + box.w - (this.width - 2)) : 0;
+          if (shift && Math.abs(shift) <= w / 2) { box.x += shift; sx += shift; }
           if (!onScreen(box) || collides(box, label)) { label.box = label.box || box; continue; }
-          label.shown = true; label.box = box; label.x = spot.screen ? (sx - t.x) / k : spot.x; label.y = spot.screen ? (sy - t.y) / k : spot.y; label.above = !!spot.above; label.anchor = anchor; placed.push(box);
+          label.shown = true; label.box = box; label.x = spot.screen || shift ? (sx - t.x) / k : spot.x; label.y = spot.screen ? (sy - t.y) / k : spot.y; label.above = !!spot.above; label.anchor = anchor; placed.push(box);
           break;
         }
         if (!label.box) { const sx = label.x * k + t.x, sy = label.y * k + t.y; label.box = { x: sx - w / 2, y: sy - h + 3, w, h }; }
@@ -673,6 +658,9 @@
     }
     fitAll(animate) { if (!this.universe) return this; const b = this.universe.bounds; return this.travel(this.transformWithHeadroom({ x: b.x - 40, y: b.y, w: b.w + 80, h: b.h }, 48, 12), animate !== false); }
     fit(animate) { return this.lastFocus && this.lastFocus.id ? this.zoomTo(this.lastFocus.id, animate) : this.fitAll(animate); }
+    // Whether the camera shows (about) the whole universe: its scale is at most
+    // the given multiple of the scale that fits everything.
+    atOverview(factor) { if (!this.universe) return true; const b = this.universe.bounds; return this.transform.k <= this.transformFor({ x: b.x - 40, y: b.y, w: b.w + 80, h: b.h }).k * (factor || 1.25); }
     zoomIn() { this.svg.transition().duration(140).call(this.zoom.scaleBy, 2.4); return this; }
     zoomOut() { this.svg.transition().duration(140).call(this.zoom.scaleBy, 1 / 2.4); return this; }
     captureCamera() { return { x: this.transform.x, y: this.transform.y, k: this.transform.k, width: this.width, height: this.height }; }
@@ -695,6 +683,13 @@
       const fitScale = id => this.transformFor(this.footprint(id)).k;
       let galaxy = null;
       this.universe.galaxies.forEach(g => { if (((cx - g.x) / (g.rx * 1.2)) ** 2 + ((cy - g.y) / (g.ry * 1.2)) ** 2 <= 1 && k >= fitScale(g.id) * .6) galaxy = g; });
+      // Between galaxies, a camera that is still well inside the universe
+      // belongs to the nearest galaxy; only a wide view, or empty space far
+      // from every galaxy, is the whole universe.
+      if (!galaxy && !this.atOverview(2.2)) {
+        let nearest = Infinity;
+        this.universe.galaxies.forEach(g => { const e = Math.hypot((cx - g.x) / g.rx, (cy - g.y) / g.ry); if (e < nearest && e <= 2.5 && k >= fitScale(g.id) * .6) { nearest = e; galaxy = g; } });
+      }
       if (!galaxy) return { level: 'all', id: null };
       let constellation = null, best = Infinity;
       galaxy.constellationIds.forEach(id => { const c = this.universe.byId.get(id); const d = Math.hypot(cx - c.x, cy - c.y); if (d < c.r * 1.8 + 30 / k && d < best && k >= fitScale(id) * .5) { best = d; constellation = c; } });

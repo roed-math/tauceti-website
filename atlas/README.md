@@ -1,6 +1,6 @@
 # Tau Ceti Explorer
 
-An interactive atlas of mathematical roadmaps: one universe in which areas are galaxies, roadmaps are constellations, layers are stars and the mathematics itself orbits them as planets.
+An interactive atlas of mathematical roadmaps: one universe with Mathlib at its centre, in which subjects are galaxies, roadmaps are constellations, layers are stars and the mathematics itself orbits them as planets.
 
 **[Open the interactive atlas](https://cbirkbeck.github.io/tauceti-explorer/)**
 
@@ -8,23 +8,24 @@ The atlas also runs entirely offline. Download `index.html` and open it in a bro
 
 ## Explore
 
-- Scroll or pinch toward an **area** to see its **roadmap constellations**, toward a constellation to read its **layer stars**, and toward a star to discover its **orbiting mathematical planets**.
+- Mathlib is the black hole at the centre. The farther out a subject or roadmap lies, the more theory must be built before its targets can be stated and proved.
+- Scroll or pinch toward a **subject** to see its **roadmap constellations**, toward a constellation to read its **layer stars**, and toward a star to discover its **orbiting mathematical planets**.
 - Tap or click a roadmap, star or planet to make the same journey directly. Zoom out or use the back control to return to the previous level.
 - Formula planets have short plain-text names; clicking them opens the typeset definition, theorem target or construction from the source. The details also list citations from the topic or layer and broader roadmap reading, with links back to the embedded source. Progress belongs to its layer star; planets do not carry independent completion claims.
 - The details panel explains the mathematics, tracked progress, prerequisites and consumers. The Links tab exposes the actual stage pairs behind dependencies.
 - Search for a subject, roadmap, or individual stage. Open the full roadmap to read its outline and source text.
 - Drag to pan and use Fit to recover the current scene. Export the current graph as SVG.
-- Open **Mission status** for a progress breakdown by area. Filter the collection by layer activity, and pin roadmaps for your next visit.
+- Open **Mission status** for a progress breakdown by subject. Filter the collection by layer activity, and pin roadmaps for your next visit.
 - Use **Browse** on a phone, or **⌘/Ctrl K** on a keyboard to search. Mobile details share the screen with the chart; pinch, tap and back controls remain available. View links preserve the current roadmap and planetary system.
 - Mathematics is typeset offline with native MathML; hover a formula to see its source.
 
-The atlas is one continuous universe. Mathematical areas are galaxies, roadmaps are the constellations inside them, layers are the stars of a constellation, and a layer's definitions, theorems and constructions are the planets of its star. Everything sits in a single coordinate system, so zooming is a camera movement rather than a change of page: from the whole universe the areas are named and each roadmap is a point; inside a galaxy the constellations resolve into their stars and figures; inside a constellation the stars show their names and planets; inside a star system the planets are named. The address bar and breadcrumbs follow the camera, and only what the camera can see and resolve is drawn, which keeps zooming quick. Names are placed only where they fit: never across another planet, star or control, and a name with no room waits for more zoom rather than shrinking or overlapping. Clicking an object travels to it; the back control steps out one level. A large roadmap is given room in proportion to its number of layers, and each layer's planetary system is kept clear of its neighbours, so dense roadmaps separate as the camera closes in.
+The atlas is one continuous universe. Subjects are galaxies, roadmaps are the constellations inside them, layers are the stars of a constellation, and a layer's definitions, theorems and constructions are the planets of its star. Everything sits in a single coordinate system, so zooming is a camera movement rather than a change of page: from the whole universe the areas are named and each roadmap is a point; inside a galaxy the constellations resolve into their stars and figures; inside a constellation the stars show their names and planets; inside a star system the planets are named. The address bar and breadcrumbs follow the camera, and only what the camera can see and resolve is drawn, which keeps zooming quick. Names are placed only where they fit: never across another planet, star or control, and a name with no room waits for more zoom rather than shrinking or overlapping. Clicking an object travels to it; the back control steps out one level. A large roadmap is given room in proportion to its number of layers, and each layer's planetary system is kept clear of its neighbours, so dense roadmaps separate as the camera closes in.
 
-An experimental layout, opened by adding `#layout=radial` to the address, places Mathlib at the centre of the universe as a black hole. Each area and roadmap lies farther out the more theory must be built before its targets can be stated and proved, and related areas share a direction, so a lineage fans outward from classical number theory towards geometric Langlands. Distances come from `data/roadmap-classification.json`; while that file is marked provisional they are estimates from area and dependency depth, and they are being replaced by an evidence-based classification that uses the subject classes of each roadmap's principal references.
+Mathlib sits at the centre of the universe as a small black hole. Each roadmap belongs to one of 18 subject galaxies, chosen from the Mathematics Subject Classification of its principal references, which are looked up in zbMATH. Each roadmap also has a distance from Mathlib on a scale from 0 to 10: 0 means its targets can be stated and proved from Mathlib now, and 10 means several research-level theories must be built first. A galaxy lies at the mean distance of its roadmaps, and inside a galaxy the nearer roadmaps sit on the side facing the centre. Each research area sits beyond the nearer subject it draws on most, judged by the prerequisite links between galaxies, and neighbouring directions hold related subjects. So a lineage reads outward: algebraic number theory, then Iwasawa theory and automorphic forms, then Galois representations and Langlands. A roadmap's overview gives its distance, its primary subject class and the reason for the distance. Distances come from `data/roadmap-classification.json`, which `scripts/classification.py` generates. Roadmaps whose classification has not finished use provisional estimates, and the overview marks them. The older layout, with areas at fixed anchors and no centre, opens by adding `#layout=areas` to the address.
 
-No links are drawn at rest. Selecting a roadmap shows its prerequisite links to other roadmaps; selecting a star shows the prerequisites and consumers of that layer, prerequisite → consumer; hovering an area heading shows the routes between areas. The faint figure joining a constellation's stars prefers real prerequisite pairs and is a shape, not a claim. Planet orbits express membership in a layer, not additional prerequisites. Planets are meant to be key definitions, named theorems and central constructions; extracted paragraphs that are instructions, checks, scope caveats or bookkeeping are hidden from the map through `data/landmark-hidden.json`, each with a recorded reason, and an editorial pass is replacing the remaining sentence-fragment names with short names drawn from the passages themselves. Related-plan links can be switched on and carry no prerequisite claim. Positions, discs and orbits are visual aids, not astronomical coordinates or mathematical measurements.
+No links are drawn at rest. Selecting a roadmap shows its prerequisite links to other roadmaps; selecting a star shows the prerequisites and consumers of that layer, prerequisite → consumer; hovering a subject heading shows the routes between subjects, drawn from rim to rim. The faint figure joining a constellation's stars prefers real prerequisite pairs and is a shape, not a claim. Planet orbits express membership in a layer, not additional prerequisites. Planets are meant to be key definitions, named theorems and central constructions; extracted paragraphs that are instructions, checks, scope caveats or bookkeeping are hidden from the map through `data/landmark-hidden.json`, each with a recorded reason, and an editorial pass is replacing the remaining sentence-fragment names with short names drawn from the passages themselves. Related-plan links can be switched on and carry no prerequisite claim. Positions, discs and orbits are visual aids, not astronomical coordinates or mathematical measurements.
 
-On areas, roadmaps and layers, colour means one thing: recorded progress, shown as brightness. A layer, roadmap or area recorded as not started is red; it warms through salmon as work is recorded and turns white when complete, so an area's galaxy brightens as its roadmaps fill in. An open ring means no progress has been recorded, and nothing is ever coloured as started or as zero percent to fill the gap. Planets carry no progress of their own. Their shape says what they are: a rounded square is a definition or construction, a circle is a result, and a ringed circle is a named theorem. Their muted blue and lavender tints lie outside the progress ramp, and a legend appears inside a star system. All marks are flat: solid fills and thin strokes, with no gradients, glows or shaded spheres. The page uses system type, one dark palette and no decorative elements; headline statistics live in Mission status. Scene artwork is generated locally as SVG. There are no external fonts or image downloads, transitions are short, and reduced-motion preferences are respected.
+On subjects, roadmaps and layers, colour means one thing: recorded progress, shown as brightness. A layer, roadmap or area recorded as not started is red; it warms through salmon as work is recorded and turns white when complete, so a subject's galaxy brightens as its roadmaps fill in. An open ring means no progress has been recorded, and nothing is ever coloured as started or as zero percent to fill the gap. Planets carry no progress of their own. Their shape says what they are: a rounded square is a definition or construction, a circle is a result, and a ringed circle is a named theorem. Their muted blue and lavender tints lie outside the progress ramp, and a legend appears inside a star system. All marks are flat: solid fills and thin strokes, with no gradients, glows or shaded spheres. The page uses system type, one dark palette and no decorative elements; headline statistics live in Mission status. Scene artwork is generated locally as SVG. There are no external fonts or image downloads, transitions are short, and reduced-motion preferences are respected.
 
 ## Source-decomposed refinements
 
@@ -34,7 +35,7 @@ Roadmap layers can carry reviewed refinements: constructions, lemmas, theorems a
 
 | Item | Count |
 | --- | ---: |
-| Areas with roadmaps | 13 |
+| Subject galaxies | 18 |
 | Roadmaps | 212 |
 | Recorded stage entries | 1,968 |
 | Reviewed source refinements | 482 (35 roadmaps, partial coverage) |
@@ -82,8 +83,8 @@ The builder packages the checked-in snapshot. To update the published mathematic
 - `vendor/`: bundled D3, KaTeX, and their licences.
 - `data/atlas.json`: roadmap text, stage hierarchy, and graph relationships.
 - `data/status.json`: explicitly mapped source-status evidence.
-- `data/regions.json`: mathematical area descriptions and thematic links.
-- `data/opportunities.json`: additional areas with no dedicated roadmap in this atlas.
+- `data/galaxies.json`: the subject galaxies, with descriptions, topics, subject classes and directions from the centre.
+- `data/roadmap-classification.json`: each roadmap's galaxy, distance from Mathlib and subject classes, generated by `scripts/classification.py` from the classification results and `data/classification-estimates.json`.
 - `data/landmark-labels.json`: short mathematical names for formula planets, separate from their source excerpts.
 - `data/landmark-hidden.json`: extracted paragraphs that are not planets (instructions, checks, caveats, bookkeeping), each with a recorded reason.
 - `data/roadmap-summaries.json`: edited overview summaries applied over the snapshot at build time.
@@ -93,7 +94,7 @@ The builder packages the checked-in snapshot. To update the published mathematic
 - `src/references.js`: extracts cited reading with its topic, layer or roadmap scope.
 - `src/landmarks.js`: source-faithful extraction of key definitions, results and constructions.
 - `content/`: sanitized source Markdown documents.
-- `scripts/build.py`: portable offline builder.
+- `scripts/build.py`: portable offline builder. `scripts/galaxies.py` regroups roadmaps into the subject galaxies at build time.
 - `index.html`: generated entry point for offline use and GitHub Pages.
 
 The GitHub Pages target is [cbirkbeck.github.io/tauceti-explorer](https://cbirkbeck.github.io/tauceti-explorer/).

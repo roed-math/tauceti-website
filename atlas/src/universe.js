@@ -8,28 +8,6 @@
   const GOLDEN = Math.PI * (3 - Math.sqrt(5));
   const hash = text => Array.from(String(text)).reduce((seed, character) => ((seed * 31 + character.charCodeAt(0)) >>> 0), 7);
 
-  // Fixed anchors give each area a familiar place. Their asymmetric layout
-  // leaves clear space; population and dependencies adjust the exact spot.
-  const ANCHORS = {
-    'Shared foundations': [-420, -35],
-    'Classical, analytic and computational number theory': [-505, -470],
-    'Arithmetic geometry and Diophantine methods': [-55, -310],
-    'Modular, Shimura and Galois theory': [395, -170],
-    'General automorphic theory': [850, -360],
-    'Diamonds and geometric Langlands': [720, 240],
-    'Cohomology and nonarchimedean geometry': [-80, 135],
-    'K-theory, motives, periods and Habiro': [90, 545],
-    'Iwasawa, Euler systems and BSD': [440, 520],
-    'Function fields and higher local fields': [740, 800],
-    'Analysis, probability and PDE': [-995, 350],
-    'Topology, manifolds and Floer theory': [-460, 515],
-    'Algebra, representation theory and Lie groups': [-760, 105],
-    'Differential and complex geometry': [-1050, 745],
-    'Combinatorics and discrete structures': [-850, -565],
-    'Computation, optimization and control': [-1380, 10],
-    'Logic and foundations': [-1310, -400]
-  };
-
   function placeGalaxies(galaxies, links, aspect) {
     if (!galaxies.length) return;
     const chartW = 5200 * Math.max(.42, Math.min(1, aspect / 1.5)), chartH = Math.max(2200, Math.min(7000, chartW / Math.max(.42, Math.min(2.6, aspect))));
@@ -37,7 +15,11 @@
     const meanCount = galaxies.reduce((sum, galaxy) => sum + galaxy.count, 0) / galaxies.length;
     galaxies.forEach(galaxy => { galaxy.areaWeight = .42 + .58 * Math.sqrt(galaxy.count / Math.max(1, meanCount)); });
     const totalWeight = galaxies.reduce((sum, galaxy) => sum + galaxy.areaWeight, 0);
-    const seeds = galaxies.map((galaxy, index) => ANCHORS[galaxy.label] || [Math.cos(index * 2.4) * 900, Math.sin(index * 2.4) * 650]);
+    // Each area starts in its own direction, the same one it has in the radial layout.
+    const seeds = galaxies.map((galaxy, index) => {
+      const angle = (Number.isFinite(galaxy.direction) ? galaxy.direction : index * 360 / galaxies.length) * Math.PI / 180;
+      return [Math.cos(angle) * 900, Math.sin(angle) * 650];
+    });
     const minX = Math.min(...seeds.map(p => p[0])), maxX = Math.max(...seeds.map(p => p[0]));
     const minY = Math.min(...seeds.map(p => p[1])), maxY = Math.max(...seeds.map(p => p[1]));
     galaxies.forEach((galaxy, index) => {
@@ -78,62 +60,59 @@
     galaxies.forEach(galaxy => { galaxy.rx = galaxy.w / 2; galaxy.ry = galaxy.h / 2; });
   }
 
-  // The radial layout: Mathlib sits at the centre, and each area and roadmap
-  // lies farther out the more theory must be built before its targets can be
-  // stated and proved. Areas keep a fixed clockwise order so that related
-  // areas are neighbours.
-  const CORE_RADIUS = 230;
-  // Each area has a direction from the core (degrees, clockwise from the
-  // right). Areas that build on one another share a direction, so a lineage
-  // fans outward: classical number theory, then arithmetic geometry, then
-  // modular and automorphic theory, and geometric Langlands farthest out.
-  const AREA_DIRECTION = {
-    'Shared foundations': -90, 'Analysis, probability and PDE': -145, 'Topology, manifolds and Floer theory': -35,
-    'Algebra, representation theory and Lie groups': 180, 'K-theory, motives, periods and Habiro': 168,
-    'Cohomology and nonarchimedean geometry': 205, 'Function fields and higher local fields': 138,
-    'Classical, analytic and computational number theory': 18, 'Iwasawa, Euler systems and BSD': 2,
-    'Arithmetic geometry and Diophantine methods': 42, 'Modular, Shimura and Galois theory': 66,
-    'General automorphic theory': 92, 'Diamonds and geometric Langlands': 112
-  };
+  // The radial layout: Mathlib is a small black hole at the centre. A galaxy
+  // lies farther out the more theory its roadmaps must build before their
+  // targets can be stated and proved (their mean distance from Mathlib, on a
+  // 0-10 scale), in a direction chosen so that related subjects are
+  // neighbours. Overlaps are resolved by turning galaxies around the core,
+  // so distance from the centre keeps its meaning.
+  const CORE_RADIUS = 60;
+  const RADIUS_AT_ZERO = 300, RADIUS_PER_UNIT = 185, GALAXY_GAP = 70;
+  const galaxySize = count => 170 + 80 * Math.sqrt(Math.max(1, count));
+  const turn = angle => Math.atan2(Math.sin(angle), Math.cos(angle));
 
   function placeGalaxiesRadial(galaxies, constellationsOf, aspect) {
-    const sx = Math.max(.8, Math.min(1.45, Math.sqrt(aspect))), sy = 1 / Math.max(.8, Math.min(1.25, Math.sqrt(aspect)));
-    const ordered = galaxies.slice().sort((a, b) => a.label.localeCompare(b.label));
-    ordered.forEach(galaxy => {
-      const members = constellationsOf(galaxy);
-      const known = members.map(c => c.distance).filter(d => Number.isFinite(d));
+    if (!galaxies.length) return;
+    // A wide chart spreads the universe sideways, a tall one upward.
+    const sx = Math.max(.8, Math.min(1.9, Math.sqrt(aspect))), sy = 1 / Math.max(.8, Math.min(1.6, Math.sqrt(aspect)));
+    galaxies.forEach((galaxy, index) => {
+      const known = constellationsOf(galaxy).map(c => c.distance).filter(d => Number.isFinite(d));
       galaxy.distance = known.length ? known.reduce((a, b) => a + b, 0) / known.length : 5;
-      galaxy.size = 230 + 92 * Math.sqrt(Math.max(1, galaxy.count));
-    });
-    ordered.forEach((galaxy, index) => {
-      const direction = AREA_DIRECTION[galaxy.label];
-      galaxy.angle = (direction == null ? (index * 137.5) % 360 : direction) * Math.PI / 180;
-      galaxy.targetRadius = CORE_RADIUS + 260 + galaxy.size * .45 + galaxy.distance * 210;
-      galaxy.x = Math.cos(galaxy.angle) * galaxy.targetRadius * sx;
-      galaxy.y = Math.sin(galaxy.angle) * galaxy.targetRadius * sy;
+      galaxy.size = galaxySize(galaxy.count);
       galaxy.w = galaxy.size * 1.08; galaxy.h = galaxy.size * .86;
+      galaxy.targetRadius = Math.max(CORE_RADIUS * 3.6 + galaxy.size / 2, RADIUS_AT_ZERO + galaxy.distance * RADIUS_PER_UNIT);
+      galaxy.preferred = (Number.isFinite(galaxy.direction) ? galaxy.direction : index * 360 / galaxies.length) * Math.PI / 180;
+      galaxy.angle = galaxy.preferred; galaxy.radius = galaxy.targetRadius;
     });
-    // Separate overlapping areas; each area is held near its own radius, so
-    // resolving an overlap moves it around the core rather than inward.
-    for (let pass = 0; pass < 260; pass++) {
-      let moved = false;
-      ordered.forEach((a, index) => ordered.slice(index + 1).forEach(b => {
-        const dx = b.x - a.x, dy = b.y - a.y, distance = Math.max(.001, Math.hypot(dx, dy));
-        const needed = (Math.max(a.w, a.h) + Math.max(b.w, b.h)) / 2 + 70;
+    const place = galaxy => { galaxy.x = Math.cos(galaxy.angle) * galaxy.radius * sx; galaxy.y = Math.sin(galaxy.angle) * galaxy.radius * sy; };
+    galaxies.forEach(place);
+    for (let pass = 0; pass < 600; pass++) {
+      let overlapping = false;
+      galaxies.forEach((a, index) => galaxies.slice(index + 1).forEach(b => {
+        let dx = b.x - a.x, dy = b.y - a.y;
+        const distance = Math.hypot(dx, dy), needed = (a.size + b.size) / 2 + GALAXY_GAP;
         if (distance >= needed) return;
-        const push = (needed - distance) / 2 / distance;
-        a.x -= dx * push; a.y -= dy * push; b.x += dx * push; b.y += dy * push; moved = true;
+        overlapping = true;
+        if (distance < .001) { dx = Math.cos(a.angle + Math.PI / 2); dy = Math.sin(a.angle + Math.PI / 2); }
+        const push = (needed - Math.max(distance, .001)) / 2 / Math.max(distance, .001);
+        // Split each push into a turn about the core and a small radial step.
+        [[a, -1], [b, 1]].forEach(([galaxy, sign]) => {
+          const px = dx * push * sign, py = dy * push * sign;
+          const ux = Math.cos(galaxy.angle), uy = Math.sin(galaxy.angle);
+          const radial = px * ux + py * uy, tangential = -px * uy + py * ux;
+          galaxy.angle += tangential / Math.max(1, galaxy.radius);
+          galaxy.radius += radial * .3;
+        });
       }));
-      ordered.forEach(galaxy => {
-        const radius = Math.hypot(galaxy.x / sx, galaxy.y / sy);
-        const pull = (galaxy.targetRadius - radius) * .08;
-        galaxy.x += galaxy.x / Math.max(1, radius) * pull; galaxy.y += galaxy.y / Math.max(1, radius) * pull;
-        const minimum = CORE_RADIUS + 120 + Math.max(galaxy.w, galaxy.h) / 2;
-        if (radius < minimum) { galaxy.x *= minimum / radius; galaxy.y *= minimum / radius; }
+      galaxies.forEach(galaxy => {
+        galaxy.radius += (galaxy.targetRadius - galaxy.radius) * .06;
+        galaxy.angle += turn(galaxy.preferred - galaxy.angle) * .01;
+        galaxy.radius = Math.max(galaxy.radius, CORE_RADIUS * 3.6 + galaxy.size / 2);
+        place(galaxy);
       });
-      if (!moved && pass > 40) break;
+      if (!overlapping && pass > 60) break;
     }
-    ordered.forEach(galaxy => { galaxy.rx = galaxy.w / 2; galaxy.ry = galaxy.h / 2; });
+    galaxies.forEach(galaxy => { galaxy.rx = galaxy.w / 2; galaxy.ry = galaxy.h / 2; });
   }
 
   // Inside an area, a roadmap closer to Mathlib than the area's average sits
@@ -328,10 +307,13 @@
     const byGalaxy = new Map(galaxies.map(galaxy => [galaxy.id, galaxy]));
     const list = Array.from(routes.values()).map(route => {
       const a = byGalaxy.get(route.source), b = byGalaxy.get(route.target);
-      const dx = b.x - a.x, dy = b.y - a.y, length = Math.max(1, Math.hypot(dx, dy)), nx = -dy / length, ny = dx / length;
+      // A route leaves from the rim of each galaxy, never across its roadmaps.
+      const rim = (g, toward) => { const ex = toward.x - g.x, ey = toward.y - g.y, scale = 1 / Math.max(1e-6, Math.hypot(ex / g.rx, ey / g.ry)); return { x: g.x + ex * scale, y: g.y + ey * scale }; };
+      const start = rim(a, b), end = rim(b, a);
+      const dx = end.x - start.x, dy = end.y - start.y, length = Math.max(1, Math.hypot(dx, dy)), nx = -dy / length, ny = dx / length;
       const bend = ((hash(route.source + route.target) % 2) ? 1 : -1) * Math.min(length * .18, 320);
-      const c1 = { x: a.x + dx * .3 + nx * bend, y: a.y + dy * .3 + ny * bend }, c2 = { x: a.x + dx * .7 + nx * bend, y: a.y + dy * .7 + ny * bend };
-      return { ...route, path: `M${a.x},${a.y}C${c1.x},${c1.y} ${c2.x},${c2.y} ${b.x},${b.y}` };
+      const c1 = { x: start.x + dx * .3 + nx * bend, y: start.y + dy * .3 + ny * bend }, c2 = { x: start.x + dx * .7 + nx * bend, y: start.y + dy * .7 + ny * bend };
+      return { ...route, path: `M${start.x},${start.y}C${c1.x},${c1.y} ${c2.x},${c2.y} ${end.x},${end.y}` };
     });
     const counts = list.map(route => route.dependencies).sort((a, b) => a - b);
     const threshold = counts.length ? Math.max(3, counts[Math.floor(counts.length * .65)]) : Infinity;
@@ -341,7 +323,7 @@
 
   function build(input, viewport) {
     const aspect = viewport && viewport.width && viewport.height ? viewport.width / viewport.height : 1.5;
-    const galaxies = input.groups.map(group => ({ id: group.id, level: 'galaxy', label: group.label, color: group.color, constellationIds: [], count: 0, unmappedCount: 0, progress: group.progress == null ? null : group.progress, progressLabel: group.progressLabel || '' }));
+    const galaxies = input.groups.map(group => ({ id: group.id, level: 'galaxy', label: group.label, short: group.short || '', caption: group.caption || null, direction: group.direction, color: group.color, constellationIds: [], count: 0, unmappedCount: 0, progress: group.progress == null ? null : group.progress, progressLabel: group.progressLabel || '' }));
     const galaxyById = new Map(galaxies.map(galaxy => [galaxy.id, galaxy]));
     const constellations = input.constellations.map(item => ({ ...item, level: 'constellation', starIds: item.starIds || [] }))
       .filter(item => galaxyById.has(item.galaxyId));
@@ -360,7 +342,7 @@
       galaxyLinks.get(key).weight += Math.sqrt(Math.max(1, edge.count || 1));
     });
     const constellationById = new Map(constellations.map(item => [item.id, item]));
-    const radial = input.layout === 'radial';
+    const radial = input.layout !== 'areas';
     const membersOf = galaxy => galaxy.constellationIds.map(id => constellationById.get(id)).sort((a, b) => a.id.localeCompare(b.id));
     if (radial) placeGalaxiesRadial(populated, membersOf, aspect);
     else placeGalaxies(populated, Array.from(galaxyLinks.values()), aspect);
@@ -380,12 +362,26 @@
       });
       stars.push(...members);
     });
-    populated.forEach(galaxy => { galaxy.dust = galaxyDust(galaxy); });
+    // A galaxy's name sits just above what is drawn of it: its dust and its roadmaps.
+    populated.forEach(galaxy => {
+      galaxy.dust = galaxyDust(galaxy);
+      const bright = galaxy.dust.filter(p => p.cls), members = membersOf(galaxy);
+      const extent = (values, fallbackLow, fallbackHigh) => {
+        const sorted = values.slice().sort((a, b) => a - b);
+        return sorted.length ? [sorted[Math.floor(sorted.length * .02)], sorted[Math.ceil(sorted.length * .98) - 1]] : [fallbackLow, fallbackHigh];
+      };
+      const [dustTop, dustBottom] = extent(bright.map(p => p.y), galaxy.y - galaxy.ry, galaxy.y + galaxy.ry);
+      const [dustLeft, dustRight] = extent(bright.map(p => p.x), galaxy.x - galaxy.rx, galaxy.x + galaxy.rx);
+      galaxy.top = Math.min(dustTop, ...members.map(c => c.y - c.r));
+      galaxy.bottom = Math.max(dustBottom, ...members.map(c => c.y + c.r));
+      galaxy.left = Math.min(dustLeft, ...members.map(c => c.x - c.r));
+      galaxy.right = Math.max(dustRight, ...members.map(c => c.x + c.r));
+    });
     const byId = new Map();
     [...populated, ...constellations, ...stars, ...planets].forEach(node => byId.set(node.id, node));
     const core = radial ? { id: 'core:mathlib', level: 'core', x: 0, y: 0, r: CORE_RADIUS, label: 'Mathlib' } : null;
     const extents = populated.map(galaxy => ({ x0: galaxy.x - galaxy.rx, y0: galaxy.y - galaxy.ry, x1: galaxy.x + galaxy.rx, y1: galaxy.y + galaxy.ry }));
-    if (core) extents.push({ x0: -core.r * 3, y0: -core.r * 1.6, x1: core.r * 3, y1: core.r * 1.6 });
+    if (core) extents.push({ x0: -core.r * 3.4, y0: -core.r * 1.7, x1: core.r * 3.4, y1: core.r * 1.7 });
     const left = Math.min(...extents.map(e => e.x0)), top = Math.min(...extents.map(e => e.y0));
     const right = Math.max(...extents.map(e => e.x1)), bottom = Math.max(...extents.map(e => e.y1));
     const bounds = populated.length ? { x: left, y: top, w: right - left, h: bottom - top } : { x: -100, y: -100, w: 200, h: 200 };

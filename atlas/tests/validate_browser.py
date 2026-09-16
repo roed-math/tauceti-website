@@ -236,9 +236,10 @@ def check_zoom_journey(page,scope):
  # A continuous wheel zoom carries the reader from the universe into one
  # galaxy, one constellation and one star system, and the address follows.
  fit_all(page)
- record(scope+' wheel zoom enters a galaxy',wheel_until(page,'.tau-galaxy[data-node-id="classical"] ellipse',-300,"TauExplorer.getState().view==='group' && TauExplorer.getState().id==='classical'",attempts=14))
+ home=page.evaluate("TauExplorer.data.roadmaps.find(r=>r.id==='AnalyticNumberTheory').group")
+ record(scope+' wheel zoom enters a galaxy',wheel_until(page,'.tau-galaxy[data-node-id="%s"] ellipse'%home,-300,"TauExplorer.getState().view==='group' && TauExplorer.getState().id==='%s'"%home,attempts=14))
  page.wait_for_timeout(400)
- record(scope+' inside a galaxy its constellations resolve into stars',wheel_until(page,'.tau-galaxy[data-node-id="classical"] ellipse',-200,"(() => { const d=TauExplorer.graph.debugState(); return d.visible.resolved>0 && d.visible.stars>0; })()",attempts=6))
+ record(scope+' inside a galaxy its constellations resolve into stars',wheel_until(page,'.tau-galaxy[data-node-id="%s"] ellipse'%home,-200,"(() => { const d=TauExplorer.graph.debugState(); return d.visible.resolved>0 && d.visible.stars>0; })()",attempts=6))
  record(scope+' wheel zoom enters a roadmap constellation',wheel_until(page,'[data-node-id="AnalyticNumberTheory"] .tau-hit',-300,"TauExplorer.getState().view==='roadmap' && TauExplorer.getState().id==='AnalyticNumberTheory' && !TauExplorer.getState().layer",attempts=14))
  record(scope+' constellation names and star names are legible and disjoint',labels_are_clean(page) and names_are_unique(page))
  record(scope+' wheel zoom enters a star system',wheel_until(page,'[data-node-id="AnalyticNumberTheory:AN.0"] .tau-hit',-300,"TauExplorer.getState().layer==='AnalyticNumberTheory:AN.0'",attempts=14))
@@ -494,7 +495,8 @@ with sync_playwright() as p:
   mp.set_viewport_size({'width':375,'height':812});mp.wait_for_timeout(500);fit_all(mp,touch=True)
   check_overview(mp,'Narrow phone',touch=True)
   mp.screenshot(path=str(ROOT/'preview-phone-narrow-overview.png'),animations='disabled')
-  record('Two-finger pinch enters a galaxy on a narrow phone',pinch_until(mp,touch,'[data-label-for="classical"]',3,"TauExplorer.getState().view==='group' && TauExplorer.getState().id==='classical'"))
+  home=mp.evaluate("TauExplorer.data.roadmaps.find(r=>r.id==='AnalyticNumberTheory').group")
+  record('Two-finger pinch enters a galaxy on a narrow phone',pinch_until(mp,touch,'[data-label-for="%s"]'%home,3,"TauExplorer.getState().view==='group' && TauExplorer.getState().id==='%s'"%home))
   record('Two-finger pinch enters a roadmap on a narrow phone',pinch_until(mp,touch,'[data-node-id="AnalyticNumberTheory"] .tau-hit',3,"TauExplorer.getState().view==='roadmap' && TauExplorer.getState().id==='AnalyticNumberTheory'"))
   record('Two-finger pinch enters a star system on a narrow phone',pinch_until(mp,touch,'[data-node-id="AnalyticNumberTheory:AN.0"] .tau-hit',3,"TauExplorer.getState().layer==='AnalyticNumberTheory:AN.0'"))
   mp.screenshot(path=str(ROOT/'preview-phone-star-system.png'),animations='disabled')

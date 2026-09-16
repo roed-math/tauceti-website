@@ -12,6 +12,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
 from decompositions import merge_decompositions, merge_links  # noqa: E402
+from galaxies import apply_galaxies  # noqa: E402
 
 
 def load_decompositions() -> list:
@@ -56,14 +57,18 @@ def build(output: Path) -> dict:
         if entry.get("status") not in ("planned", "in_progress", "complete") or not entry.get("evidence"):
             raise ValueError("Mapped stage status needs a known status and evidence: " + stage_id)
     atlas["progress"]["stages"].update(atlas["mappedStageStatuses"])
-    atlas["regions"] = json.loads(read_text("data/regions.json"))
+    atlas["roadmapClassification"] = json.loads(read_text("data/roadmap-classification.json"))
+    # Roadmaps are grouped into subject galaxies by the classification of their
+    # references; the snapshot's own area assignment is superseded.
+    galaxies = json.loads(read_text("data/galaxies.json"))["galaxies"]
+    atlas["regions"] = apply_galaxies(atlas, galaxies, atlas["roadmapClassification"])
     atlas["opportunities"] = json.loads(read_text("data/opportunities.json"))
     # Areas without a roadmap are not drawn: the atlas maps roadmaps that exist.
     atlas["opportunities"]["areas"] = []
+    atlas["opportunities"]["groups"] = []
     atlas["stagePresentation"] = json.loads(read_text("data/stage-presentation.json"))
     atlas["landmarkLabels"] = json.loads(read_text("data/landmark-labels.json"))
     atlas["landmarkHidden"] = json.loads(read_text("data/landmark-hidden.json"))
-    atlas["roadmapClassification"] = json.loads(read_text("data/roadmap-classification.json"))
     # Edited overview summaries: mathematical prose for readers, keyed by roadmap id.
     atlas["roadmapSummaries"] = json.loads(read_text("data/roadmap-summaries.json"))
     roadmap_ids = {roadmap["id"] for roadmap in atlas["roadmaps"]}
@@ -151,7 +156,7 @@ def build(output: Path) -> dict:
     # progress targets, so the parent stays terminal for progress accounting.
     refinements = [stage for stage in atlas["stages"] if stage.get("expansion")]
     parent_ids = {stage.get("parentStageId") for stage in atlas["stages"] if stage.get("parentStageId") and not stage.get("expansion")}
-    source_paths = ["src/shell.html", *style_paths, *assets.values(), "data/atlas.json", "data/status.json", "data/regions.json", "data/opportunities.json", "data/stage-presentation.json", "data/landmark-labels.json", "data/landmark-hidden.json", "data/roadmap-summaries.json", "data/roadmap-classification.json", "data/bibliography.json", "NOTICE", "LICENSE", "vendor/D3-LICENSE.txt", "vendor/KaTeX-LICENSE.txt"]
+    source_paths = ["src/shell.html", *style_paths, *assets.values(), "data/atlas.json", "data/status.json", "data/galaxies.json", "data/opportunities.json", "data/stage-presentation.json", "data/landmark-labels.json", "data/landmark-hidden.json", "data/roadmap-summaries.json", "data/roadmap-classification.json", "data/classification-estimates.json", "data/bibliography.json", "NOTICE", "LICENSE", "vendor/D3-LICENSE.txt", "vendor/KaTeX-LICENSE.txt"]
     source_paths += [str(path.relative_to(ROOT)) for path in sorted((ROOT / "data" / "decompositions").glob("*.json"))] if (ROOT / "data" / "decompositions").is_dir() else []
     report = {
         "roadmaps": len(atlas["roadmaps"]),
@@ -163,6 +168,8 @@ def build(output: Path) -> dict:
                                    for item in atlas["decompositions"]],
         "terminalTargets": sum(stage["id"] not in parent_ids and not stage.get("expansion") for stage in atlas["stages"]),
         "groups": len(atlas["groups"]),
+        "classifiedRoadmaps": atlas["roadmapClassification"]["counts"]["classified"],
+        "estimatedRoadmaps": atlas["roadmapClassification"]["counts"]["estimated"],
         "unmappedAreas": len(atlas["opportunities"]["areas"]),
         "areasWithRoadmaps": sum(1 for group in atlas["groups"] + atlas["opportunities"]["groups"] if any(roadmap.get("group") == group["id"] for roadmap in atlas["roadmaps"])),
         "additionalRegions": len(atlas["opportunities"]["groups"]),
