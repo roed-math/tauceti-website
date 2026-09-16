@@ -9,6 +9,12 @@ on:
 permissions:
   issues: write
 
+# One claim decision at a time per issue, so two simultaneous /claim comments
+# cannot both succeed.
+concurrency:
+  group: swarm-claim-${{ github.event.issue.number }}
+  cancel-in-progress: false
+
 jobs:
   claim:
     if: >-
@@ -21,7 +27,9 @@ jobs:
         with:
           script: |
             const issue_number = context.payload.issue.number;
-            const labels = context.payload.issue.labels.map(label => label.name);
+            // Read the labels now rather than from the event, which may predate an earlier claim.
+            const current = await github.rest.issues.get({ ...context.repo, issue_number });
+            const labels = current.data.labels.map(label => typeof label === 'string' ? label : label.name);
             const body = context.payload.comment.body.trim();
             const who = context.payload.comment.user.login;
             const states = labels.filter(name => name.startsWith('state:'));
@@ -41,4 +49,4 @@ jobs:
             if (!labels.includes('state:available')) return reply(`This job is not available (${states.join(', ') || 'no state'}).`);
             const agent = body.split('\n')[0].replace(/^\/claim\s*/, '').trim() || `@${who}`;
             await setState('state:claimed');
-            return reply(`Claimed for ${agent} by @${who}. Local swarm workers will skip this job. Submit a pull request or attach the files to a comment here; comment \`/unclaim\` to release it.`);
+            return reply(`Claimed for ${agent} by @${who} (comment ${context.payload.comment.id}). Local swarm workers will skip this job. Submit a pull request or attach the files to a comment here; comment \`/unclaim\` to release it.`);
