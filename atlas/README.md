@@ -51,7 +51,7 @@ The source snapshot includes local working-tree material and older maintained pr
 
 ## Progress colours and local updates
 
-Stage colours run from red (not started) through salmon (in progress) to white (complete). Layers without recorded status have no progress label or status colour. The salmon midpoint is a status category, not a claim that a theorem is half proved.
+Stage colours run from red (not started) through salmon (in progress) to white (complete). Layers without recorded status have no progress label or status colour. For upstream roadmaps, a roadmap the maintainers archived under `Completed/` is complete with all its layers; otherwise layer statuses are mapped from the roadmap's maintained STATUS.md report, sentence by sentence, and each mapped status carries the quoted sentence and its line numbers. A report is a machine-written snapshot of what has landed, not a fresh proof audit. The salmon midpoint is a status category, not a claim that a theorem is half proved.
 
 Roadmap and subject percentages count **completed terminal targets divided by all tracked terminal targets**. Unknown targets remain in the denominator; no percentage is shown when an entire roadmap or subject has no status data. A parent stage and its children are never counted twice; collection roadmaps aggregate their child roadmaps. Completing every extracted target does not by itself certify all source-proof, acceptance, or formal-verification requirements. A separately displayed roadmap-level report retains its own provenance.
 
@@ -83,6 +83,10 @@ The builder packages the checked-in snapshot. To update the published mathematic
 - `data/regions.json`: mathematical area descriptions and thematic links.
 - `data/opportunities.json`: additional areas with no dedicated roadmap in this atlas.
 - `data/landmark-labels.json`: short mathematical names for formula planets, separate from their source excerpts.
+- `data/landmark-hidden.json`: extracted paragraphs that are not planets (instructions, checks, caveats, bookkeeping), each with a recorded reason.
+- `data/roadmap-summaries.json`: edited overview summaries applied over the snapshot at build time.
+- `data/stage-status-reports.json`: layer statuses mapped from the maintained STATUS.md reports of upstream roadmaps, each with the quoted sentence and its line numbers.
+- `scripts/snapshot/`: the pipeline and procedure that rebuild `data/atlas.json`, `data/status.json` and `content/` from an upstream checkout.
 - `data/bibliography.json`: supplied bibliographic identities for common source abbreviations; no local reference files.
 - `src/references.js`: extracts cited reading with its topic, layer or roadmap scope.
 - `src/landmarks.js`: source-faithful extraction of key definitions, results and constructions.
