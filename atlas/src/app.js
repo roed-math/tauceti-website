@@ -74,7 +74,7 @@ const LAYOUT=/(^|[#&])layout=areas(&|$)/.test(location.hash)?'areas':'radial';
 function placeNote(box,id){const place=DATA.roadmapClassification?.roadmaps?.[id],measured=DATA.roadmapDistances?.roadmaps?.[id];if(!place&&!measured)return;
  const fmt=v=>Number(v).toFixed(1).replace(/\.0$/,''),lines=[];
  if(measured){const range=measured.basis==='pairwise'&&Number.isFinite(measured.low)?` (${fmt(measured.low)} to ${fmt(measured.high)})`:'';
-  const basis=measured.basis==='pairwise'?`from ${measured.pairwise?.judgements??0} pairwise judgements`:measured.basis==='children'?'the mean of its child roadmaps':measured.basis==='declarations'?'from its reviewed declaration count':'from the reference classification; pairwise judgements are pending';
+  const basis=measured.basis==='pairwise'?`from ${measured.pairwise?.judgements??0} pairwise judgements, starting from its classification score of ${fmt(measured.classification)}`:measured.basis==='children'?'the mean of its child roadmaps':measured.basis==='declarations'?'from its reviewed declaration count':'from the reference classification; pairwise judgements are pending';
   lines.push(`Distance from Mathlib ${fmt(measured.distance)} of 10${range}, ${basis}.`);
   const st=measured.structure,plural=(n,w)=>`${fmt(n)} ${w}${Number(n)===1?'':'s'}`;
   if(st)lines.push(!st.missingLayers?'Every layer it needs is recorded as built.':`Still to build: ${plural(st.missingLayers,'layer')}, ${st.suppliers?`in this roadmap and ${plural(st.suppliers,'supplier roadmap')}`:'all in this roadmap'}; the longest chain of them is ${plural(st.depth,'layer')}.`);

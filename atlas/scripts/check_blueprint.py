@@ -56,10 +56,17 @@ def load_index(path):
     return names, suffixes
 
 
+RETIRED_STAGES = set()
+
+
 def world():
     """Ids a prerequisite may resolve to, outside the packet being checked."""
     atlas = load_json(ROOT / "data" / "atlas.json")
     stages = {s["id"]: s["owner"] for s in atlas["stages"]}
+    retired_path = ROOT / "data" / "roadmap-retirements.json"
+    retired = set(load_json(retired_path)["roadmaps"]) if retired_path.exists() else set()
+    RETIRED_STAGES.clear()
+    RETIRED_STAGES.update(sid for sid, owner in stages.items() if owner in retired)
     roadmaps = {r["id"] for r in atlas["roadmaps"]}
     nodes = {}
     for path in sorted((ROOT / "data" / "decompositions").glob("*.json")):
@@ -231,6 +238,8 @@ def check(path, index, context):
                 resolved[f"node ({nodes[pre][0]})"] += 1
             elif pre in stages:
                 resolved["stage"] += 1
+                if pre in RETIRED_STAGES:
+                    warnings.append(f"{nid}: {pre} belongs to a retired roadmap (data/roadmap-retirements.json); cite the library or a covering roadmap instead")
                 if stages[pre] != rid and not any(r.get("supplier") == pre for r in packet.get("requests", [])):
                     warnings.append(f"{nid}: uses another roadmap's stage {pre} without a request entry")
                 if packet.get("status") == "closed":

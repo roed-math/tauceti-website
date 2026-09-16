@@ -36,6 +36,10 @@ def stage_statuses(root: Path = ROOT) -> dict:
     mapped = root / "data" / "stage-status-reports.json"
     if mapped.exists():
         statuses.update({sid: entry.get("status") for sid, entry in load(mapped).items()})
+    # Layers the reviewed library audit finds already built (scripts/library_coverage.py).
+    from library_coverage import coverage_statuses, load_coverage
+    implied = coverage_statuses(load_coverage(root), statuses, set(statuses) | set(load_coverage(root).get("layers", {})))
+    statuses.update({sid: entry["status"] for sid, entry in implied.items()})
     return statuses
 
 

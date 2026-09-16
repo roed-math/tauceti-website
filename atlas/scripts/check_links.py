@@ -20,6 +20,11 @@ def norm(text):
     return re.sub(r"\s+", " ", text or "").strip()
 
 
+def load_retired():
+    path = ROOT / "data" / "roadmap-retirements.json"
+    return set(json.loads(path.read_text(encoding="utf-8"))["roadmaps"]) if path.exists() else set()
+
+
 def load_world():
     atlas = json.loads((ROOT / "data" / "atlas.json").read_text(encoding="utf-8"))
     stages = {s["id"]: s for s in atlas["stages"]}
@@ -79,6 +84,9 @@ def check(path, world, others):
             continue
         if s == t:
             errors.append(f"{label}: self link")
+        retired = load_retired()
+        if stages[s]["owner"] in retired or stages[t]["owner"] in retired:
+            warnings.append(f"{label}: touches a retired roadmap (data/roadmap-retirements.json); it will be dropped at integration")
         if stages[s]["owner"] == stages[t]["owner"]:
             warnings.append(f"{label}: both stages belong to {stages[s]['owner']}")
         if rid not in (stages[s]["owner"], stages[t]["owner"]):

@@ -13,6 +13,8 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
 from decompositions import merge_decompositions, merge_links  # noqa: E402
 from galaxies import apply_galaxies  # noqa: E402
+from retirements import apply_retirements, load_retirements  # noqa: E402
+from library_coverage import coverage_statuses, load_coverage  # noqa: E402
 
 
 def load_decompositions() -> list:
@@ -37,14 +39,28 @@ def comment_text(text: str) -> str:
 
 def build(output: Path) -> dict:
     atlas = json.loads(read_text("data/atlas.json"))
+    # Retired roadmaps (data/roadmap-retirements.json) leave the atlas with
+    # their layers and every link through them; overlays for them are ignored.
+    retired = load_retirements(ROOT)
+    retired_stages = {stage["id"] for stage in atlas["stages"] if stage.get("owner") in retired}
+    atlas = apply_retirements(atlas, retired)
     # The snapshot stays immutable; reviewed decompositions refine it at build
     # time, so nothing is appended twice and the originals remain the record.
     decompositions = load_decompositions()
     original_stage_count = len(atlas["stages"])
     link_folder = ROOT / "data" / "links"
     link_packets = [json.loads(path.read_text(encoding="utf-8")) for path in sorted(link_folder.glob("*.json"))] if link_folder.is_dir() else []
+    for packet in link_packets:
+        packet["links"] = [link for link in packet.get("links", [])
+                           if link.get("source") not in retired_stages and link.get("target") not in retired_stages]
     if link_packets:
         atlas = merge_links(atlas, link_packets)
+    for packet in decompositions:
+        # A link through a retired layer is dropped, like any other link to it.
+        through = lambda ref: str(ref).split("/")[0] in retired_stages or str(ref) in retired_stages
+        for key in ("links", "deferredLinks"):
+            if isinstance(packet.get(key), list):
+                packet[key] = [link for link in packet[key] if not (through(link.get("source")) or through(link.get("target")))]
     atlas, _expanded_documents = merge_decompositions(atlas, decompositions)
     atlas.setdefault("decompositions", [])
     atlas["meta"]["originalStageCount"] = original_stage_count
@@ -52,11 +68,19 @@ def build(output: Path) -> dict:
     # Stage statuses mapped from the maintained reports (scripts/merge_stage_status.py)
     # sit on top of the imported snapshot; each carries its quoted evidence.
     mapped_path = ROOT / "data/stage-status-reports.json"
-    atlas["mappedStageStatuses"] = json.loads(mapped_path.read_text(encoding="utf-8")) if mapped_path.exists() else {}
+    atlas["mappedStageStatuses"] = {k: v for k, v in (json.loads(mapped_path.read_text(encoding="utf-8")) if mapped_path.exists() else {}).items()
+                                    if k not in retired_stages}
     for stage_id, entry in atlas["mappedStageStatuses"].items():
         if entry.get("status") not in ("planned", "in_progress", "complete") or not entry.get("evidence"):
             raise ValueError("Mapped stage status needs a known status and evidence: " + stage_id)
     atlas["progress"]["stages"].update(atlas["mappedStageStatuses"])
+    # The reviewed library audit marks layers that Mathlib or Tau Ceti already contain.
+    coverage = load_coverage(ROOT)
+    atlas["libraryStatuses"] = coverage_statuses(coverage, atlas["progress"]["stages"], {stage["id"] for stage in atlas["stages"]})
+    atlas["progress"]["stages"].update(atlas["libraryStatuses"])
+    atlas["libraryCoverage"] = {"reviews": coverage.get("reviews", {}), "pendingReview": coverage.get("pendingReview", []),
+                                "layers": {sid: {"verdict": layer["verdict"], "duplicates": layer.get("duplicates", [])}
+                                           for sid, layer in coverage.get("layers", {}).items() if sid not in retired_stages}}
     atlas["roadmapClassification"] = json.loads(read_text("data/roadmap-classification.json"))
     # Roadmaps are grouped into subject galaxies by the classification of their
     # references; the snapshot's own area assignment is superseded.
@@ -73,11 +97,13 @@ def build(output: Path) -> dict:
     # Areas without a roadmap are not drawn: the atlas maps roadmaps that exist.
     atlas["opportunities"]["areas"] = []
     atlas["opportunities"]["groups"] = []
-    atlas["stagePresentation"] = json.loads(read_text("data/stage-presentation.json"))
-    atlas["landmarkLabels"] = json.loads(read_text("data/landmark-labels.json"))
-    atlas["landmarkHidden"] = json.loads(read_text("data/landmark-hidden.json"))
+    def keep_stage(key):
+        return key.split("::landmark:")[0] not in retired_stages
+    atlas["stagePresentation"] = {k: v for k, v in json.loads(read_text("data/stage-presentation.json")).items() if keep_stage(k)}
+    atlas["landmarkLabels"] = {k: v for k, v in json.loads(read_text("data/landmark-labels.json")).items() if keep_stage(k)}
+    atlas["landmarkHidden"] = {k: v for k, v in json.loads(read_text("data/landmark-hidden.json")).items() if keep_stage(k)}
     # Edited overview summaries: mathematical prose for readers, keyed by roadmap id.
-    atlas["roadmapSummaries"] = json.loads(read_text("data/roadmap-summaries.json"))
+    atlas["roadmapSummaries"] = {k: v for k, v in json.loads(read_text("data/roadmap-summaries.json")).items() if k not in retired}
     roadmap_ids = {roadmap["id"] for roadmap in atlas["roadmaps"]}
     for roadmap_id, summary in atlas["roadmapSummaries"].items():
         if roadmap_id not in roadmap_ids:
@@ -163,7 +189,7 @@ def build(output: Path) -> dict:
     # progress targets, so the parent stays terminal for progress accounting.
     refinements = [stage for stage in atlas["stages"] if stage.get("expansion")]
     parent_ids = {stage.get("parentStageId") for stage in atlas["stages"] if stage.get("parentStageId") and not stage.get("expansion")}
-    source_paths = ["src/shell.html", *style_paths, *assets.values(), "data/atlas.json", "data/status.json", "data/galaxies.json", "data/opportunities.json", "data/stage-presentation.json", "data/landmark-labels.json", "data/landmark-hidden.json", "data/roadmap-summaries.json", "data/roadmap-classification.json", "data/classification-estimates.json", "data/roadmap-distances.json", "data/galaxy-layout.json", "data/bibliography.json", "NOTICE", "LICENSE", "vendor/D3-LICENSE.txt", "vendor/KaTeX-LICENSE.txt"]
+    source_paths = ["src/shell.html", *style_paths, *assets.values(), "data/atlas.json", "data/status.json", "data/galaxies.json", "data/roadmap-retirements.json", "data/library-coverage.json", "data/opportunities.json", "data/stage-presentation.json", "data/landmark-labels.json", "data/landmark-hidden.json", "data/roadmap-summaries.json", "data/roadmap-classification.json", "data/classification-estimates.json", "data/roadmap-distances.json", "data/galaxy-layout.json", "data/bibliography.json", "NOTICE", "LICENSE", "vendor/D3-LICENSE.txt", "vendor/KaTeX-LICENSE.txt"]
     source_paths += [str(path.relative_to(ROOT)) for path in sorted((ROOT / "data" / "decompositions").glob("*.json"))] if (ROOT / "data" / "decompositions").is_dir() else []
     report = {
         "roadmaps": len(atlas["roadmaps"]),
@@ -175,6 +201,7 @@ def build(output: Path) -> dict:
                                    for item in atlas["decompositions"]],
         "terminalTargets": sum(stage["id"] not in parent_ids and not stage.get("expansion") for stage in atlas["stages"]),
         "groups": len(atlas["groups"]),
+        "retiredRoadmaps": sorted(retired),
         "classifiedRoadmaps": atlas["roadmapClassification"]["counts"]["classified"],
         "estimatedRoadmaps": atlas["roadmapClassification"]["counts"]["estimated"],
         "distanceBases": atlas["roadmapDistances"]["bases"],
@@ -190,6 +217,7 @@ def build(output: Path) -> dict:
         "plainTextPlanetLabels": len(atlas["landmarkLabels"]),
         "hiddenPlanets": len(atlas["landmarkHidden"]),
         "mappedStageStatuses": len(atlas["mappedStageStatuses"]),
+        "libraryAuditStatuses": len(atlas["libraryStatuses"]),
         "bibliographicSources": len(atlas["bibliography"]["works"]),
         "roadmapEdges": len(atlas["edges"]),
         "stageEdges": len(atlas["stageEdges"]),

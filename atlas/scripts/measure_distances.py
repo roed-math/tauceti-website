@@ -32,12 +32,14 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
-from bradley_terry import bootstrap, fit, outcomes, quantile  # noqa: E402
+from bradley_terry import agreement, fit_on_scale  # noqa: E402
 from galaxies import galaxy_membership  # noqa: E402
 from radial_layout import layout, rank_normalise  # noqa: E402
+from retirements import apply_retirements  # noqa: E402
 from theory_graph import structure, tfidf_similarity  # noqa: E402
 
 MIN_JUDGEMENTS = 4
+PRIOR_SD = 1.5
 LAYER_SHARE = 0.6
 MIN_CALIBRATION = 8
 COMPARE = ROOT / "research" / "blueprint" / "compare"
@@ -96,50 +98,62 @@ def judgements_by_job():
     return jobs
 
 
-def pairwise_scores(roadmap_ids, classification):
+def pairwise_scores(roadmap_ids, classification, measured):
+    """Distances from judgements on the 0-10 scale, starting from the classification scores."""
     jobs = judgements_by_job()
     judgements = [item for items in jobs.values() for item in items
                   if item.get("a") in roadmap_ids and item.get("b") in roadmap_ids]
     if not judgements:
         return {}, {"judgements": 0, "jobs": 0}
-    ids = sorted(roadmap_ids)
-    scores = fit(ids, outcomes(judgements))
+    prior = {rid: float(classification[rid]["distance"]) for rid in roadmap_ids}
+    distances, sds, scale = fit_on_scale(prior, judgements, tau=PRIOR_SD)
     counts = defaultdict(int)
     for item in judgements:
         counts[item["a"]] += 1
         counts[item["b"]] += 1
-    judged = [rid for rid in ids if counts[rid] >= MIN_JUDGEMENTS]
-    intercept, slope = least_squares([scores[r] for r in judged], [classification[r]["distance"] for r in judged]) if len(judged) >= 3 else (5.0, 1.0)
-    draws = bootstrap(ids, judgements)
     out = {}
-    for rid in ids:
-        if not counts[rid]:
-            continue
-        out[rid] = {"score": round(scores[rid], 3), "judgements": counts[rid],
-                    "distance": round(clamp(intercept + slope * scores[rid]), 2),
-                    "low": round(clamp(intercept + slope * quantile(draws[rid], .16)), 2),
-                    "high": round(clamp(intercept + slope * quantile(draws[rid], .84)), 2)}
-    # Split-half reliability: fit the odd and even jobs separately and compare.
+    for rid in sorted(roadmap_ids):
+        if counts[rid]:
+            out[rid] = {"judgements": counts[rid], "distance": round(clamp(distances[rid]), 2),
+                        "low": round(clamp(distances[rid] - sds[rid]), 2), "high": round(clamp(distances[rid] + sds[rid]), 2),
+                        "shift": round(distances[rid] - prior[rid], 2)}
+    # Split-half agreement: refit on alternate jobs and compare how far each
+    # half moves a roadmap away from its classification score.
     halves = [[], []]
     for index, name in enumerate(sorted(jobs)):
         halves[index % 2] += [item for item in jobs[name] if item.get("a") in roadmap_ids and item.get("b") in roadmap_ids]
-    reliability = None
+    reliability, shared = None, 0
     if halves[0] and halves[1]:
-        first, second = fit(ids, outcomes(halves[0])), fit(ids, outcomes(halves[1]))
-        both = [rid for rid in ids if rid in first and rid in second]
-        reliability = spearman([first[r] for r in both], [second[r] for r in both])
-    summary = {"judgements": len(judgements), "jobs": len(jobs), "calibration": {"intercept": round(intercept, 4), "slope": round(slope, 4)},
-               "roadmapsWithEnough": len(judged), "splitHalfSpearman": reliability}
+        fits = [fit_on_scale(prior, half, tau=PRIOR_SD)[0] for half in halves]
+        per_half = [defaultdict(int), defaultdict(int)]
+        for index, half in enumerate(halves):
+            for item in half:
+                per_half[index][item["a"]] += 1
+                per_half[index][item["b"]] += 1
+        both = [rid for rid in sorted(roadmap_ids) if per_half[0][rid] >= 2 and per_half[1][rid] >= 2]
+        shared = len(both)
+        if shared >= 5:
+            reliability = spearman([fits[0][r] - prior[r] for r in both], [fits[1][r] - prior[r] for r in both])
+    by_classification = agreement(judgements, prior)
+    by_layers = agreement(judgements, {rid: measured[rid]["missingLayers"] for rid in roadmap_ids})
+    by_depth = agreement(judgements, {rid: measured[rid]["depth"] for rid in roadmap_ids})
+    ties = sum(1 for item in judgements if item.get("farther") == "tie")
+    summary = {"judgements": len(judgements), "jobs": len(jobs), "ties": ties, "scale": round(scale, 3), "priorSd": PRIOR_SD,
+               "roadmapsWithEnough": sum(1 for rid in out if out[rid]["judgements"] >= MIN_JUDGEMENTS),
+               "splitHalfShiftSpearman": reliability, "splitHalfRoadmaps": shared,
+               "agreesWithClassification": {"share": by_classification[0], "decided": by_classification[1]},
+               "agreesWithMissingLayers": {"share": by_layers[0], "decided": by_layers[1]},
+               "agreesWithDepth": {"share": by_depth[0], "decided": by_depth[1]}}
     return out, summary
 
 
 def main() -> None:
-    atlas = load(ROOT / "data" / "atlas.json")
+    atlas = apply_retirements(load(ROOT / "data" / "atlas.json"))
     classification = load(ROOT / "data" / "roadmap-classification.json")["roadmaps"]
     galaxies = load(ROOT / "data" / "galaxies.json")["galaxies"]
     roadmap_ids = {roadmap["id"] for roadmap in atlas["roadmaps"]}
     measured, graph = structure(atlas)
-    pairwise, pairwise_summary = pairwise_scores(roadmap_ids, classification)
+    pairwise, pairwise_summary = pairwise_scores(roadmap_ids, classification, measured)
 
     # Declaration counts take over only where they are complete and reviewed,
     # and only once enough roadmaps calibrate them against pairwise scores.
@@ -224,11 +238,10 @@ def main() -> None:
         "missingLayersVsDepth": spearman([measured[r]["missingLayers"] for r in ids], [measured[r]["depth"] for r in ids]),
         "completedRoadmaps": {r["id"]: roadmaps[r["id"]]["distance"] for r in atlas["roadmaps"] if r.get("lifecycle") == "completed"},
     }
-    judged = [r for r in ids if r in pairwise]
-    if judged:
-        validation["pairwiseVsClassification"] = spearman([pairwise[r]["score"] for r in judged], [classification[r]["distance"] for r in judged])
-        validation["pairwiseVsMissingLayers"] = spearman([pairwise[r]["score"] for r in judged], [measured[r]["missingLayers"] for r in judged])
-        validation["pairwiseVsDepth"] = spearman([pairwise[r]["score"] for r in judged], [measured[r]["depth"] for r in judged])
+    judged = [r for r in ids if r in pairwise and pairwise[r]["judgements"] >= MIN_JUDGEMENTS]
+    if len(judged) >= 3:
+        validation["pairwiseVsMissingLayers"] = spearman([pairwise[r]["distance"] for r in judged], [measured[r]["missingLayers"] for r in judged])
+        validation["pairwiseVsDepth"] = spearman([pairwise[r]["distance"] for r in judged], [measured[r]["depth"] for r in judged])
     decl = [r for r in ids if measured[r].get("declarationLevel")]
     if len(decl) >= 3:
         validation["declarationsVsClassification"] = spearman([measured[r]["declarationLevel"]["missingDeclarations"] for r in decl],
@@ -241,9 +254,9 @@ def main() -> None:
         "version": 1,
         "purpose": "Distance from Mathlib for every roadmap, on a 0-10 scale, with the measures behind it. Generated by scripts/measure_distances.py; do not edit by hand.",
         "method": {
-            "distance": f"A collection takes the mean of its child roadmaps. Otherwise, from the Bradley–Terry score of the pairwise judgements once a roadmap has at least {MIN_JUDGEMENTS}, placed on the 0-10 scale by a least-squares fit to the classification scores; from the classification score before that; from the log of missing declarations once a roadmap is fully decomposed, reviewed and calibrated.",
+            "distance": f"A collection takes the mean of its child roadmaps. Otherwise, once a roadmap has at least {MIN_JUDGEMENTS} pairwise judgements, from a Bradley–Terry model on the 0-10 scale: the chance that one roadmap is judged farther than another is a logistic function of their difference, each roadmap's classification score is its prior (standard deviation {PRIOR_SD}), and the distances and the logistic scale are the maximum a posteriori estimates. Before that, the classification score. Once a roadmap is fully decomposed into reviewed declarations and enough roadmaps calibrate them, the log of its missing declarations.",
             "structure": "Layers still to be built in the prerequisite closure (a layer in progress counts half), and the longest chain of them, over the atlas's stage graph with completed layers as library material.",
-            "interval": "The 16th to 84th percentile of 300 bootstrap refits over judgements.",
+            "interval": "One posterior standard deviation either side, from the curvature of the posterior at its peak.",
         },
         "bases": dict(basis_counts),
         "pairwise": pairwise_summary,

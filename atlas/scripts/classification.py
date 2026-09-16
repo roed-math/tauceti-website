@@ -20,6 +20,10 @@ import json
 import re
 from pathlib import Path
 
+import sys
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from retirements import apply_retirements  # noqa: E402
+
 ROOT = Path(__file__).resolve().parents[1]
 RESULTS = ROOT / "research" / "blueprint" / "classify"
 PRIVATE = re.compile(r"/(?:Users|home)/[^/\s]+/")
@@ -70,7 +74,7 @@ def main() -> None:
     galaxies = load(ROOT / "data" / "galaxies.json")["galaxies"]
     galaxy_for = galaxy_rule(galaxies)
     prefixes = {prefix: galaxy["id"] for galaxy in galaxies for prefix in galaxy.get("msc", [])}
-    roadmaps = {roadmap["id"]: roadmap for roadmap in load(ROOT / "data" / "atlas.json")["roadmaps"]}
+    roadmaps = {roadmap["id"]: roadmap for roadmap in apply_retirements(load(ROOT / "data" / "atlas.json"))["roadmaps"]}
     estimates = load(ROOT / "data" / "classification-estimates.json")["estimates"]
     results = {}
     for path in sorted(RESULTS.glob("*.result.json")):
