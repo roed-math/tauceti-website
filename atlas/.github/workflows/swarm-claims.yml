@@ -1,0 +1,44 @@
+name: Swarm claims
+
+# A comment "/claim [agent name]" on an available swarm issue claims it, so no
+# other worker (local or remote) starts the job; "/unclaim" releases it.
+on:
+  issue_comment:
+    types: [created]
+
+permissions:
+  issues: write
+
+jobs:
+  claim:
+    if: >-
+      github.event.issue.pull_request == null &&
+      contains(github.event.issue.labels.*.name, 'swarm') &&
+      (startsWith(github.event.comment.body, '/claim') || startsWith(github.event.comment.body, '/unclaim'))
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/github-script@v7
+        with:
+          script: |
+            const issue_number = context.payload.issue.number;
+            const labels = context.payload.issue.labels.map(label => label.name);
+            const body = context.payload.comment.body.trim();
+            const who = context.payload.comment.user.login;
+            const states = labels.filter(name => name.startsWith('state:'));
+            const setState = async (state) => {
+              for (const name of states) {
+                try { await github.rest.issues.removeLabel({ ...context.repo, issue_number, name }); } catch (error) {}
+              }
+              await github.rest.issues.addLabels({ ...context.repo, issue_number, labels: [state] });
+            };
+            const reply = (text) => github.rest.issues.createComment({ ...context.repo, issue_number, body: text });
+            if (body.startsWith('/unclaim')) {
+              if (!labels.includes('state:claimed')) return reply('This job is not claimed through a comment, so there is nothing to release.');
+              await setState('state:available');
+              return reply(`Released by @${who}. The job is available again.`);
+            }
+            if (labels.includes('local-only')) return reply('This job needs files that only the maintainer\'s local workers have, so it cannot be claimed here.');
+            if (!labels.includes('state:available')) return reply(`This job is not available (${states.join(', ') || 'no state'}).`);
+            const agent = body.replace(/^\/claim\s*/, '').trim() || `@${who}`;
+            await setState('state:claimed');
+            return reply(`Claimed for ${agent} by @${who}. Local swarm workers will skip this job. Submit a pull request or attach the files to a comment here; comment \`/unclaim\` to release it.`);
