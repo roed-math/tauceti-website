@@ -306,19 +306,21 @@
               p.moonsVisible = detail >= 60 && p.moons.length > 0;
               p.moonNamesVisible = detail >= 120;
               planets.push(p);
-              if (p.nameVisible) { const left = p.x < s.x - s.r * .2, right = p.x + p.r * 1.4 + 4 / k, leftX = p.x - p.r * 1.4 - 4 / k;
+              if (p.nameVisible) { const left = p.x < s.x - s.r * .2, right = p.x + p.r * 1.4 + 4 / k, leftX = p.x - p.r * 1.4 - 4 / k, font = detail >= 22 ? 11 : 10, diag = p.r * 1.15 + 3 / k;
                 const nameLines = wrapText(p.label, 26, 2);
-                labels.push({ id: 'planet:' + p.id, nodeId: p.id, kind: 'planet', x: left ? leftX : right, y: p.y + 3.5 / k, lines: nameLines, font: detail >= 22 ? 11 : 10, anchor: left ? 'end' : 'start', above: false, priority: 20 + (active === p.id ? 60 : 0), active: active === p.id,
-                  alternatives: [{ x: left ? right : leftX, y: p.y + 3.5 / k, above: false, anchor: left ? 'start' : 'end' }, { x: p.x, y: p.y + p.r * 1.6 + 11 / k, above: false, anchor: 'middle' }] });
-                // The card hangs a clear gap below the name box (name font 10–11, line pitch 14, box padding 3).
-                const cardY = p.y + (3.5 + nameLines.length * 14 + 3 + 4) / k;
-                if (p.kindVisible) labels.push({ id: 'card:' + p.id, nodeId: p.id, kind: 'card', x: left ? leftX : right, y: cardY, lines: [(p.refinement ? 'reviewed ' : '') + (p.kind || 'target'), ...(p.cardVisible ? wrapText(p.summary, 40, 3) : [])], font: 9, anchor: left ? 'end' : 'start', above: false, priority: 15 + (active === p.id ? 60 : 0), active: false,
-                  alternatives: [{ x: left ? right : leftX, y: cardY, above: false, anchor: left ? 'start' : 'end' }] });
+                // Eight places, tried in order: beside the planet on the side
+                // away from its star, the other side, below, above, then the
+                // four diagonals. A name that fits nowhere waits for more zoom.
+                labels.push({ id: 'planet:' + p.id, nodeId: p.id, kind: 'planet', x: left ? leftX : right, y: p.y + 3.5 / k, lines: nameLines, font, anchor: left ? 'end' : 'start', above: false, priority: 20 + (active === p.id ? 60 : 0), active: active === p.id,
+                  alternatives: [{ x: left ? right : leftX, y: p.y + 3.5 / k, above: false, anchor: left ? 'start' : 'end' }, { x: p.x, y: p.y + p.r * 1.6 + 11 / k, above: false, anchor: 'middle' }, { x: p.x, y: p.y - p.r * 1.6 - 4 / k, above: true, anchor: 'middle' },
+                    { x: p.x + diag, y: p.y + diag + font / k, above: false, anchor: 'start' }, { x: p.x - diag, y: p.y + diag + font / k, above: false, anchor: 'end' }, { x: p.x + diag, y: p.y - diag, above: true, anchor: 'start' }, { x: p.x - diag, y: p.y - diag, above: true, anchor: 'end' }] });
+                // The card hangs directly under the name, wherever the name found room.
+                if (p.kindVisible) labels.push({ id: 'card:' + p.id, nodeId: p.id, kind: 'card', follows: 'planet:' + p.id, x: p.x, y: p.y, lines: [(p.refinement ? 'reviewed ' : '') + (p.kind || 'target'), ...(p.cardVisible ? wrapText(p.summary, 40, 3) : [])], font: 9, anchor: 'start', above: false, priority: 15 + (active === p.id ? 60 : 0), active: false });
               }
               if (p.moonsVisible) p.moons.forEach((moon, index) => {
                 const angle = index / p.moons.length * Math.PI * 2 - Math.PI / 2, ring = p.r * 1.55;
                 moon.x = p.x + Math.cos(angle) * ring; moon.y = p.y + Math.sin(angle) * ring; moon.r = p.r * .12; moon.planetId = p.id; moon.id = p.id + '#moon' + index;
-                if (p.moonNamesVisible) { const outward = Math.cos(angle) >= 0; labels.push({ id: 'moon:' + moon.id, nodeId: p.id, kind: 'moon', x: moon.x + (outward ? 1 : -1) * (moon.r + 3 / k), y: moon.y + 3 / k, lines: [wrapText((moon.kind === 'step' ? moon.index + '. ' : moon.kind === 'check' ? 'check: ' : 'if ') + moon.text, 48, 1)[0]], font: 8.5, anchor: outward ? 'start' : 'end', above: false, priority: 10, active: false }); }
+                if (p.moonNamesVisible) { const outward = Math.cos(angle) >= 0; labels.push({ id: 'moon:' + moon.id, nodeId: p.id, ownerId: moon.id, kind: 'moon', x: moon.x + (outward ? 1 : -1) * (moon.r + 3 / k), y: moon.y + 3 / k, lines: [wrapText((moon.kind === 'step' ? moon.index + '. ' : moon.kind === 'check' ? 'check: ' : 'if ') + moon.text, 48, 1)[0]], font: 8.5, anchor: outward ? 'start' : 'end', above: false, priority: 10, active: false }); }
               });
             });
           });
@@ -442,8 +444,18 @@
       // that would sit on a neighbouring galaxy is as misleading as an overlap.
       const discs = (this.visible ? this.visible.galaxies : []).map(g => ({ id: g.id, x: g.x * k + t.x, y: g.y * k + t.y, rx: g.rx * k, ry: g.ry * k }));
       const onDisc = (box, own) => discs.some(g => g.id !== own && (((box.x + box.w / 2 - g.x) / g.rx) ** 2 + ((box.y + box.h / 2 - g.y) / g.ry) ** 2) < 1);
+      // Planet discs and star cores are solid: text never runs across another
+      // object. The zoom buttons and the hint in the chart's corners are
+      // solid too, so nothing is drawn behind them.
+      const solids = [];
+      (this.visible ? this.visible.stars : []).forEach(s => { const r = s.r * k; if (r >= 2.5) solids.push({ owner: s.id, x: s.x * k + t.x, y: s.y * k + t.y, r }); });
+      (this.visible ? this.visible.planets : []).forEach(p => { const r = p.r * k; if (r >= 2.5) solids.push({ owner: p.id, x: p.x * k + t.x, y: p.y * k + t.y, r }); });
+      const overlays = this.overlayBoxes();
+      const onSolid = (box, own) => solids.some(s => s.owner !== own && Math.hypot(Math.max(box.x, Math.min(s.x, box.x + box.w)) - s.x, Math.max(box.y, Math.min(s.y, box.y + box.h)) - s.y) < s.r - 1)
+        || overlays.some(o => Math.min(box.x + box.w, o.x + o.w) - Math.max(box.x, o.x) > 0 && Math.min(box.y + box.h, o.y + o.h) - Math.max(box.y, o.y) > 0);
       const collides = (box, label) => placed.some(other => Math.min(box.x + box.w, other.x + other.w) - Math.max(box.x, other.x) > -2 && Math.min(box.y + box.h, other.y + other.h) - Math.max(box.y, other.y) > -1)
-        || (label.kind === 'galaxy' && onDisc(box, label.nodeId));
+        || (label.kind === 'galaxy' && onDisc(box, label.nodeId)) || onSolid(box, label.ownerId || label.nodeId);
+      const byId = new Map(labels.map(label => [label.id, label]));
       // A name is drawn only when the whole of it fits the chart; a clipped
       // name reads as a different name.
       const onScreen = box => box.x >= 2 && box.x + box.w <= this.width - 2 && box.y >= 2 && box.y + box.h <= this.height - 2;
@@ -459,14 +471,22 @@
         const spots = [{ x: label.x, y: label.y, above: label.above }];
         if (label.alternatives) label.alternatives.forEach(spot => spots.push(spot));
         label.shown = false;
+        if (label.follows) {
+          // A follower hangs under the label it follows, flush with its left
+          // or right edge, and disappears with it.
+          const lead = byId.get(label.follows);
+          if (!lead || !lead.shown) { label.box = { x: 0, y: 0, w: 0, h: 0 }; return; }
+          const b = lead.box;
+          spots.length = 0; spots.push({ screen: { x: b.x, y: b.y + b.h + 2 } }, { screen: { x: b.x + b.w - w, y: b.y + b.h + 2 } });
+        }
         for (const spot of spots) {
-          const anchor = spot.anchor || label.anchor, sx = spot.x * k + t.x, sy = spot.y * k + t.y;
-          const box = { x: anchor === 'middle' ? sx - w / 2 : anchor === 'end' ? sx - w : sx, y: spot.above ? sy - h : sy - label.font, w, h };
+          const anchor = spot.screen ? 'start' : spot.anchor || label.anchor, sx = spot.screen ? spot.screen.x : spot.x * k + t.x, sy = spot.screen ? spot.screen.y + label.font : spot.y * k + t.y;
+          const box = { x: anchor === 'middle' ? sx - w / 2 : anchor === 'end' ? sx - w : sx, y: spot.above ? sy - h + 3 : sy - label.font, w, h };
           if (!onScreen(box) || collides(box, label)) { label.box = label.box || box; continue; }
-          label.shown = true; label.box = box; label.x = spot.x; label.y = spot.y; label.above = spot.above; label.anchor = anchor; placed.push(box);
+          label.shown = true; label.box = box; label.x = spot.screen ? (sx - t.x) / k : spot.x; label.y = spot.screen ? (sy - t.y) / k : spot.y; label.above = !!spot.above; label.anchor = anchor; placed.push(box);
           break;
         }
-        if (!label.box) { const sx = label.x * k + t.x, sy = label.y * k + t.y; label.box = { x: sx - w / 2, y: sy - h, w, h }; }
+        if (!label.box) { const sx = label.x * k + t.x, sy = label.y * k + t.y; label.box = { x: sx - w / 2, y: sy - h + 3, w, h }; }
       });
       const shown = labels.filter(label => label.shown);
       const join = this.layers.label.selectAll('g.tau-label').data(shown, d => d.id);
@@ -479,17 +499,31 @@
         .on('mouseenter', d => { if (!graph.isCoarse) { graph.hoveredId = d.nodeId; graph.scheduleRender(); } }).on('mouseleave', () => { if (!graph.isCoarse) { graph.hoveredId = null; graph.scheduleRender(); } });
       const all = enter.merge(join);
       all.classed('is-active', d => d.active).attr('transform', d => `translate(${d.x},${d.y}) scale(${1 / k})`);
-      const cache = this.widthCache;
+      const cache = this.widthCache; let measured = false;
       all.select('text').attr('text-anchor', d => d.anchor).attr('font-size', d => d.font).each(function (d) {
         const text = d3.select(this); text.selectAll('tspan').remove();
         d.lines.forEach((line, index) => {
           const span = text.append('tspan').attr('x', 0).attr('y', d.above ? -(d.lines.length - 1 - index) * (d.font + 3) : index * (d.font + 3)).text(line);
           const key = d.font + (d.kind === 'card' && index === 0 ? 'u' : 'n') + '|' + line;
-          if (!cache.has(key)) { try { cache.set(key, span.node().getComputedTextLength()); } catch (_) { /* detached */ } }
+          if (!cache.has(key)) { try { cache.set(key, span.node().getComputedTextLength()); measured = true; } catch (_) { /* detached */ } }
         });
       });
-      all.select('rect').attr('x', d => d.anchor === 'middle' ? -d.box.w / 2 : d.anchor === 'end' ? -d.box.w : 0).attr('y', d => d.above ? -d.box.h + 2 : -d.font).attr('width', d => d.box.w).attr('height', d => d.box.h)
+      all.select('rect').attr('x', d => d.anchor === 'middle' ? -d.box.w / 2 : d.anchor === 'end' ? -d.box.w : 0).attr('y', d => d.above ? -d.box.h + 3 : -d.font).attr('width', d => d.box.w).attr('height', d => d.box.h)
         .style('pointer-events', d => d.kind === 'galaxy' ? 'all' : 'none');
+      if (measured) this.scheduleRender();
+    }
+
+    overlayBoxes() {
+      // The corner controls, in chart coordinates, padded by a few pixels.
+      const host = this.container && this.container.parentNode;
+      if (!host) return [];
+      const hint = host.querySelector('.graph-hint'), key = this.width + 'x' + this.height + '|' + (hint ? hint.textContent : '');
+      if (this.overlayCache && this.overlayCache.key === key) return this.overlayCache.boxes;
+      const base = this.container.getBoundingClientRect();
+      const boxes = Array.from(host.querySelectorAll('.graph-tools, .graph-hint')).map(el => el.getBoundingClientRect()).filter(b => b.width > 0 && b.height > 0)
+        .map(b => ({ x: b.left - base.left - 4, y: b.top - base.top - 4, w: b.width + 8, h: b.height + 8 }));
+      this.overlayCache = { key, boxes };
+      return boxes;
     }
 
     renderLinks(activeNode, k) {

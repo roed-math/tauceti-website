@@ -1,6 +1,6 @@
 from pathlib import Path
 from playwright.sync_api import sync_playwright, TimeoutError as PlaywrightTimeoutError
-import json,time,sys,tempfile
+import json,math,time,sys,tempfile
 REPO=Path(__file__).resolve().parents[1]
 ROOT=Path(tempfile.mkdtemp(prefix='tauceti-browser-'))
 url=next((arg for arg in sys.argv[1:] if not arg.startswith('--')),(REPO/'index.html').as_uri())
@@ -181,11 +181,18 @@ def label_boxes(page):
 def labels_are_clean(page,minimum_font=8):
  # No two drawn labels overlap, every drawn label is legible and inside the chart.
  chart=page.locator('#graph').bounding_box();boxes=label_boxes(page);collisions=[]
+ discs=page.evaluate("""() => Array.from(document.querySelectorAll('.tau-planet-body, .tau-star-core')).map(c=>{const b=c.getBoundingClientRect(),g=c.closest('[data-node-id]');return {id:g?g.getAttribute('data-node-id'):'',x:b.left+b.width/2,y:b.top+b.height/2,r:b.width/2};}).filter(d=>d.r>=3)""")
+ overlays=page.evaluate("""() => Array.from(document.querySelectorAll('.graph-tools, .graph-hint')).map(e=>e.getBoundingClientRect()).filter(b=>b.width>0&&b.height>0).map(b=>({x:b.left,y:b.top,w:b.width,h:b.height}))""")
  for i,a in enumerate(boxes):
   if a['font']<minimum_font:collisions.append({'first':a['id'],'second':'illegible','font':a['font']})
   if a['x']<chart['x']-2 or a['x']+a['w']>chart['x']+chart['width']+2 or a['y']<chart['y']-2 or a['y']+a['h']>chart['y']+chart['height']+2:collisions.append({'first':a['id'],'second':'chart boundary'})
   for b in boxes[i+1:]:
    if min(a['x']+a['w'],b['x']+b['w'])-max(a['x'],b['x'])>1 and min(a['y']+a['h'],b['y']+b['h'])-max(a['y'],b['y'])>1:collisions.append({'first':a['id'],'second':b['id']})
+  # Text never runs across another object's disc, nor behind the corner controls.
+  for d in discs:
+   if d['id']!=a['id'] and math.hypot(max(a['x'],min(d['x'],a['x']+a['w']))-d['x'],max(a['y'],min(d['y'],a['y']+a['h']))-d['y'])<d['r']-1:collisions.append({'first':a['id'],'second':'disc '+d['id']})
+  for o in overlays:
+   if min(a['x']+a['w'],o['x']+o['w'])-max(a['x'],o['x'])>1 and min(a['y']+a['h'],o['y']+o['h'])-max(a['y'],o['y'])>1:collisions.append({'first':a['id'],'second':'controls'})
  page.evaluate('c => { window.__tauTestCaptionCollisions=c; }',collisions)
  return not collisions
 def names_are_unique(page):
