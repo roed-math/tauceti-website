@@ -86,6 +86,12 @@ function placeNote(box,id){const place=DATA.roadmapClassification?.roadmaps?.[id
   const st=measured.structure,plural=(n,w)=>`${fmt(n)} ${w}${Number(n)===1?'':'s'}`;
   if(st)lines.push(!st.missingLayers?'Every layer it needs is recorded as built.':`Still to build: ${plural(st.missingLayers,'layer')}, ${st.suppliers?`in this roadmap and ${plural(st.suppliers,'supplier roadmap')}`:'all in this roadmap'}; the longest chain of them is ${plural(st.depth,'layer')}.`);
   if(Array.isArray(measured.usedBy))lines.push(measured.usedBy.length?`Used by roadmaps in other subjects: ${measured.usedBy.map(x=>`${groups.get(x.galaxy)?.label||x.galaxy} (${x.roadmaps})`).join(', ')}.`:'No roadmap in another subject uses it yet.');
+  // The reviewed library audit: what Mathlib and Tau Ceti already contain, and overlaps with other roadmaps.
+  const audited=(r=>(DATA.stages||[]).filter(x=>x.owner===id&&!x.expansion&&DATA.libraryCoverage?.layers?.[x.id]))(),counts={};
+  if(audited.length){const overlaps=new Map();audited.forEach(x=>{const layer=DATA.libraryCoverage.layers[x.id];counts[layer.verdict]=(counts[layer.verdict]||0)+1;(layer.duplicates||[]).forEach(dup=>{const owner=stages.get(dup.layer)?.owner;if(owner&&owner!==id)overlaps.set(owner,(overlaps.get(owner)||0)+1);});});
+   const order=['built','partly built','not built','process'],parts=order.filter(v=>counts[v]).map(v=>`${counts[v]} ${v==='process'?'process':v}`);
+   lines.push(`Library audit, reviewed: ${parts.join(', ')} of ${audited.length} layers, against the pinned Mathlib and Tau Ceti.`);
+   if(overlaps.size)lines.push(`Overlaps found by the audit: ${[...overlaps.entries()].sort((a,b)=>b[1]-a[1]).slice(0,4).map(([o,n])=>`${maps.has(o)?shortTitle(maps.get(o).title):o} (${n})`).join(', ')}.`);}
   const dl=st?.declarationLevel;if(dl)lines.push(`Decomposed so far: ${dl.declarations} declarations on ${dl.layersCovered} of ${dl.layers} layers, citing ${dl.sourcePages} source pages${dl.reviewed?'':' (unreviewed)'}.`);}
  else lines.push(`Distance from Mathlib ${place.distance} of 10.`);
  if(place){lines.push(`Subject class ${place.primaryMsc||'unknown'}.${place.rationale?' '+place.rationale:''}`);}
