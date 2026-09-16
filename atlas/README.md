@@ -12,7 +12,6 @@ The atlas also runs entirely offline. Download `index.html` and open it in a bro
 - Tap or click a roadmap, star or planet to make the same journey directly. Zoom out or use the back control to return to the previous level.
 - Formula planets have short plain-text names; clicking them opens the typeset definition, theorem target or construction from the source. The details also list citations from the topic or layer and broader roadmap reading, with links back to the embedded source. Progress belongs to its layer star; planets do not carry independent completion claims.
 - The details panel explains the mathematics, tracked progress, prerequisites and consumers. The Links tab exposes the actual stage pairs behind dependencies.
-- Dashed constellations mark **16 areas needing a dedicated roadmap**. They have no stages or completion percentages. Toggle them with Show unmapped areas.
 - Search for a subject, roadmap, or individual stage. Open the full roadmap to read its outline and source text.
 - Drag to pan and use Fit to recover the current scene. Export the current graph as SVG.
 - Open **Mission status** for a progress breakdown by area. Filter the collection by layer activity, and pin roadmaps for your next visit.
@@ -21,9 +20,9 @@ The atlas also runs entirely offline. Download `index.html` and open it in a bro
 
 The atlas is one continuous universe. Mathematical areas are galaxies, roadmaps are the constellations inside them, layers are the stars of a constellation, and a layer's definitions, theorems and constructions are the planets of its star. Everything sits in a single coordinate system, so zooming is a camera movement rather than a change of page: from the whole universe the areas are named and each roadmap is a point; inside a galaxy the constellations resolve into their stars and figures; inside a constellation the stars show their names and planets; inside a star system the planets are named. The address bar and breadcrumbs follow the camera, and only what the camera can see and resolve is drawn, which keeps zooming quick. Names are placed only where they fit: never across another planet, star or control, and a name with no room waits for more zoom rather than shrinking or overlapping. Clicking an object travels to it; the back control steps out one level.
 
-No links are drawn at rest. Selecting a roadmap shows its prerequisite links to other roadmaps; selecting a star shows the prerequisites and consumers of that layer, prerequisite → consumer; hovering an area heading shows the routes between areas. The faint figure joining a constellation's stars prefers real prerequisite pairs and is a shape, not a claim. Planet orbits express membership in a layer, not additional prerequisites. Related-plan links can be switched on and carry no prerequisite claim. Positions, discs and orbits are visual aids, not astronomical coordinates or mathematical measurements.
+No links are drawn at rest. Selecting a roadmap shows its prerequisite links to other roadmaps; selecting a star shows the prerequisites and consumers of that layer, prerequisite → consumer; hovering an area heading shows the routes between areas. The faint figure joining a constellation's stars prefers real prerequisite pairs and is a shape, not a claim. Planet orbits express membership in a layer, not additional prerequisites. Planets are meant to be key definitions, named theorems and central constructions; extracted paragraphs that are instructions, checks, scope caveats or bookkeeping are hidden from the map through `data/landmark-hidden.json`, each with a recorded reason, and an editorial pass is replacing the remaining sentence-fragment names with short names drawn from the passages themselves. Related-plan links can be switched on and carry no prerequisite claim. Positions, discs and orbits are visual aids, not astronomical coordinates or mathematical measurements.
 
-Colour on the map means one thing: recorded progress, shown as brightness. A layer, roadmap or area recorded as not started is red; it warms through salmon as work is recorded and turns white when complete, so an area's galaxy brightens as its roadmaps fill in. An open ring means no progress has been recorded, and nothing is ever coloured as started or as zero percent to fill the gap. Dashed outlines mark areas without a roadmap. All marks are flat: solid fills and thin strokes, with no gradients, glows or shaded spheres. The page uses system type, one dark palette and no decorative elements; headline statistics live in Mission status. Scene artwork is generated locally as SVG. There are no external fonts or image downloads, transitions are short, and reduced-motion preferences are respected.
+Colour on the map means one thing: recorded progress, shown as brightness. A layer, roadmap or area recorded as not started is red; it warms through salmon as work is recorded and turns white when complete, so an area's galaxy brightens as its roadmaps fill in. An open ring means no progress has been recorded, and nothing is ever coloured as started or as zero percent to fill the gap. All marks are flat: solid fills and thin strokes, with no gradients, glows or shaded spheres. The page uses system type, one dark palette and no decorative elements; headline statistics live in Mission status. Scene artwork is generated locally as SVG. There are no external fonts or image downloads, transitions are short, and reduced-motion preferences are respected.
 
 ## Source-decomposed refinements
 
@@ -34,21 +33,19 @@ Roadmap layers can carry reviewed refinements: constructions, lemmas, theorems a
 | Item | Count |
 | --- | ---: |
 | Areas with roadmaps | 13 |
-| Additional subject regions | 4 |
-| Unmapped areas needing a roadmap | 16 |
-| Roadmaps | 180 |
-| Recorded stage entries | 1,604 |
+| Roadmaps | 212 |
+| Recorded stage entries | 1,968 |
 | Reviewed source refinements | 482 (35 roadmaps, partial coverage) |
-| Mathematical layer stars | 1,538 |
-| Source-backed mathematical planets | 3,440 extracted targets + 482 refinements |
-| Terminal targets counted for progress | 1,543 |
-| Roadmap dependency links | 1,011 |
+| Mathematical layer stars | 1,902 |
+| Source-backed mathematical planets | 3,028 of 3,440 extracted targets shown (412 procedural paragraphs hidden) + 482 refinements |
+| Terminal targets counted for progress | 1,896 |
+| Roadmap dependency links | 1,044 recorded + 7 from reviewed refinements |
 | Stage dependency links | 3,508 recorded + 639 from reviewed refinements |
-| Sanitized source Markdown documents | 214 |
+| Sanitized source Markdown documents | 296 |
 
-The September 2026 edition combines 152 revised number-theory campaign roadmaps with 28 roadmaps from [TauCetiRoadmap](https://github.com/TauCetiProject/TauCetiRoadmap). The source documents are bundled under [`content/`](content/). The 12 companion guides include the campaign execution protocol, conventions and scope. Reference PDFs and extracted book text are not included. [`data/PUBLICATION.json`](data/PUBLICATION.json) records the publication checks; the atlas and status data retain source hashes, reported commit IDs, and dates.
+The September 2026 edition combines 152 revised number-theory campaign roadmaps with 60 roadmaps from [TauCetiRoadmap](https://github.com/TauCetiProject/TauCetiRoadmap): its `main` branch at commit fa4d030 (14 September 2026), including the four roadmaps the maintainers have archived as complete, plus the modular-curves roadmap from open pull request #81. The source documents are bundled under [`content/`](content/). The 12 companion guides include the campaign execution protocol, conventions and scope. Reference PDFs and extracted book text are not included. [`data/PUBLICATION.json`](data/PUBLICATION.json) records the publication checks; the atlas and status data retain source hashes, reported commit IDs, and dates.
 
-All 180 overview summaries explain the mathematical objects, results and scope for readers of the atlas. Star names and descriptions present mathematics first; curated entries in `data/stage-presentation.json` replace administrative wording without changing source records. Other descriptions use mathematical passages from the source. The 64 duplicate readiness checkpoints and two library/build administration tasks remain in the full source and progress totals, and are accessible under Project tasks in the Layers tab. They do not appear as mathematical stars. Original roadmap texts remain available in full. Unmapped areas identify missing dedicated plans in this catalogue, not the absence of formal mathematics in Tau Ceti or mathlib.
+All 212 overview summaries explain the mathematical objects, results and scope for readers of the atlas. Star names and descriptions present mathematics first; curated entries in `data/stage-presentation.json` replace administrative wording without changing source records. Other descriptions use mathematical passages from the source. The 64 duplicate readiness checkpoints and two library/build administration tasks remain in the full source and progress totals, and are accessible under Project tasks in the Layers tab. They do not appear as mathematical stars. Original roadmap texts remain available in full.
 
 The source snapshot includes local working-tree material and older maintained progress reports. It is not a fresh verification of the Tau Ceti code or of every mathematical proof. Roadmap-level cycles can reflect dependencies between different early and late stages; the encoded stage dependency graph is acyclic.
 

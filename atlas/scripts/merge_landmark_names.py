@@ -12,8 +12,9 @@ each rejected entry fails. Rules (all mechanical):
     (against the other accepted names and the existing curated names), and every alphabetic word
     of at least four letters occurs, as a word or as a stem of at least four letters, in the
     landmark's excerpt, current label, or its layer's title and description in data/atlas.json;
-  * decision "procedural": recorded in research/expansion/naming/<job>.procedural.json for the
-    orchestrator; nothing is hidden or renamed by this script.
+  * decision "drop" (or "procedural"): the planet is hidden from the map through
+    data/landmark-hidden.json with the job's reason, and any curated name it had is removed;
+    a later "keep" or "name" for the same id un-hides it.
 """
 import json, re, sys, unicodedata
 from pathlib import Path
@@ -72,15 +73,12 @@ def main(argv):
         seen[lid] = entry; lm = landmarks[lid]
         if decision == 'keep':
             continue
-        if decision == 'procedural':
-            if lm['curated']:
-                rejected.append((lid, 'curated landmark cannot be marked procedural')); continue
-            procedural.append({'id': lid, 'label': lm['label'], 'reason': entry.get('reason', '')}); continue
+        if decision in ('procedural', 'drop'):
+            procedural.append({'id': lid, 'label': lm['label'], 'reason': entry.get('reason', '') or 'not a key definition, named theorem or central construction'}); continue
         if decision != 'name':
             rejected.append((lid, f'unknown decision {decision!r}')); continue
         name = (entry.get('label') or '').strip()
         problems = []
-        if lm['curated']: problems.append('curated landmark must be kept')
         if not 3 <= len(name) <= 48: problems.append(f'length {len(name)}')
         if re.search(r'[.:;,]$', name) or '"' in name or '“' in name: problems.append('punctuation')
         if re.search(r'[\\${}^]', name): problems.append('characters the builder rejects')
@@ -103,10 +101,17 @@ def main(argv):
     if undecided:
         print('  undecided:', ', '.join(u.split('::')[0] for u in undecided[:10]), '...' if len(undecided) > 10 else '')
     if apply:
+        hidden = json.loads((ROOT / 'data/landmark-hidden.json').read_text())
         merged = dict(curated); merged.update(accepted)
+        for item in procedural:
+            merged.pop(item['id'], None)
+            hidden[item['id']] = f"{job}: {item['reason']}"[:200]
+        for lid in list(accepted) + [e['id'] for e in seen.values() if e.get('decision') == 'keep']:
+            hidden.pop(lid, None)
         (ROOT / 'data/landmark-labels.json').write_text(json.dumps(merged, indent=2, ensure_ascii=False) + '\n')
+        (ROOT / 'data/landmark-hidden.json').write_text(json.dumps(dict(sorted(hidden.items())), indent=2, ensure_ascii=False) + '\n')
         (ROOT / f'research/expansion/naming/{job}.procedural.json').write_text(json.dumps(procedural, indent=2, ensure_ascii=False) + '\n')
-        print(f'applied: data/landmark-labels.json now has {len(merged)} names; {len(procedural)} procedural ids recorded')
+        print(f'applied: {len(merged)} names, {len(hidden)} hidden planets; {len(procedural)} dropped by this job')
     return 0 if not undecided else 1
 
 

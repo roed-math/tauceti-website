@@ -44,10 +44,32 @@ def build(output: Path) -> dict:
     atlas.setdefault("decompositions", [])
     atlas["meta"]["originalStageCount"] = original_stage_count
     atlas["progress"] = json.loads(read_text("data/status.json"))
+    # Stage statuses mapped from the maintained reports (scripts/merge_stage_status.py)
+    # sit on top of the imported snapshot; each carries its quoted evidence.
+    mapped_path = ROOT / "data/stage-status-reports.json"
+    atlas["mappedStageStatuses"] = json.loads(mapped_path.read_text(encoding="utf-8")) if mapped_path.exists() else {}
+    for stage_id, entry in atlas["mappedStageStatuses"].items():
+        if entry.get("status") not in ("planned", "in_progress", "complete") or not entry.get("evidence"):
+            raise ValueError("Mapped stage status needs a known status and evidence: " + stage_id)
+    atlas["progress"]["stages"].update(atlas["mappedStageStatuses"])
     atlas["regions"] = json.loads(read_text("data/regions.json"))
     atlas["opportunities"] = json.loads(read_text("data/opportunities.json"))
+    # Areas without a roadmap are not drawn: the atlas maps roadmaps that exist.
+    atlas["opportunities"]["areas"] = []
     atlas["stagePresentation"] = json.loads(read_text("data/stage-presentation.json"))
     atlas["landmarkLabels"] = json.loads(read_text("data/landmark-labels.json"))
+    atlas["landmarkHidden"] = json.loads(read_text("data/landmark-hidden.json"))
+    # Edited overview summaries: mathematical prose for readers, keyed by roadmap id.
+    atlas["roadmapSummaries"] = json.loads(read_text("data/roadmap-summaries.json"))
+    roadmap_ids = {roadmap["id"] for roadmap in atlas["roadmaps"]}
+    for roadmap_id, summary in atlas["roadmapSummaries"].items():
+        if roadmap_id not in roadmap_ids:
+            raise ValueError("Roadmap summary refers to an unknown roadmap: " + roadmap_id)
+        if not isinstance(summary, str) or len(summary.split()) < 40:
+            raise ValueError("Roadmap summaries are at least forty words of prose: " + roadmap_id)
+    for roadmap in atlas["roadmaps"]:
+        if roadmap["id"] in atlas["roadmapSummaries"]:
+            roadmap["summary"] = atlas["roadmapSummaries"][roadmap["id"]]
     atlas["bibliography"] = json.loads(read_text("data/bibliography.json"))
     stage_ids = {stage["id"] for stage in atlas["stages"]}
     if set(atlas["stagePresentation"]) - stage_ids:
@@ -59,6 +81,13 @@ def build(output: Path) -> dict:
             raise ValueError("Stage visibility must be a boolean: " + stage_id)
         if "title" in item and (not isinstance(item["title"], str) or not item["title"].strip()):
             raise ValueError("Empty mathematical presentation title: " + stage_id)
+    for landmark_id, reason in atlas["landmarkHidden"].items():
+        if "::landmark:" not in landmark_id or landmark_id.split("::landmark:")[0] not in stage_ids:
+            raise ValueError("Hidden planet refers to an unknown stage ID: " + landmark_id)
+        if not isinstance(reason, str) or not reason.strip():
+            raise ValueError("Every hidden planet needs a recorded reason: " + landmark_id)
+        if landmark_id in atlas["landmarkLabels"]:
+            raise ValueError("A planet cannot be both named and hidden: " + landmark_id)
     for landmark_id, label in atlas["landmarkLabels"].items():
         if "::landmark:" not in landmark_id or landmark_id.split("::landmark:")[0] not in stage_ids:
             raise ValueError("Planet label contains an unknown stage ID: " + landmark_id)
@@ -117,7 +146,7 @@ def build(output: Path) -> dict:
     # progress targets, so the parent stays terminal for progress accounting.
     refinements = [stage for stage in atlas["stages"] if stage.get("expansion")]
     parent_ids = {stage.get("parentStageId") for stage in atlas["stages"] if stage.get("parentStageId") and not stage.get("expansion")}
-    source_paths = ["src/shell.html", *style_paths, *assets.values(), "data/atlas.json", "data/status.json", "data/regions.json", "data/opportunities.json", "data/stage-presentation.json", "data/landmark-labels.json", "data/bibliography.json", "NOTICE", "LICENSE", "vendor/D3-LICENSE.txt", "vendor/KaTeX-LICENSE.txt"]
+    source_paths = ["src/shell.html", *style_paths, *assets.values(), "data/atlas.json", "data/status.json", "data/regions.json", "data/opportunities.json", "data/stage-presentation.json", "data/landmark-labels.json", "data/landmark-hidden.json", "data/roadmap-summaries.json", "data/bibliography.json", "NOTICE", "LICENSE", "vendor/D3-LICENSE.txt", "vendor/KaTeX-LICENSE.txt"]
     source_paths += [str(path.relative_to(ROOT)) for path in sorted((ROOT / "data" / "decompositions").glob("*.json"))] if (ROOT / "data" / "decompositions").is_dir() else []
     report = {
         "roadmaps": len(atlas["roadmaps"]),
@@ -130,12 +159,16 @@ def build(output: Path) -> dict:
         "terminalTargets": sum(stage["id"] not in parent_ids and not stage.get("expansion") for stage in atlas["stages"]),
         "groups": len(atlas["groups"]),
         "unmappedAreas": len(atlas["opportunities"]["areas"]),
+        "areasWithRoadmaps": sum(1 for group in atlas["groups"] + atlas["opportunities"]["groups"] if any(roadmap.get("group") == group["id"] for roadmap in atlas["roadmaps"])),
         "additionalRegions": len(atlas["opportunities"]["groups"]),
         "mathematicalSummaries": len(atlas["roadmaps"]),
+        "editedRoadmapSummaries": len(atlas["roadmapSummaries"]),
         "curatedStagePresentations": len(atlas["stagePresentation"]),
         "administrativeStages": sum(bool(item.get("hidden")) for item in atlas["stagePresentation"].values()),
         "mathematicalStars": sum(not atlas["stagePresentation"].get(stage["id"], {}).get("hidden") for stage in atlas["stages"]),
         "plainTextPlanetLabels": len(atlas["landmarkLabels"]),
+        "hiddenPlanets": len(atlas["landmarkHidden"]),
+        "mappedStageStatuses": len(atlas["mappedStageStatuses"]),
         "bibliographicSources": len(atlas["bibliography"]["works"]),
         "roadmapEdges": len(atlas["edges"]),
         "stageEdges": len(atlas["stageEdges"]),

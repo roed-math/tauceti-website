@@ -481,7 +481,9 @@
           const lead = byId.get(label.follows);
           if (!lead || !lead.shown) { label.box = { x: 0, y: 0, w: 0, h: 0 }; return; }
           const b = lead.box;
-          spots.length = 0; spots.push({ screen: { x: b.x, y: b.y + b.h + 2 } }, { screen: { x: b.x + b.w - w, y: b.y + b.h + 2 } });
+          // Under the name (left- or right-aligned), beside it, or above it.
+          spots.length = 0; spots.push({ screen: { x: b.x, y: b.y + b.h + 2 } }, { screen: { x: b.x + b.w - w, y: b.y + b.h + 2 } },
+            { screen: { x: b.x + b.w + 6, y: b.y } }, { screen: { x: b.x - w - 6, y: b.y } }, { screen: { x: b.x, y: b.y - h - 2 } }, { screen: { x: b.x + b.w - w, y: b.y - h - 2 } });
         }
         for (const spot of spots) {
           const anchor = spot.screen ? 'start' : spot.anchor || label.anchor, sx = spot.screen ? spot.screen.x : spot.x * k + t.x, sy = spot.screen ? spot.screen.y + label.font : spot.y * k + t.y;
