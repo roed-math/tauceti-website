@@ -269,6 +269,12 @@ def check_refinements(page):
  record('A refinement planet explains its statement, sources and unchecked status',page.locator('#selection-kind').inner_text()=='Construction · source refinement' and 'Fredholm' in page.locator('.detail-title').inner_text() and page.locator('#inspector-content .reference-works a').count()>0 and 'unchecked' in page.locator('#inspector-content').inner_text())
  record('A layer lists its source decomposition beside its extracted targets',page.evaluate("() => { TauExplorer.openStage('PadicFamilies:L2a'); return true; }") and (page.wait_for_timeout(400) or True) and 'Source decomposition' in page.locator('#inspector-content').inner_text() and page.locator('#inspector-content .item-link[data-item-id*="/"]').count()==14)
  record('A roadmap summarises its reviewed expansion',page.evaluate("() => { TauExplorer.openItem('PadicFamilies'); return true; }") and (page.wait_for_timeout(500) or True) and 'Source expansion' in page.locator('#inspector-content').inner_text() and 'accepted' in page.locator('#inspector-content').inner_text())
+ # Deeper zoom keeps adding structure: kind and excerpt, then the refinement's
+ # hypotheses, proof steps and checks as moons, and the links among refinements.
+ page.evaluate("TauExplorer.openStage('PadicFamilies:L2a/spectral-hypersurface')");page.wait_for_timeout(600)
+ page.evaluate("""() => { const g=TauExplorer.graph,u=TauExplorer.getUniverse(),p=u.byId.get('PadicFamilies:L2a/spectral-hypersurface'),star=u.byId.get(p.starId); const k=g.transformFor({x:star.x-star.room*1.35,y:star.y-star.room*1.35,w:star.room*2.7,h:star.room*2.7}).k*3; g.svg.interrupt(); g.svg.call(g.zoom.transform,d3.zoomIdentity.translate(g.width/2-p.x*k,g.height/2-p.y*k).scale(k)); }""");page.wait_for_timeout(500)
+ record('Deep zoom reveals a refinement\'s kind, excerpt, moons and internal links',page.locator('.tau-label-card[data-label-for="PadicFamilies:L2a/spectral-hypersurface"]').count()==1 and page.locator('.tau-moon').count()>0 and page.locator('.tau-system-link').count()>0 and labels_are_clean(page))
+ page.screenshot(path=str(ROOT/'preview-deep-zoom.png'),animations='disabled')
  page.screenshot(path=str(ROOT/'preview-refined-layer.png'),animations='disabled')
 def check_catalogue_selection(page,scope,touch=False):
  title=page.evaluate("TauExplorer.data.roadmaps.find(r=>r.id==='AnalyticNumberTheory').title")

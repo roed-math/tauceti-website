@@ -178,7 +178,7 @@
         const planet = planets[index], angle = (slot / count) * Math.PI * 2 + ring * .7 + (hash(star.id) % 100) / 100;
         planet.x = star.x + Math.cos(angle) * radius; planet.y = star.y + Math.sin(angle) * radius * .82;
         planet.orbit = { rx: radius, ry: radius * .82, ring };
-        planet.r = Math.max(.3, Math.min(star.r * .5, step * .1, radius * Math.PI / Math.max(3, count) * .3));
+        planet.r = Math.max(.3, Math.min(star.r * .62, step * .15, radius * Math.PI / Math.max(3, count) * .34));
       }
     });
     // The closest pair of planets bounds every hit target of this system.
@@ -266,8 +266,10 @@
       placeStars(constellation, members, edges);
       constellation.figure = figureOf(members, edges);
       members.forEach(star => {
-        const orbiting = (input.planets.get(star.id) || []).map(planet => ({ ...planet, level: 'planet', starId: star.id }));
+        const orbiting = (input.planets.get(star.id) || []).map(planet => ({ ...planet, level: 'planet', starId: star.id, moons: planet.moons || [], summary: planet.summary || '' }));
         placePlanets(star, orbiting);
+        const ids = new Set(orbiting.map(planet => planet.id));
+        star.planetEdges = (input.planetEdges || []).filter(edge => ids.has(edge.source) && ids.has(edge.target));
         planets.push(...orbiting);
       });
       stars.push(...members);

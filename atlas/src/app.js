@@ -36,6 +36,7 @@ for(const r of DATA.roadmaps)if(r.parentRoadmapId){if(!childRoadmaps.has(r.paren
 const mapSearch=new Map(DATA.roadmaps.map(r=>[r.id,(shortTitle(r.title)+' '+r.title+' '+r.id+' '+r.summary+' '+r.readme).toLowerCase()]));
 const stageSearch=new Map(DATA.stages.map(s=>[s.id,(stageTitle(s.id)+' '+stageSummary(s.id)+' '+s.key+' '+s.id+' '+s.description).toLowerCase()]));
 const labels={planned:'Not started',in_progress:'In progress',complete:'Complete',unknown:''};
+function plainExcerpt(text){return String(text||'').replace(/\$\$?([^$]+)\$\$?/g,(m,tex)=>tex.replace(/\\[a-zA-Z]+\s*/g,w=>({'\\mathbb ':'','\\operatorname ':'','\\mathrm ':'','\\to ':'→ ','\\times ':'× ','\\cdot ':'· ','\\otimes ':'⊗ ','\\oplus ':'⊕ ','\\infty ':'∞ ','\\le ':'≤ ','\\ge ':'≥ ','\\ne ':'≠ '}[w]??w.replace(/^\\/,''))).replace(/[{}]/g,'')).replace(/[*_`>#]+/g,'').replace(/\[([^\]]+)\]\([^)]*\)/g,'$1').replace(/\s+/g,' ').trim().slice(0,220);}
 function el(tag,className,text){const n=document.createElement(tag);if(className)n.className=className;if(text!==undefined)n.textContent=text;return n;}
 function btn(text,action,className=''){const n=el('button',className,text);n.type='button';n.addEventListener('click',action);return n;}
 function clear(n){n.replaceChildren();return n;}
@@ -96,16 +97,21 @@ function universeInput(){
  for(const r of roadmaps){const p=progress.roadmap(r.id),starIds=mathStages(r);
   constellations.push({id:r.id,galaxyId:r.group,label:shortTitle(r.title),starIds,origin:r.origin||'campaign',progress:aggregateProgress(p),progressLabel:aggregateProgressLabel(p),parentRoadmapId:r.parentRoadmapId||null});
   for(const id of starIds){const sp=progress.stage(id);starMap.set(id,{label:stageTitle(id),progress:stageProgress(sp),progressLabel:labels[sp.status]||''});
-   const planets=(stageLandmarks.get(id)||[]).map(item=>({id:item.id,label:landmarkTitle(item),kind:['definition','theorem'].includes(item.kind)?item.kind:'construction',refinement:false}));
-   for(const rid of stageRefinements.get(id)||[]){const kind=stages.get(rid).expansion.kind;planets.push({id:rid,label:stageTitle(rid),kind:kind==='definition'?'definition':['theorem','lemma','comparison'].includes(kind)?'theorem':'construction',refinement:true});}
+   const planets=(stageLandmarks.get(id)||[]).map(item=>({id:item.id,label:landmarkTitle(item),kind:['definition','theorem'].includes(item.kind)?item.kind:'construction',refinement:false,summary:plainExcerpt(TauPresentation.landmarkDescription(item)),moons:[]}));
+   for(const rid of stageRefinements.get(id)||[]){const x=stages.get(rid).expansion,kind=x.kind;planets.push({id:rid,label:stageTitle(rid),kind:kind==='definition'?'definition':['theorem','lemma','comparison'].includes(kind)?'theorem':'construction',refinement:true,summary:plainExcerpt(x.statement),
+    moons:[...(x.hypotheses||[]).map(t=>({kind:'hypothesis',text:t})),...(x.proofSteps||[]).map((t,i)=>({kind:'step',text:t,index:i+1})),...(x.acceptance||[]).map(t=>({kind:'check',text:t}))]});}
+   // Extracted targets that share one source passage keep their names but not a repeated excerpt.
+   const seen=new Map();planets.forEach(x=>seen.set(x.summary,(seen.get(x.summary)||0)+1));planets.forEach(x=>{if(!x.refinement&&seen.get(x.summary)>1)x.summary='';});
+   const kinds=new Set(planets.filter(x=>!x.refinement).map(x=>x.kind));planets.forEach(x=>{x.showKind=x.refinement||kinds.size>1;});
    planetMap.set(id,planets);}
  }
  for(const area of gaps)constellations.push({id:area.id,galaxyId:area.group,label:area.title,starIds:[],unmapped:true,progress:null,progressLabel:'No dedicated roadmap'});
  for(const e of DATA.stageEdges)if(starMap.has(e.source)&&starMap.has(e.target))starEdges.push({source:e.source,target:e.target});
+ const planetEdges=DATA.stageEdges.filter(e=>stages.get(e.source)?.expansion&&stages.get(e.target)?.expansion&&stages.get(e.source).parentStageId===stages.get(e.target).parentStageId).map(e=>({source:e.source,target:e.target}));
  const constellationEdges=DATA.edges.filter(e=>ids.has(e.source)&&ids.has(e.target)).map(e=>({source:e.source,target:e.target,count:e.stageCount||1}));
  const present=id=>ids.has(id)||gaps.some(a=>a.id===id);
  const groupsWithProgress=allGroups.map(g=>{const p=summarize(roadmaps.filter(r=>r.group===g.id));return {...g,progress:aggregateProgress(p),progressLabel:aggregateProgressLabel(p,'layers complete')};});
- return {groups:groupsWithProgress,constellations,stars:starMap,planets:planetMap,starEdges,constellationEdges,relatedEdges:[...relatedEdges,...contextEdges].filter(e=>present(e.source)&&present(e.target))};
+ return {groups:groupsWithProgress,constellations,stars:starMap,planets:planetMap,starEdges,planetEdges,constellationEdges,relatedEdges:[...relatedEdges,...contextEdges].filter(e=>present(e.source)&&present(e.target))};
 }
 function buildUniverse(force){
  const key=[state.origin,state.activity,state.unmapped,[...pins].join(',')].join('|');

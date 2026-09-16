@@ -84,7 +84,7 @@
       this.container = container; this.options = options || {}; this.id = 'tau-graph-' + (++instanceCount);
       this.universe = null; this.selectedId = null; this.hoveredId = null; this.transform = d3.zoomIdentity; this.destroyed = false;
       this.isCoarse = !!(window.matchMedia && window.matchMedia('(pointer: coarse)').matches);
-      this.showReferences = false; this.lastFocus = null; this.renderScheduled = false; this.busy = false;
+      this.showReferences = false; this.lastFocus = null; this.renderScheduled = false; this.busy = false; this.widthCache = new Map();
       this.svg = d3.select(container).append('svg').attr('class', 'tau-graph').attr('xmlns', SVG_NS)
         .attr('width', '100%').attr('height', '100%').attr('role', 'group')
         .attr('aria-label', 'Interactive mathematics universe. Tab to an object and press Enter to open it.')
@@ -98,7 +98,12 @@
         .tau-graph .tau-label-galaxy.is-active text { fill: #e2e6eb; }
         .tau-graph .tau-label-constellation text { fill: #c9d2da; font-weight: 400; stroke-width: 2.5px; }
         .tau-graph .tau-label-star text { fill: #dbe1e7; font-weight: 500; stroke-width: 3px; }
-        .tau-graph .tau-label-planet text { fill: #b9c2cc; font-weight: 400; stroke-width: 2.5px; }
+        .tau-graph .tau-label-planet text { fill: #c9d2da; font-weight: 500; stroke-width: 2.5px; }
+        .tau-graph .tau-label-card text { fill: #8fa0b0; font-weight: 400; stroke-width: 2.5px; }
+        .tau-graph .tau-label-card text tspan:first-child { fill: #dfc186; font-size: 8px; letter-spacing: .3px; text-transform: uppercase; }
+        .tau-graph .tau-label-moon text { fill: #9fabb8; font-weight: 400; stroke-width: 2px; }
+        .tau-graph .tau-system-link { fill: none; stroke: #7d8a99; }
+        .tau-graph .tau-moon { pointer-events: none; }
         .tau-graph .tau-label.is-active text { fill: #f0e4c8; }
         .tau-graph .tau-label-hit { fill: transparent; pointer-events: all; cursor: pointer; }
         .tau-graph .tau-figure { fill: none; stroke: #4f5f6d; }
@@ -111,12 +116,15 @@
       defs.append('marker').attr('id', this.id + '-arrow').attr('viewBox', '0 -4 9 8').attr('refX', 8).attr('refY', 0)
         .attr('markerWidth', 6).attr('markerHeight', 6).attr('orient', 'auto').attr('markerUnits', 'strokeWidth')
         .append('path').attr('d', 'M0,-3.5L8,0L0,3.5Z').attr('fill', ACCENT);
+      defs.append('marker').attr('id', this.id + '-arrow-quiet').attr('viewBox', '0 -4 9 8').attr('refX', 8).attr('refY', 0)
+        .attr('markerWidth', 7).attr('markerHeight', 7).attr('orient', 'auto').attr('markerUnits', 'strokeWidth')
+        .append('path').attr('d', 'M0,-3.5L8,0L0,3.5Z').attr('fill', '#7d8a99');
       this.viewport = this.svg.append('g').attr('class', 'tau-viewport');
       this.layers = {};
       ['field', 'galaxy', 'route', 'constellation', 'figure', 'link', 'star', 'planet', 'label'].forEach(name => { this.layers[name] = this.viewport.append('g').attr('class', 'tau-layer-' + name); });
       // The universe spans thousands of times in scale, so a wheel or trackpad
       // step must move the camera a long way; a pinch keeps a gentler gain.
-      this.zoom = d3.zoom().scaleExtent([.015, 120]).clickDistance(6)
+      this.zoom = d3.zoom().scaleExtent([.015, 900]).clickDistance(6)
         .wheelDelta(() => -d3.event.deltaY * (d3.event.deltaMode === 1 ? .05 : d3.event.deltaMode ? 1 : .002) * (d3.event.ctrlKey ? 1.6 : 3.2))
         .filter(() => !this.busy && !d3.event.button && (!d3.event.ctrlKey || d3.event.type === 'wheel'))
         .on('zoom', () => { this.transform = d3.event.transform; this.viewport.attr('transform', this.transform); this.scheduleRender(); this.scheduleFocus(); });
@@ -289,12 +297,29 @@
               alternatives: [{ x: s.x, y: s.systemVisible ? s.y + s.room * 1.02 + 11 / k : s.y - s.r * 1.9 - 4 / k, above: !s.systemVisible }] });
             if (!s.systemVisible) return;
             s.planetIds.forEach(planetId => {
-              const p = universe.byId.get(planetId);
-              p.nameVisible = s.room * k >= T.planetName || active === p.id;
+              const p = universe.byId.get(planetId), detail = p.r * k;
+              // Each planet reveals more as it grows on screen: its name, then
+              // its kind and a statement excerpt, then its own structure.
+              p.nameVisible = detail >= 8 || s.room * k >= T.planetName || active === p.id;
+              p.kindVisible = detail >= 14 && (p.refinement || p.showKind !== false);
+              p.cardVisible = detail >= 34 && !!p.summary;
+              p.moonsVisible = detail >= 60 && p.moons.length > 0;
+              p.moonNamesVisible = detail >= 120;
               planets.push(p);
               if (p.nameVisible) { const left = p.x < s.x - s.r * .2, right = p.x + p.r * 1.4 + 4 / k, leftX = p.x - p.r * 1.4 - 4 / k;
-                labels.push({ id: 'planet:' + p.id, nodeId: p.id, kind: 'planet', x: left ? leftX : right, y: p.y + 3.5 / k, lines: wrapText(p.label, 26, 2), font: 10, anchor: left ? 'end' : 'start', above: false, priority: 20 + (active === p.id ? 60 : 0), active: active === p.id,
-                  alternatives: [{ x: left ? right : leftX, y: p.y + 3.5 / k, above: false, anchor: left ? 'start' : 'end' }, { x: p.x, y: p.y + p.r * 1.6 + 11 / k, above: false, anchor: 'middle' }] }); }
+                const nameLines = wrapText(p.label, 26, 2);
+                labels.push({ id: 'planet:' + p.id, nodeId: p.id, kind: 'planet', x: left ? leftX : right, y: p.y + 3.5 / k, lines: nameLines, font: detail >= 22 ? 11 : 10, anchor: left ? 'end' : 'start', above: false, priority: 20 + (active === p.id ? 60 : 0), active: active === p.id,
+                  alternatives: [{ x: left ? right : leftX, y: p.y + 3.5 / k, above: false, anchor: left ? 'start' : 'end' }, { x: p.x, y: p.y + p.r * 1.6 + 11 / k, above: false, anchor: 'middle' }] });
+                // The card hangs a clear gap below the name box (name font 10–11, line pitch 14, box padding 3).
+                const cardY = p.y + (3.5 + nameLines.length * 14 + 3 + 4) / k;
+                if (p.kindVisible) labels.push({ id: 'card:' + p.id, nodeId: p.id, kind: 'card', x: left ? leftX : right, y: cardY, lines: [(p.refinement ? 'reviewed ' : '') + (p.kind || 'target'), ...(p.cardVisible ? wrapText(p.summary, 40, 3) : [])], font: 9, anchor: left ? 'end' : 'start', above: false, priority: 15 + (active === p.id ? 60 : 0), active: false,
+                  alternatives: [{ x: left ? right : leftX, y: cardY, above: false, anchor: left ? 'start' : 'end' }] });
+              }
+              if (p.moonsVisible) p.moons.forEach((moon, index) => {
+                const angle = index / p.moons.length * Math.PI * 2 - Math.PI / 2, ring = p.r * 1.55;
+                moon.x = p.x + Math.cos(angle) * ring; moon.y = p.y + Math.sin(angle) * ring; moon.r = p.r * .12; moon.planetId = p.id; moon.id = p.id + '#moon' + index;
+                if (p.moonNamesVisible) { const outward = Math.cos(angle) >= 0; labels.push({ id: 'moon:' + moon.id, nodeId: p.id, kind: 'moon', x: moon.x + (outward ? 1 : -1) * (moon.r + 3 / k), y: moon.y + 3 / k, lines: [wrapText((moon.kind === 'step' ? moon.index + '. ' : moon.kind === 'check' ? 'check: ' : 'if ') + moon.text, 48, 1)[0]], font: 8.5, anchor: outward ? 'start' : 'end', above: false, priority: 10, active: false }); }
+              });
             });
           });
         });
@@ -389,6 +414,23 @@
       all.select('.tau-hit').attr('r', d => { const star = graph.universe.byId.get(d.starId); return Math.min(Math.max(d.r * 1.5, (graph.isCoarse ? 12 : 8) / k), (star && star.planetGap ? star.planetGap : d.r * 4) * .48); });
       all.select('.tau-planet-body').attr('r', d => d.r).attr('fill', d => KIND_FILL[d.kind] || KIND_FILL.construction).attr('stroke-dasharray', d => d.refinement ? `${1.5 / k} ${1.5 / k}` : null);
       all.select('.tau-select-ring').attr('r', d => d.r * 1.9).attr('opacity', d => active === d.id ? 1 : 0);
+      // Deep zoom: a reviewed refinement shows its hypotheses (open), proof
+      // steps (filled) and acceptance checks (accent) as moons, and the
+      // prerequisite links among the refinements of the same layer appear.
+      const moons = [];
+      items.filter(p => p.moonsVisible).forEach(p => p.moons.forEach(moon => moons.push(moon)));
+      const moonJoin = this.layers.planet.selectAll('circle.tau-moon').data(moons, d => d.id);
+      moonJoin.exit().remove();
+      moonJoin.enter().append('circle').attr('class', 'tau-moon').attr('vector-effect', 'non-scaling-stroke').attr('stroke-width', 1).merge(moonJoin)
+        .attr('cx', d => d.x).attr('cy', d => d.y).attr('r', d => d.r).attr('data-kind', d => d.kind)
+        .attr('fill', d => d.kind === 'hypothesis' ? '#1a222c' : d.kind === 'check' ? ACCENT : '#b9c2cc').attr('stroke', d => d.kind === 'hypothesis' ? '#9aa6b2' : d.kind === 'check' ? ACCENT : '#b9c2cc');
+      const stars = new Map(); items.forEach(p => { if (p.kindVisible) stars.set(p.starId, this.universe.byId.get(p.starId)); });
+      const internal = [];
+      stars.forEach(star => (star.planetEdges || []).forEach((edge, index) => { const a = this.universe.byId.get(edge.source), b = this.universe.byId.get(edge.target); if (a && b) internal.push({ id: star.id + '#' + index, a, b }); }));
+      const linkJoin = this.layers.figure.selectAll('path.tau-system-link').data(internal, d => d.id);
+      linkJoin.exit().remove();
+      linkJoin.enter().append('path').attr('class', 'tau-system-link').attr('vector-effect', 'non-scaling-stroke').attr('stroke-width', .9).attr('opacity', .5).attr('marker-end', 'url(#' + this.id + '-arrow-quiet)').merge(linkJoin)
+        .attr('d', d => { const dx = d.b.x - d.a.x, dy = d.b.y - d.a.y, len = Math.max(.001, Math.hypot(dx, dy)), ax = d.a.x + dx / len * d.a.r * 1.3, ay = d.a.y + dy / len * d.a.r * 1.3, bx = d.b.x - dx / len * d.b.r * 1.5, by = d.b.y - dy / len * d.b.r * 1.5; return `M${ax},${ay}L${bx},${by}`; });
     }
 
     renderLabels(labels, k) {
@@ -400,14 +442,17 @@
       // that would sit on a neighbouring galaxy is as misleading as an overlap.
       const discs = (this.visible ? this.visible.galaxies : []).map(g => ({ id: g.id, x: g.x * k + t.x, y: g.y * k + t.y, rx: g.rx * k, ry: g.ry * k }));
       const onDisc = (box, own) => discs.some(g => g.id !== own && (((box.x + box.w / 2 - g.x) / g.rx) ** 2 + ((box.y + box.h / 2 - g.y) / g.ry) ** 2) < 1);
-      const collides = (box, label) => placed.some(other => Math.min(box.x + box.w, other.x + other.w) - Math.max(box.x, other.x) > 1 && Math.min(box.y + box.h, other.y + other.h) - Math.max(box.y, other.y) > 1)
+      const collides = (box, label) => placed.some(other => Math.min(box.x + box.w, other.x + other.w) - Math.max(box.x, other.x) > -2 && Math.min(box.y + box.h, other.y + other.h) - Math.max(box.y, other.y) > -1)
         || (label.kind === 'galaxy' && onDisc(box, label.nodeId));
       // A name is drawn only when the whole of it fits the chart; a clipped
       // name reads as a different name.
       const onScreen = box => box.x >= 2 && box.x + box.w <= this.width - 2 && box.y >= 2 && box.y + box.h <= this.height - 2;
       labels.forEach(label => {
-        const longest = Math.max(...label.lines.map(line => line.length));
-        const w = longest * label.font * .58 + 6, h = label.lines.length * (label.font + 3) + 2;
+        // Widths come from measured text where a line has been drawn before;
+        // otherwise from an estimate that errs wide. A margin keeps neighbours
+        // apart even when the measurement is a frame old.
+        const measure = (line, index) => this.widthCache.get(label.font + (label.kind === 'card' && index === 0 ? 'u' : 'n') + '|' + line) ?? line.length * label.font * (label.kind === 'card' && index === 0 ? .84 : .62);
+        const w = Math.max(...label.lines.map(measure)) + 8, h = label.lines.length * (label.font + 3) + 3;
         // An area heading or a constellation name may step aside rather than
         // vanish: below its object, or to either side, when the place above
         // is taken. Star and planet names keep their single place.
@@ -434,9 +479,14 @@
         .on('mouseenter', d => { if (!graph.isCoarse) { graph.hoveredId = d.nodeId; graph.scheduleRender(); } }).on('mouseleave', () => { if (!graph.isCoarse) { graph.hoveredId = null; graph.scheduleRender(); } });
       const all = enter.merge(join);
       all.classed('is-active', d => d.active).attr('transform', d => `translate(${d.x},${d.y}) scale(${1 / k})`);
+      const cache = this.widthCache;
       all.select('text').attr('text-anchor', d => d.anchor).attr('font-size', d => d.font).each(function (d) {
         const text = d3.select(this); text.selectAll('tspan').remove();
-        d.lines.forEach((line, index) => text.append('tspan').attr('x', 0).attr('y', d.above ? -(d.lines.length - 1 - index) * (d.font + 3) : index * (d.font + 3)).text(line));
+        d.lines.forEach((line, index) => {
+          const span = text.append('tspan').attr('x', 0).attr('y', d.above ? -(d.lines.length - 1 - index) * (d.font + 3) : index * (d.font + 3)).text(line);
+          const key = d.font + (d.kind === 'card' && index === 0 ? 'u' : 'n') + '|' + line;
+          if (!cache.has(key)) { try { cache.set(key, span.node().getComputedTextLength()); } catch (_) { /* detached */ } }
+        });
       });
       all.select('rect').attr('x', d => d.anchor === 'middle' ? -d.box.w / 2 : d.anchor === 'end' ? -d.box.w : 0).attr('y', d => d.above ? -d.box.h + 2 : -d.font).attr('width', d => d.box.w).attr('height', d => d.box.h)
         .style('pointer-events', d => d.kind === 'galaxy' ? 'all' : 'none');
@@ -506,7 +556,7 @@
       // Portrait phones keep the zoom controls clear; a short landscape chart
       // needs its height more than that margin and gets a smaller reserve.
       const reserve = this.width < 600 ? 56 : this.height < 400 ? 24 : 0, usable = this.height - reserve;
-      const scale = Math.max(.015, Math.min(120, (this.width - 36) / rect.w, (usable - 36) / rect.h));
+      const scale = Math.max(.015, Math.min(900, (this.width - 36) / rect.w, (usable - 36) / rect.h));
       return d3.zoomIdentity.translate(this.width / 2 - (rect.x + rect.w / 2) * scale, usable / 2 - (rect.y + rect.h / 2) * scale).scale(scale);
     }
 
