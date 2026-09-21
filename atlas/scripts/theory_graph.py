@@ -14,9 +14,9 @@ both counts one, a partial one a half, and a process layer none. That gives a
 finer measure of missing theory than whole layers, which differ in size.
 
 Where layers have been decomposed into single declarations (the reviewed
-decompositions in data/decompositions and the blueprint packets in
-research/blueprint/packets), the declaration graph gives a finer count, its
-depth, and the source pages it covers.
+decompositions in data/decompositions and the blueprint packets promoted
+into data/blueprints), the declaration graph gives a finer count, its depth,
+and the source pages it covers.
 """
 from __future__ import annotations
 
@@ -199,7 +199,8 @@ def declaration_graphs(root: Path = ROOT) -> dict:
         review = (packet.get("review") or {}).get("status", "")
         graphs[packet["roadmapId"]] = {"kind": "decomposition", "nodes": nodes, "edges": edges, "locators": locators,
                                        "reviewed": review.startswith("accepted") or review == "passed"}
-    folder = root / "research" / "blueprint" / "packets"
+    # Blueprints count once promoted (scripts/promote.py), as the atlas shows them.
+    folder = root / "data" / "blueprints"
     for path in sorted(folder.glob("*.json")) if folder.is_dir() else []:
         packet = load(path)
         nodes = {node["id"]: node for node in packet.get("nodes", [])}

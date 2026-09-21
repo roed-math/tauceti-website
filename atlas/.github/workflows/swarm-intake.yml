@@ -73,3 +73,26 @@ jobs:
             done
             exit 1
           fi
+      # Work whose independent review accepted it goes live in the atlas
+      # (scripts/promote.py, PROTOCOL.md section 8): it is copied into data/,
+      # distances are measured again, the page is rebuilt and tested, and the
+      # commit publishes it. Work that would break the build is refused and the
+      # workers are told on their issue.
+      - name: Put accepted work into the atlas
+        shell: bash
+        run: |
+          git pull --rebase -q
+          python3 scripts/promote.py --comment | tee "$RUNNER_TEMP/promoted.txt" | tee -a "$GITHUB_STEP_SUMMARY"
+          if [ -z "$(git status --porcelain -- data)" ]; then exit 0; fi
+          if [ -n "$(git status --porcelain -- data/blueprints data/links)" ]; then
+            python3 scripts/measure_distances.py > /dev/null
+            python3 scripts/build.py > /dev/null
+            python3 -m unittest discover -s tests -p 'test_*.py'
+          fi
+          git add -A -- data index.html BUILD.json
+          git commit -q -m "Atlas: promote accepted work" -m "$(cat "$RUNNER_TEMP/promoted.txt")"
+          for attempt in 1 2 3 4 5; do
+            git pull --rebase -q && git push -q && exit 0
+            sleep $((attempt * 10))
+          done
+          exit 1

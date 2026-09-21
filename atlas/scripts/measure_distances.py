@@ -42,6 +42,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
+from blueprints import add_new_roadmaps, load_promoted  # noqa: E402
 from bradley_terry import agreement, cross_validate, fit_on_scale, fit_weights  # noqa: E402
 from galaxies import galaxy_membership  # noqa: E402
 from radial_layout import layout, rank_normalise  # noqa: E402
@@ -184,6 +185,10 @@ def split_half(blocks, x):
 def main() -> None:
     atlas = apply_retirements(load(ROOT / "data" / "atlas.json"))
     classification = load(ROOT / "data" / "roadmap-classification.json")["roadmaps"]
+    # New roadmaps promoted with their reviewed blueprints are measured like the rest.
+    _packets, _documents, definitions = load_promoted(ROOT)
+    clusters = {galaxy["id"]: (galaxy.get("clusters") or [None])[0] for galaxy in load(ROOT / "data" / "galaxies.json")["galaxies"]}
+    atlas, classification = add_new_roadmaps(atlas, definitions, classification, clusters)
     roadmap_ids = {roadmap["id"] for roadmap in atlas["roadmaps"]}
     measured, graph = structure(atlas)
     blocks = {name: [item for item in items if item.get("a") in roadmap_ids and item.get("b") in roadmap_ids]

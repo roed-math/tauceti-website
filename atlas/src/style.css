@@ -178,6 +178,14 @@ body.has-selection .app-layout{grid-template-columns:236px minmax(320px,1fr) 380
 .source-layer{margin:18px 0;padding-top:10px;border-top:1px solid var(--line-soft)}
 .source-layer>summary{font-size:12px;color:var(--muted);cursor:pointer;padding:6px 0}
 .source-layer[open]>summary{color:var(--ink-soft)}
+/* Promoted blueprints: a layer's declarations, and one declaration's details. */
+.blueprint-steps{margin:6px 0 10px}
+.blueprint-steps>summary{font-size:12px;color:var(--muted);cursor:pointer;padding:6px 0}
+.blueprint-steps[open]>summary{color:var(--ink-soft)}
+.blueprint-list .md-content>:first-child{margin-top:0}
+.blueprint-list .md-content>:last-child{margin-bottom:0}
+.blueprint-link{padding:0;border:0;background:none;color:var(--ink);font:inherit;text-align:left;text-decoration:underline;text-decoration-color:var(--line);cursor:pointer;overflow-wrap:anywhere}
+.blueprint-link:hover{text-decoration-color:currentColor}
 .progress-summary{padding:6px 0 4px}
 .progress-caption{display:flex;align-items:baseline;gap:10px}
 .progress-caption strong{font-size:18px;font-weight:500;color:var(--ink)}

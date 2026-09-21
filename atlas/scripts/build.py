@@ -11,6 +11,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
+from blueprints import add_new_roadmaps, load_promoted, merge_blueprints, replaced_layers, trim_decompositions  # noqa: E402
 from decompositions import merge_decompositions, merge_links  # noqa: E402
 from galaxies import apply_galaxies  # noqa: E402
 from retirements import apply_retirements, load_retirements  # noqa: E402
@@ -37,16 +38,27 @@ def comment_text(text: str) -> str:
     return text.replace("--", "—")
 
 
-def build(output: Path) -> dict:
+def assemble(require_distances: bool = True, blueprints: Path | None = None) -> tuple:
+    """The atlas data, checked; and what the build report needs. Raises ValueError on any problem.
+
+    require_distances=False lets a roadmap without a measured distance through at a provisional one:
+    promotion tries new work in the build before scripts/measure_distances.py has measured it."""
     atlas = json.loads(read_text("data/atlas.json"))
     # Retired roadmaps (data/roadmap-retirements.json) leave the atlas with
     # their layers and every link through them; overlays for them are ignored.
     retired = load_retirements(ROOT)
     retired_stages = {stage["id"] for stage in atlas["stages"] if stage.get("owner") in retired}
     atlas = apply_retirements(atlas, retired)
+    # Reviewed blueprints promoted by scripts/promote.py (data/blueprints/). New
+    # roadmaps join first, so that links and refinements can refer to them.
+    packets, documents, definitions = load_promoted(ROOT, blueprints)
+    classification = json.loads(read_text("data/roadmap-classification.json"))
+    clusters = {galaxy["id"]: (galaxy.get("clusters") or [None])[0] for galaxy in json.loads(read_text("data/galaxies.json"))["galaxies"]}
+    atlas, classification["roadmaps"] = add_new_roadmaps(atlas, definitions, classification["roadmaps"], clusters)
     # The snapshot stays immutable; reviewed decompositions refine it at build
-    # time, so nothing is appended twice and the originals remain the record.
-    decompositions = load_decompositions()
+    # time, so nothing is appended twice and the originals remain the record. A
+    # promoted blueprint replaces the decomposition of the layers it covers.
+    decompositions = trim_decompositions(load_decompositions(), replaced_layers(packets, {r["id"]: r["stages"] for r in atlas["roadmaps"]}))
     original_stage_count = len(atlas["stages"])
     link_folder = ROOT / "data" / "links"
     link_packets = [json.loads(path.read_text(encoding="utf-8")) for path in sorted(link_folder.glob("*.json"))] if link_folder.is_dir() else []
@@ -62,6 +74,7 @@ def build(output: Path) -> dict:
             if isinstance(packet.get(key), list):
                 packet[key] = [link for link in packet[key] if not (through(link.get("source")) or through(link.get("target")))]
     atlas, _expanded_documents = merge_decompositions(atlas, decompositions)
+    atlas = merge_blueprints(atlas, packets, documents)
     atlas.setdefault("decompositions", [])
     atlas["meta"]["originalStageCount"] = original_stage_count
     atlas["progress"] = json.loads(read_text("data/status.json"))
@@ -83,7 +96,7 @@ def build(output: Path) -> dict:
     atlas["libraryCoverage"] = {"reviews": coverage.get("reviews", {}), "pendingReview": coverage.get("pendingReview", []),
                                 "layers": {sid: {"verdict": layer["verdict"], "duplicates": layer.get("duplicates", [])}
                                            for sid, layer in coverage.get("layers", {}).items() if sid not in retired_stages}}
-    atlas["roadmapClassification"] = json.loads(read_text("data/roadmap-classification.json"))
+    atlas["roadmapClassification"] = classification
     # Roadmaps are grouped into subject galaxies by the classification of their
     # references; the snapshot's own area assignment is superseded.
     subjects = json.loads(read_text("data/galaxies.json"))
@@ -93,8 +106,11 @@ def build(output: Path) -> dict:
     atlas["roadmapDistances"] = json.loads(read_text("data/roadmap-distances.json"))
     atlas["galaxyLayout"] = json.loads(read_text("data/galaxy-layout.json"))
     missing = sorted({roadmap["id"] for roadmap in atlas["roadmaps"]} - set(atlas["roadmapDistances"]["roadmaps"]))
-    if missing:
+    if missing and require_distances:
         raise ValueError("Roadmaps without a measured distance; run scripts/measure_distances.py: " + ", ".join(missing[:5]))
+    for rid in missing:
+        estimate = atlas["roadmapClassification"]["roadmaps"].get(rid, {}).get("distance") or 5
+        atlas["roadmapDistances"]["roadmaps"][rid] = {"distance": estimate, "basis": "provisional"}
     atlas["regions"] = apply_galaxies(atlas, galaxies, atlas["roadmapClassification"], atlas["roadmapDistances"], atlas["galaxyLayout"],
                                       fields=subjects["fields"])
     atlas["opportunities"] = json.loads(read_text("data/opportunities.json"))
@@ -152,6 +168,12 @@ def build(output: Path) -> dict:
             raise ValueError("Bibliographic records need a title and aliases.")
         if work.get("url") and not re.match(r"^https?://", work["url"]):
             raise ValueError("Bibliographic links must be public web addresses.")
+    return atlas, {"retired": retired, "linkPackets": link_packets, "originalStageCount": original_stage_count, "blueprints": packets}
+
+
+def build(output: Path, blueprints: Path | None = None) -> dict:
+    atlas, context = assemble(blueprints=blueprints)
+    retired, link_packets, original_stage_count = context["retired"], context["linkPackets"], context["originalStageCount"]
     assets = {
         "D3": "vendor/d3.v5.15.0.min.js",
         "KATEX": "vendor/katex.v0.16.28.min.js",
@@ -201,7 +223,8 @@ def build(output: Path) -> dict:
     refinements = [stage for stage in atlas["stages"] if stage.get("expansion")]
     parent_ids = {stage.get("parentStageId") for stage in atlas["stages"] if stage.get("parentStageId") and not stage.get("expansion")}
     source_paths = ["src/shell.html", *style_paths, *assets.values(), "data/atlas.json", "data/status.json", "data/galaxies.json", "data/roadmap-retirements.json", "data/library-coverage.json", "data/opportunities.json", "data/stage-presentation.json", "data/landmark-labels.json", "data/landmark-hidden.json", "data/roadmap-summaries.json", "data/roadmap-classification.json", "data/classification-estimates.json", "data/roadmap-distances.json", "data/galaxy-layout.json", "data/bibliography.json", "NOTICE", "LICENSE", "vendor/D3-LICENSE.txt", "vendor/KaTeX-LICENSE.txt"]
-    source_paths += [str(path.relative_to(ROOT)) for path in sorted((ROOT / "data" / "decompositions").glob("*.json"))] if (ROOT / "data" / "decompositions").is_dir() else []
+    for folder in ("data/decompositions", "data/blueprints", "data/blueprints/roadmaps", "data/links"):
+        source_paths += [str(path.relative_to(ROOT)) for path in sorted((ROOT / folder).glob("*.*"))] if (ROOT / folder).is_dir() else []
     report = {
         "roadmaps": len(atlas["roadmaps"]),
         "stages": len(atlas["stages"]),
@@ -233,6 +256,8 @@ def build(output: Path) -> dict:
         "roadmapEdges": len(atlas["edges"]),
         "stageEdges": len(atlas["stageEdges"]),
         "reviewedLinkPackets": len(link_packets),
+        "promotedBlueprints": [{"file": stem, "roadmap": packet["roadmapId"], "nodes": len(packet.get("nodes", [])),
+                                "reviewer": (packet.get("review") or {}).get("reviewer")} for stem, packet in context["blueprints"]],
         "sourceDocuments": sum(1 for _ in (ROOT / "content").rglob("*.md")),
         "htmlBytes": output.stat().st_size,
         "htmlSha256": hashlib.sha256(output.read_bytes()).hexdigest(),
@@ -247,8 +272,9 @@ def build(output: Path) -> dict:
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--output", type=Path, default=ROOT / "index.html", help="HTML output path; defaults to the repository's index.html")
+    parser.add_argument("--blueprints", type=Path, help="read promoted blueprints from this folder instead of data/blueprints (tests)")
     arguments = parser.parse_args()
-    print(json.dumps(build(arguments.output.resolve()), indent=2))
+    print(json.dumps(build(arguments.output.resolve(), arguments.blueprints), indent=2))
 
 
 if __name__ == "__main__":
