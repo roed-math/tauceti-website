@@ -43,6 +43,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
 from blueprints import add_new_roadmaps, load_promoted  # noqa: E402
+from restructure import apply_restructurings, load_accepted  # noqa: E402
 from bradley_terry import agreement, cross_validate, fit_on_scale, fit_weights  # noqa: E402
 from galaxies import galaxy_membership  # noqa: E402
 from radial_layout import layout, rank_normalise  # noqa: E402
@@ -189,6 +190,7 @@ def main() -> None:
     _packets, _documents, definitions = load_promoted(ROOT)
     clusters = {galaxy["id"]: (galaxy.get("clusters") or [None])[0] for galaxy in load(ROOT / "data" / "galaxies.json")["galaxies"]}
     atlas, classification = add_new_roadmaps(atlas, definitions, classification, clusters)
+    atlas, _dropped = apply_restructurings(atlas, load_accepted(ROOT))
     roadmap_ids = {roadmap["id"] for roadmap in atlas["roadmaps"]}
     measured, graph = structure(atlas)
     blocks = {name: [item for item in items if item.get("a") in roadmap_ids and item.get("b") in roadmap_ids]

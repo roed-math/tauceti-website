@@ -71,6 +71,9 @@ def destinations(root: Path, path: str, data: dict, atlas_roadmaps: set) -> tupl
     name = Path(path).name
     if path.startswith("research/blueprint/links/"):
         return [(path, f"data/links/{name}")], None
+    if path.startswith("research/blueprint/restructure/"):
+        report = path.replace(".result.json", ".md")
+        return [(path, f"data/restructure/{name}")] + ([(report, f"data/restructure/{Path(report).name}")] if (root / report).exists() else []), None
     files = [(path, f"data/blueprints/{name}")]
     document = f"research/blueprint/readmes/{Path(name).stem}.md"
     if (root / document).exists():
@@ -86,7 +89,8 @@ def destinations(root: Path, path: str, data: dict, atlas_roadmaps: set) -> tupl
 
 def candidates(root: Path) -> list:
     bp = root / "research" / "blueprint"
-    return [str(p.relative_to(root)) for folder in ("packets", "links") for p in sorted((bp / folder).glob("*.json"))]
+    found = [str(p.relative_to(root)) for folder in ("packets", "links") for p in sorted((bp / folder).glob("*.json"))]
+    return found + [str(p.relative_to(root)) for p in sorted((bp / "restructure").glob("RS-*.result.json"))]
 
 
 def promote(root: Path = ROOT, validate=None, now=None, dry_run=False) -> dict:

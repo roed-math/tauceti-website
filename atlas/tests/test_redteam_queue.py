@@ -33,6 +33,13 @@ class Prompts(unittest.TestCase):
             self.assertIn("- Library baseline (what exists today):", template)
 
 
+class Restructuring(unittest.TestCase):
+    def test_a_family_blueprint_follows_its_accepted_restructuring(self):
+        note = make_queue.restructuring_note("RS-07")
+        for rule in ("research/blueprint/restructure/RS-07.result.json", "keeps", "drops", "closed", "title and base"):
+            self.assertIn(rule, note)
+
+
 class Queue(unittest.TestCase):
     def test_a_verifier_is_independent_of_the_red_team_and_of_the_work_it_attacked(self):
         jobs = {j["id"]: j for j in json.loads((ROOT / "research" / "blueprint" / "queue.json").read_text())["jobs"]}

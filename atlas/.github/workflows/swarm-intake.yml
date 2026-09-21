@@ -84,7 +84,7 @@ jobs:
           git pull --rebase -q
           python3 scripts/promote.py --comment | tee "$RUNNER_TEMP/promoted.txt" | tee -a "$GITHUB_STEP_SUMMARY"
           if [ -z "$(git status --porcelain -- data)" ]; then exit 0; fi
-          if [ -n "$(git status --porcelain -- data/blueprints data/links)" ]; then
+          if [ -n "$(git status --porcelain -- data/blueprints data/links data/restructure)" ]; then
             python3 scripts/measure_distances.py > /dev/null
             python3 scripts/build.py > /dev/null
             python3 -m unittest discover -s tests -p 'test_*.py'

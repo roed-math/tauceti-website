@@ -117,6 +117,19 @@ class Promote(unittest.TestCase):
         self.assertEqual(promote(self.root, validate=lambda: None)["promoted"], [PACKET])
         self.assertTrue((self.root / "data/blueprints/roadmaps/R.json").exists())
 
+    def test_an_accepted_restructuring_goes_live_with_its_report(self):
+        jobs = [{"id": "RS-01", "kind": "restructure", "state": "done", "outputs": ["research/blueprint/restructure/RS-01.result.json"]},
+                {"id": "REV-RS-01", "kind": "review", "state": "done", "after": ["RS-01"], "outputs": []}]
+        (self.root / "research/blueprint/queue.json").write_text(json.dumps({"jobs": jobs}))
+        (self.root / "research/blueprint/packets/R.json").unlink()
+        folder = self.root / "research/blueprint/restructure"
+        folder.mkdir()
+        (folder / "RS-01.result.json").write_text(json.dumps({"family": "RS-01", "review": dict(ACCEPTED, reviewer="independent-review-REV-RS-01")}))
+        (folder / "RS-01.md").write_text("Why.")
+        self.assertEqual(promote(self.root, validate=lambda: None)["promoted"], ["research/blueprint/restructure/RS-01.result.json"])
+        self.assertTrue((self.root / "data/restructure/RS-01.result.json").exists())
+        self.assertEqual((self.root / "data/restructure/RS-01.md").read_text(), "Why.")
+
     def test_an_accepted_link_map_goes_to_the_links_the_atlas_merges(self):
         jobs = [{"id": "LINK-R", "kind": "link", "state": "done", "outputs": ["research/blueprint/links/R.json"]},
                 {"id": "REV-LINK-R", "kind": "review", "state": "done", "after": ["LINK-R"], "outputs": []}]

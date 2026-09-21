@@ -57,6 +57,9 @@ def load_index(path):
 
 
 RETIRED_STAGES = set()
+# Layers an accepted restructuring proposal drops (PROTOCOL.md section 15): closed without nodes,
+# since the layers the proposal names supply them.
+DROPPED_STAGES = set()
 
 
 def world():
@@ -92,6 +95,14 @@ def world():
             stages[f"{roadmap.get('id')}:{stage.get('key')}"] = roadmap.get("id")
     reserved_path = ROOT / "research" / "blueprint" / "reserved-ids.json"
     reserved = load_json(reserved_path) if reserved_path.exists() else {}
+    DROPPED_STAGES.clear()
+    for path in sorted((ROOT / "research" / "blueprint" / "restructure").glob("RS-*.result.json")):
+        try:
+            proposal = load_json(path)
+        except (OSError, json.JSONDecodeError):
+            continue
+        if (proposal.get("review") or {}).get("status") == "accepted":
+            DROPPED_STAGES.update(sid for sid, layer in (proposal.get("layers") or {}).items() if layer.get("action") == "drop")
     return atlas, stages, roadmaps, nodes, blueprints, reserved
 
 
@@ -319,7 +330,7 @@ def check(path, index, context):
             errors.append(f"coverage {sid}: invalid status {record.get('status')!r}")
         if record.get("status") in ("closed", "source_decomposed") and record.get("remaining"):
             errors.append(f"coverage {sid}: {record.get('status')} with remaining work")
-        if record.get("status") == "closed" and sid not in realised:
+        if record.get("status") == "closed" and sid not in realised and sid not in DROPPED_STAGES:
             errors.append(f"coverage {sid}: closed but no node realises it")
     for sid in scope:
         if sid not in covered:

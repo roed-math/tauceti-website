@@ -105,5 +105,19 @@ class Planets(unittest.TestCase):
         self.assertEqual(errors_for(packet(elsewhere)), [])
 
 
+
+class Restructuring(unittest.TestCase):
+    def test_a_layer_an_accepted_restructuring_drops_is_closed_without_nodes(self):
+        import check_blueprint
+        data = packet([definition()])
+        data["coverage"][1] = {"stageId": "R:L1", "status": "closed", "remaining": [], "note": "Dropped by RS-01: S:S1 supplies it."}
+        self.assertIn("coverage R:L1: closed but no node realises it", errors_for(data))
+        check_blueprint.DROPPED_STAGES.add("R:L1")
+        try:
+            self.assertEqual(errors_for(data), [])
+        finally:
+            check_blueprint.DROPPED_STAGES.discard("R:L1")
+
+
 if __name__ == "__main__":
     unittest.main()

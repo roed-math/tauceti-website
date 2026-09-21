@@ -14,6 +14,7 @@ sys.path.insert(0, str(ROOT / "scripts"))
 from blueprints import add_new_roadmaps, load_promoted, merge_blueprints, replaced_layers, trim_decompositions  # noqa: E402
 from decompositions import merge_decompositions, merge_links  # noqa: E402
 from galaxies import apply_galaxies  # noqa: E402
+from restructure import apply_restructurings, load_accepted  # noqa: E402
 from retirements import apply_retirements, load_retirements  # noqa: E402
 from library_coverage import already_available, coverage_statuses, load_coverage  # noqa: E402
 
@@ -55,6 +56,8 @@ def assemble(require_distances: bool = True, blueprints: Path | None = None) -> 
     classification = json.loads(read_text("data/roadmap-classification.json"))
     clusters = {galaxy["id"]: (galaxy.get("clusters") or [None])[0] for galaxy in json.loads(read_text("data/galaxies.json"))["galaxies"]}
     atlas, classification["roadmaps"] = add_new_roadmaps(atlas, definitions, classification["roadmaps"], clusters)
+    # Accepted restructuring proposals (data/restructure/): Part II titles, narrowed and dropped layers, their links.
+    atlas, dropped = apply_restructurings(atlas, load_accepted(ROOT))
     # The snapshot stays immutable; reviewed decompositions refine it at build
     # time, so nothing is appended twice and the originals remain the record. A
     # promoted blueprint replaces the decomposition of the layers it covers.
@@ -120,6 +123,8 @@ def assemble(require_distances: bool = True, blueprints: Path | None = None) -> 
     def keep_stage(key):
         return key.split("::landmark:")[0] not in retired_stages
     atlas["stagePresentation"] = {k: v for k, v in json.loads(read_text("data/stage-presentation.json")).items() if keep_stage(k)}
+    for stage_id, item in dropped.items():
+        atlas["stagePresentation"][stage_id] = {**atlas["stagePresentation"].get(stage_id, {}), **item}
     # A proposed roadmap shows only what still has to be built.
     for stage_id, item in already_available(coverage, atlas).items():
         if keep_stage(stage_id):
@@ -223,7 +228,7 @@ def build(output: Path, blueprints: Path | None = None) -> dict:
     refinements = [stage for stage in atlas["stages"] if stage.get("expansion")]
     parent_ids = {stage.get("parentStageId") for stage in atlas["stages"] if stage.get("parentStageId") and not stage.get("expansion")}
     source_paths = ["src/shell.html", *style_paths, *assets.values(), "data/atlas.json", "data/status.json", "data/galaxies.json", "data/roadmap-retirements.json", "data/library-coverage.json", "data/opportunities.json", "data/stage-presentation.json", "data/landmark-labels.json", "data/landmark-hidden.json", "data/roadmap-summaries.json", "data/roadmap-classification.json", "data/classification-estimates.json", "data/roadmap-distances.json", "data/galaxy-layout.json", "data/bibliography.json", "NOTICE", "LICENSE", "vendor/D3-LICENSE.txt", "vendor/KaTeX-LICENSE.txt"]
-    for folder in ("data/decompositions", "data/blueprints", "data/blueprints/roadmaps", "data/links"):
+    for folder in ("data/decompositions", "data/blueprints", "data/blueprints/roadmaps", "data/links", "data/restructure"):
         source_paths += [str(path.relative_to(ROOT)) for path in sorted((ROOT / folder).glob("*.*"))] if (ROOT / folder).is_dir() else []
     report = {
         "roadmaps": len(atlas["roadmaps"]),
