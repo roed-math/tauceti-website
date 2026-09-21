@@ -5,7 +5,8 @@ name: Swarm submission check
 # Blueprint packets and link maps are checked against the pinned Mathlib and
 # Tau Ceti commits in research/blueprint/baseline.json, restructuring proposals
 # against PROTOCOL.md section 15, and planet names by the naming rules. When the
-# check passes, the "Swarm intake" workflow merges the pull request.
+# check passes, the "Swarm intake" workflow merges the pull request. Paper
+# extractions are checked against PROTOCOL.md section 16.
 on:
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review]
@@ -70,8 +71,10 @@ jobs:
           links=$(changed '^research/blueprint/links/[^/]+\.json$')
           proposals=$(changed '^research/blueprint/restructure/RS-[0-9]+\.result\.json$')
           names=$(changed '^research/expansion/naming/(NAME|PLANETS)-[0-9]+\.result\.json$')
+          papers=$(changed '^research/blueprint/papers/PAPER-[^/]+\.result\.json$')
           if [ -n "$packets" ]; then python3 scripts/check_blueprint.py $packets | tee -a "$GITHUB_STEP_SUMMARY" || status=1; fi
           if [ -n "$links" ]; then python3 scripts/check_links.py $links | tee -a "$GITHUB_STEP_SUMMARY" || status=1; fi
           if [ -n "$proposals" ]; then python3 scripts/check_restructure.py $proposals | tee -a "$GITHUB_STEP_SUMMARY" || status=1; fi
           for result in $names; do python3 scripts/merge_landmark_names.py "$result" --strict | tee -a "$GITHUB_STEP_SUMMARY" || status=1; done
+          if [ -n "$papers" ]; then python3 scripts/check_paper.py $papers | tee -a "$GITHUB_STEP_SUMMARY" || status=1; fi
           exit $status
