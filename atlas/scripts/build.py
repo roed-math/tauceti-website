@@ -86,7 +86,8 @@ def build(output: Path) -> dict:
     atlas["roadmapClassification"] = json.loads(read_text("data/roadmap-classification.json"))
     # Roadmaps are grouped into subject galaxies by the classification of their
     # references; the snapshot's own area assignment is superseded.
-    galaxies = json.loads(read_text("data/galaxies.json"))["galaxies"]
+    subjects = json.loads(read_text("data/galaxies.json"))
+    galaxies = subjects["galaxies"]
     # Distances from Mathlib and galaxy directions are measured by
     # scripts/measure_distances.py from the theory graph and the judgements.
     atlas["roadmapDistances"] = json.loads(read_text("data/roadmap-distances.json"))
@@ -94,7 +95,8 @@ def build(output: Path) -> dict:
     missing = sorted({roadmap["id"] for roadmap in atlas["roadmaps"]} - set(atlas["roadmapDistances"]["roadmaps"]))
     if missing:
         raise ValueError("Roadmaps without a measured distance; run scripts/measure_distances.py: " + ", ".join(missing[:5]))
-    atlas["regions"] = apply_galaxies(atlas, galaxies, atlas["roadmapClassification"], atlas["roadmapDistances"], atlas["galaxyLayout"])
+    atlas["regions"] = apply_galaxies(atlas, galaxies, atlas["roadmapClassification"], atlas["roadmapDistances"], atlas["galaxyLayout"],
+                                      fields=subjects["fields"])
     atlas["opportunities"] = json.loads(read_text("data/opportunities.json"))
     # Areas without a roadmap are not drawn: the atlas maps roadmaps that exist.
     atlas["opportunities"]["areas"] = []

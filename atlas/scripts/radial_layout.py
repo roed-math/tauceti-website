@@ -11,6 +11,12 @@ a penalty for galaxies that would overlap on the map. The fit starts from a
 spectral embedding of the similarities and from seeded random starts, and the
 best is kept.
 
+The areas of one field are ranked as more related than any two areas of
+different fields (with_fields), and their misfit weighs FIELD_PULL times
+more, so a field's areas lie side by side, each at its own distance. Among the
+starts, the fit with the fewest areas lying between two areas of another
+field (crossings) is kept, then the one with the least energy.
+
 The result is turned so that the roadmaps' weighted mean direction points to
 the right, and mirrored so that algebraic geometry (subject classes 14) lies above that
 axis and number theory (subject classes 11) below it: the map has the same
@@ -32,6 +38,8 @@ def galaxy_size(count: int) -> float:
 
 GALAXY_GAP = 70
 OVERLAP_PENALTY = 4.0
+# How much more the misfit of two areas of one field weighs than any other pair's.
+FIELD_PULL = 6.0
 
 
 def wrap(angle: float) -> float:
@@ -83,6 +91,41 @@ def jacobi_eigen(matrix):
                     vkp, vkq = v[k][p], v[k][q]
                     v[k][p], v[k][q] = c * vkp - s * vkq, s * vkp + c * vkq
     return [a[i][i] for i in range(n)], v
+
+
+def with_fields(similarity: dict, field_of: dict) -> dict:
+    """Similarity in which the areas of one field are more alike than any two
+    areas of different fields, so that a field's areas lie side by side; within
+    and across fields the order is unchanged."""
+    return {pair: value + (1.0 if field_of.get(pair[0]) is not None and field_of.get(pair[0]) == field_of.get(pair[1]) else 0.0)
+            for pair, value in similarity.items()}
+
+
+def crossings(angles: dict, radius: dict, size: dict, fields: dict) -> list:
+    """(x, a, b) for each area x whose middle (within half its radius of its
+    centre) the straight line between two areas a, b of another field passes
+    through: x then lies between them, and their field no longer reads as one
+    region. A field nearer the sun may share a field's directions."""
+    keys = sorted(angles)
+    where = {k: (radius[k] * math.cos(angles[k]), radius[k] * math.sin(angles[k])) for k in keys}
+    found = []
+    for i, a in enumerate(keys):
+        for b in keys[i + 1:]:
+            if fields.get(a) is None or fields.get(a) != fields.get(b):
+                continue
+            (ax, ay), (bx, by) = where[a], where[b]
+            dx, dy = bx - ax, by - ay
+            length = dx * dx + dy * dy
+            if length == 0:
+                continue
+            for x in keys:
+                if fields.get(x) == fields.get(a):
+                    continue
+                px, py = where[x]
+                t = ((px - ax) * dx + (py - ay) * dy) / length
+                if 0 < t < 1 and math.hypot(px - ax - t * dx, py - ay - t * dy) < size[x] / 4:
+                    found.append((x, a, b))
+    return found
 
 
 def spectral_start(keys, ranks):
@@ -154,25 +197,32 @@ def orient(angles, counts, lean_share):
     return turned
 
 
-def layout(galaxies: dict, similarity: dict, starts: int = 12, seed: int = 20260916):
+def layout(galaxies: dict, similarity: dict, fields: dict | None = None, starts: int = 12, seed: int = 20260916):
     """galaxies: id -> {"distance", "count", "lean"}; returns (id -> degrees, energy).
 
     lean is the share of a galaxy's roadmaps in algebraic geometry minus its
-    share in number theory, by primary subject class."""
+    share in number theory, by primary subject class. fields maps each galaxy
+    (an area) to its field: a field's areas rank as the most related pairs and
+    their misfit weighs FIELD_PULL times more, so they lie side by side."""
     keys = sorted(galaxies)
+    fields = fields or {}
     radius = {k: radius_for(galaxies[k]["distance"]) for k in keys}
     size = {k: galaxy_size(galaxies[k]["count"]) for k in keys}
-    ranks = rank_normalise(similarity, keys)
+    ranks = rank_normalise(with_fields(similarity, fields), keys)
     target = {pair: math.pi * (1 - value) for pair, value in ranks.items()}
-    weight = {pair: 0.25 + value for pair, value in ranks.items()}
+    together = {pair for pair in ranks if fields.get(pair[0]) is not None and fields.get(pair[0]) == fields.get(pair[1])}
+    weight = {pair: (0.25 + value) * (FIELD_PULL if pair in together else 1.0) for pair, value in ranks.items()}
     rng = random.Random(seed)
     first = spectral_start(keys, ranks)
     candidates = [first] + [{k: rng.uniform(-math.pi, math.pi) for k in keys} for _ in range(starts)]
-    best, best_energy = None, math.inf
+    # The best fit among the starts whose fields read as regions: fewest
+    # areas lying between two areas of another field, then the least energy.
+    best, best_energy, best_rank = None, math.inf, None
     for start in candidates:
         angles = solve(keys, radius, size, target, weight, start)
         value = energy(angles, keys, radius, size, target, weight)
-        if value < best_energy - 1e-9:
-            best, best_energy = angles, value
+        rank = (len(crossings(angles, radius, size, fields)), value)
+        if best_rank is None or rank < (best_rank[0], best_rank[1] - 1e-9):
+            best, best_energy, best_rank = angles, value, rank
     oriented = orient(best, {k: galaxies[k]["count"] for k in keys}, {k: galaxies[k].get("lean", 0.0) for k in keys})
     return {k: round(math.degrees(a), 1) for k, a in oriented.items()}, best_energy

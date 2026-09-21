@@ -256,7 +256,9 @@ def main() -> None:
             by_subject[(a, b)] = by_subject[(b, a)] = dot / norm if norm else 0.0
     layer_rank, subject_rank = rank_normalise(by_layers, keys), rank_normalise(by_subject, keys)
     similarity = {pair: LAYER_SHARE * layer_rank[pair] + (1 - LAYER_SHARE) * subject_rank[pair] for pair in layer_rank}
-    directions, layout_stress = layout(galaxy_info, similarity)
+    # A field's areas lie side by side, so the field reads as one region.
+    field_of = {area["id"]: area["field"] for area in load(ROOT / "data" / "galaxies.json")["galaxies"]}
+    directions, layout_stress = layout(galaxy_info, similarity, fields=field_of)
     neighbours = {}
     for gid in galaxy_info:
         ranked = sorted((g for g in galaxy_info if g != gid), key=lambda g: (-similarity.get((gid, g), 0.0), g))
@@ -377,7 +379,7 @@ def main() -> None:
     layout_document = {
         "version": 1,
         "purpose": "Directions of the subject galaxies from Mathlib, computed from shared missing theory by scripts/measure_distances.py (scripts/radial_layout.py); do not edit by hand.",
-        "method": "Relatedness: 60% the rank of the cosine similarity of the prerequisite layers two galaxies rest on (each layer weighted by its rarity across galaxies, layers still to be built counting double), 40% the rank of the cosine similarity of their references' subject classes. Directions minimise the weighted misfit to target angles that run from zero for the most related pair to a half turn for the least, with overlapping galaxies penalised; the result is turned so the roadmaps' mean direction points right, with algebraic geometry above that axis and number theory below it.",
+        "method": "Relatedness: 60% the rank of the cosine similarity of the prerequisite layers two galaxies rest on (each layer weighted by its rarity across galaxies, layers still to be built counting double), 40% the rank of the cosine similarity of their references' subject classes. The areas of one field rank above any pair from different fields, so a field's areas lie side by side. Directions minimise the weighted misfit to target angles that run from zero for the most related pair to a half turn for the least, with overlapping galaxies penalised; the result is turned so the roadmaps' mean direction points right, with algebraic geometry above that axis and number theory below it.",
         "stress": round(layout_stress, 4),
         "galaxies": {gid: {"direction": directions[gid], "neighbours": neighbours[gid]} for gid in sorted(directions)},
     }

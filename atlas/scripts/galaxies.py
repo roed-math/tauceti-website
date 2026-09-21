@@ -34,16 +34,26 @@ def galaxy_membership(atlas: dict, classification: dict) -> dict:
     return galaxy_of
 
 
-def apply_galaxies(atlas: dict, galaxies: list, classification: dict, distances: dict | None = None, layout: dict | None = None) -> dict:
+def apply_galaxies(atlas: dict, galaxies: list, classification: dict, distances: dict | None = None, layout: dict | None = None,
+                   *, fields: list) -> dict:
     """Replace atlas groups with galaxies, move each roadmap, and return the regions record.
 
     distances (data/roadmap-distances.json) gives each roadmap's distance from
     Mathlib; layout (data/galaxy-layout.json) gives each galaxy's direction and
     the galaxies it shares the most missing theory with.
+
+    Each galaxy is an area of one field (data/galaxies.json), so that labels
+    sit at one level of abstraction: the map names fields when zoomed out and
+    their areas when zoomed in. An area takes its field's colour, and the only
+    area of a field with roadmaps is named after the field.
     """
     known = {galaxy["id"]: galaxy for galaxy in galaxies}
     if len(known) != len(galaxies):
         raise ValueError("Galaxy ids must be unique.")
+    field_by_id = {field["id"]: field for field in fields}
+    unplaced = sorted(galaxy["id"] for galaxy in galaxies if galaxy.get("field") not in field_by_id)
+    if unplaced:
+        raise ValueError("Galaxies without a known field: " + ", ".join(unplaced))
     # Each cluster has exactly one default galaxy; galaxies with primaryMsc
     # prefixes take a part of a cluster (see scripts/classification.py).
     clusters = Counter(cluster for galaxy in galaxies if not galaxy.get("primaryMsc") for cluster in galaxy["clusters"])
@@ -67,12 +77,26 @@ def apply_galaxies(atlas: dict, galaxies: list, classification: dict, distances:
     distance = {galaxy["id"]: sum(distance_of[r] for r in members[galaxy["id"]]) / len(members[galaxy["id"]])
                 for galaxy in galaxies if members[galaxy["id"]]}
     ordered = sorted((galaxy for galaxy in galaxies if members[galaxy["id"]]), key=lambda galaxy: (distance[galaxy["id"]], galaxy["id"]))
-    atlas["groups"] = [{"id": galaxy["id"], "label": galaxy["label"], "short": galaxy["short"], "caption": galaxy["caption"],
-                        "color": galaxy["color"], "direction": placed.get(galaxy["id"], {}).get("direction", galaxy.get("direction", 0)),
-                        "distance": round(distance[galaxy["id"]], 2),
-                        "roadmapIds": members[galaxy["id"]]}
-                       for galaxy in ordered]
+    areas_of = defaultdict(list)
+    for galaxy in ordered:
+        areas_of[galaxy["field"]].append(galaxy["id"])
+    groups = []
+    for galaxy in ordered:
+        field = field_by_id[galaxy["field"]]
+        name = field if len(areas_of[field["id"]]) == 1 else galaxy
+        groups.append({"id": galaxy["id"], "label": name["label"], "short": name["short"], "caption": name["caption"],
+                       "color": field["color"], "field": field["id"],
+                       "direction": placed.get(galaxy["id"], {}).get("direction", galaxy.get("direction", 0)),
+                       "distance": round(distance[galaxy["id"]], 2),
+                       "roadmapIds": members[galaxy["id"]]})
+    atlas["groups"] = groups
     atlas["meta"]["groupCount"] = len(atlas["groups"])
+    field_roadmaps = {fid: [rid for gid in gids for rid in members[gid]] for fid, gids in areas_of.items()}
+    field_distance = {fid: sum(distance_of[rid] for rid in rids) / len(rids) for fid, rids in field_roadmaps.items()}
+    atlas["fields"] = [{"id": fid, "label": field_by_id[fid]["label"], "short": field_by_id[fid]["short"], "caption": field_by_id[fid]["caption"],
+                        "color": field_by_id[fid]["color"], "groupIds": areas_of[fid], "roadmaps": len(field_roadmaps[fid]),
+                        "distance": round(field_distance[fid], 2)}
+                       for fid in sorted(areas_of, key=lambda fid: (field_distance[fid], fid))]
     links = defaultdict(Counter)
     for edge in atlas["edges"]:
         a, b = galaxy_of.get(edge["source"]), galaxy_of.get(edge["target"])

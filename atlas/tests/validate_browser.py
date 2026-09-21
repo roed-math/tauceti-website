@@ -231,16 +231,44 @@ def check_overview(page,scope,touch=False):
  # A heading waits for room rather than overlap. A large chart holds every
  # subject heading; a phone-width chart may hold back up to a quarter of them
  # and a chart under 400px tall up to 40%, which reappear as the camera closes in.
- headings=page.locator('.tau-label-galaxy').count();box=page.locator('#graph').bounding_box()
- areas=page.evaluate("() => { const g=TauExplorer.graph,t=g.transform; return TauExplorer.getUniverse().galaxies.filter(n=>{const x=n.x*t.k+t.x,y=n.y*t.k+t.y;return x>0&&x<g.width&&y>0&&y<g.height;}).length; }")
+ # A field with several areas that is small on the chart is named once for
+ # all of them; every other area on the chart has its own heading.
+ headings=page.locator('.tau-label-galaxy, .tau-label-field').count();box=page.locator('#graph').bounding_box()
+ areas=page.evaluate("""() => { const g=TauExplorer.graph,t=g.transform,d=g.debugState(),closed=new Map();
+  d.fields.filter(f=>!f.open).forEach(f=>f.galaxyIds.forEach(id=>closed.set(id,f.id)));
+  return new Set(TauExplorer.getUniverse().galaxies.filter(n=>{const x=n.x*t.k+t.x,y=n.y*t.k+t.y;return x>0&&x<g.width&&y>0&&y<g.height;}).map(n=>closed.get(n.id)||n.id)).size; }""")
  allowed=math.ceil(areas*.4) if box['height']<400 else math.ceil(areas*.25) if box['width']<600 else 0
  record(scope+' every subject heading is drawn once, legibly, without overlap',headings>=areas-allowed and labels_are_clean(page) and names_are_unique(page))
+ # One level of abstraction on every screen: the overview names no area of a field that has several.
+ record(scope+' overview names fields, not the areas inside them',page.evaluate("""() => { const d=TauExplorer.graph.debugState(),inside=new Set(d.fields.flatMap(f=>f.galaxyIds));
+  return d.fields.length>=4&&d.fields.every(f=>!f.open)&&Array.from(document.querySelectorAll('.tau-label-galaxy')).every(e=>!inside.has(e.getAttribute('data-label-for'))); }"""))
  # A large chart shows the whole universe; a much smaller one keeps the
  # desktop scale with Mathlib in view, and the reader pans.
  record(scope+' overview shows the universe, or Mathlib at desktop scale',page.evaluate("""() => { const g=TauExplorer.graph,t=g.debugState().transform,box=document.querySelector('#graph').getBoundingClientRect(); const u=TauExplorer.getUniverse(),b=u.bounds; const x0=b.x*t.k+t.x,x1=(b.x+b.w)*t.k+t.x,y0=b.y*t.k+t.y,y1=(b.y+b.h)*t.k+t.y; const fits=x0>=-2&&x1<=box.width+2&&y0>=-2&&y1<=box.height+2; const target=g.overviewTransform(); const cx=u.core.x*t.k+t.x,cy=u.core.y*t.k+t.y; const atScale=Math.abs(t.k-target.k)<1e-6*target.k+1e-9&&cx>0&&cx<box.width&&cy>0&&cy<box.height; return fits||(!fits&&atScale&&box.width<900); }"""))
  record(scope+' no links are drawn until something is selected',page.locator('.tau-link').count()==0 and page.evaluate("Array.from(document.querySelectorAll('.tau-route')).every(e=>Number(e.getAttribute('opacity'))===0)"))
  record(scope+' legend colours match the map encoding',legend_matches_map_encoding(page))
  record(scope+' page has no horizontal overflow',page.evaluate('document.documentElement.scrollWidth<=innerWidth+1'))
+def check_fields(page):
+ # Labels sit at one level of abstraction: zoomed out, a field with several
+ # areas is named once and its areas are not; zooming in names the areas.
+ fit_all(page)
+ d=debug(page)
+ closed=[f for f in d['fields'] if not f['open']]
+ inside={gid for f in closed for gid in f['galaxyIds']}
+ shown=page.evaluate("Array.from(document.querySelectorAll('.tau-label-galaxy')).map(e=>e.getAttribute('data-label-for'))")
+ fields=page.evaluate("Array.from(document.querySelectorAll('.tau-label-field')).map(e=>e.getAttribute('data-label-for'))")
+ record('Overview names fields, not the areas inside them',len(closed)>=4 and not inside.intersection(shown) and {f['id'] for f in closed}<=set(fields))
+ field='field:algebraic-number-theory'
+ label=page.locator('.tau-label-field[data-label-for="%s"]'%field)
+ label.hover();page.wait_for_timeout(300)
+ members=next(f['galaxyIds'] for f in d['fields'] if f['id']==field)
+ lit=page.evaluate("Array.from(document.querySelectorAll('.tau-galaxy')).filter(g=>Number(g.querySelector('.tau-galaxy-ring').getAttribute('opacity'))>0).map(g=>g.getAttribute('data-node-id'))")
+ record('Hovering a field\'s name outlines exactly its areas',sorted(lit)==sorted(members))
+ label.click();page.wait_for_timeout(900)
+ after=next(f for f in debug(page)['fields'] if f['id']==field)
+ named=page.evaluate("Array.from(document.querySelectorAll('.tau-label-galaxy')).map(e=>e.getAttribute('data-label-for'))")
+ record('Clicking a field\'s name zooms in until its areas are named',after['open'] and not after['labelVisible'] and len(set(members)&set(named))>=len(members)-1 and page.locator('.tau-label-field[data-label-for="%s"]'%field).count()==0)
+ page.mouse.move(5,5);fit_all(page)
 def check_hover_links(page):
  heading=page.locator('.tau-label-galaxy').first
  heading.hover();page.wait_for_timeout(200)
@@ -337,7 +365,7 @@ def check_performance(page):
 def run_overview_checks(page,browser):
  global mp
  fit_all(page);page.screenshot(path=str(ROOT/'preview-desktop-universe.png'),animations='disabled')
- check_overview(page,'Desktop');check_hover_links(page);check_catalogue_selection(page,'Desktop')
+ check_overview(page,'Desktop');check_hover_links(page);check_fields(page);check_catalogue_selection(page,'Desktop')
  if desktop_only:return
  mobile=browser.new_context(viewport={'width':390,'height':844},device_scale_factor=2,is_mobile=True,has_touch=True)
  mp=mobile.new_page();mp.on('pageerror',lambda e:errors.append('mobile overview: '+str(e)))
@@ -372,7 +400,7 @@ with sync_playwright() as p:
   browser.close();write_report('references desktop' if desktop_only else 'references desktop and mobile');sys.exit(0)
  record('Native offline mathematics renders',page.evaluate("() => {const d=TauMarkdown.render('$x^2$');return !!d.querySelector('math')}"))
  record('Snapshot records match the build report',page.evaluate("TauExplorer.data.roadmaps.length===%d && TauExplorer.data.stages.filter(s=>!s.expansion).length===%d && TauExplorer.data.stages.length===%d && TauExplorer.data.stages.filter(s=>s.expansion).length===%d"%(BUILD['roadmaps'],BUILD['originalStages'],BUILD.get('stages',1604),BUILD.get('sourceRefinements',0))))
- check_overview(page,'Desktop');check_hover_links(page);check_performance(page)
+ check_overview(page,'Desktop');check_hover_links(page);check_fields(page);check_performance(page)
  page.screenshot(path=str(ROOT/'preview-overview.png'),animations='disabled')
  record('No placeholder areas are drawn',page.evaluate("TauExplorer.data.opportunities.areas.length===0") and page.locator('.tau-unmapped-node').count()==0 and page.locator('#show-unmapped').count()==0)
  # Recorded and audited statuses change as the data grows, so the blank cases are chosen from the data.

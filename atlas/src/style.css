@@ -63,6 +63,7 @@ body.has-selection .app-layout{grid-template-columns:236px minmax(320px,1fr) 380
 .pin-item:hover{background:var(--hover);color:var(--ink)}
 .catalogue{flex:1;overflow:auto;padding:8px 8px 12px}
 .catalogue-heading{font-size:11px;color:var(--faint);padding:6px 8px 4px}
+.catalogue-field{font-size:10.5px;font-weight:600;letter-spacing:.4px;text-transform:uppercase;color:var(--faint);padding:10px 8px 2px}
 .catalogue details{margin:0}
 .catalogue summary{display:flex;align-items:center;gap:8px;padding:6px 8px;font-size:12px;color:var(--ink-soft);cursor:pointer;list-style:none;border-radius:4px;line-height:1.35}
 .catalogue summary::-webkit-details-marker{display:none}

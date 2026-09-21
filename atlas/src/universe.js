@@ -388,8 +388,23 @@
       galaxy.left = Math.min(dustLeft, ...members.map(c => c.x - c.r));
       galaxy.right = Math.max(dustRight, ...members.map(c => c.x + c.r));
     });
+    // A field groups areas. Zoomed out, a field with several areas is named
+    // once, over the extent of its areas; zooming in names the areas.
+    const fields = (input.fields || []).map(field => ({
+      id: 'field:' + field.id, level: 'field', label: field.label, short: field.short || '', caption: field.caption || null,
+      galaxyIds: (field.groupIds || []).filter(id => galaxyById.has(id) && galaxyById.get(id).constellationIds.length)
+    })).filter(field => field.galaxyIds.length > 1);
+    fields.forEach(field => {
+      const members = field.galaxyIds.map(id => galaxyById.get(id));
+      members.forEach(galaxy => { galaxy.fieldId = field.id; });
+      field.count = members.reduce((total, galaxy) => total + galaxy.count, 0);
+      field.left = Math.min(...members.map(g => g.left)); field.right = Math.max(...members.map(g => g.right));
+      field.top = Math.min(...members.map(g => g.top)); field.bottom = Math.max(...members.map(g => g.bottom));
+      field.x = (field.left + field.right) / 2; field.y = (field.top + field.bottom) / 2;
+      field.w = field.right - field.left; field.h = field.bottom - field.top;
+    });
     const byId = new Map();
-    [...populated, ...constellations, ...stars, ...planets].forEach(node => byId.set(node.id, node));
+    [...fields, ...populated, ...constellations, ...stars, ...planets].forEach(node => byId.set(node.id, node));
     const core = radial ? { id: 'core:mathlib', level: 'core', x: 0, y: 0, r: CORE_RADIUS, label: 'Mathlib' } : null;
     const extents = populated.map(galaxy => ({ x0: galaxy.x - galaxy.rx, y0: galaxy.y - galaxy.ry, x1: galaxy.x + galaxy.rx, y1: galaxy.y + galaxy.ry }));
     if (core) extents.push({ x0: -core.r * 3.4, y0: -core.r * 1.7, x1: core.r * 3.4, y1: core.r * 1.7 });
@@ -398,7 +413,7 @@
     const bounds = populated.length ? { x: left, y: top, w: right - left, h: bottom - top } : { x: -100, y: -100, w: 200, h: 200 };
     const starIds = new Set(stars.map(star => star.id));
     return {
-      galaxies: populated, constellations, stars, planets, byId, bounds, aspect, core, layout: radial ? 'radial' : 'areas',
+      fields, galaxies: populated, constellations, stars, planets, byId, bounds, aspect, core, layout: radial ? 'radial' : 'areas',
       routes: routesBetween(populated, constellations, input.constellationEdges),
       constellationEdges: input.constellationEdges.filter(edge => constellationById.has(edge.source) && constellationById.has(edge.target)),
       starEdges: input.starEdges.filter(edge => starIds.has(edge.source) && starIds.has(edge.target)),
