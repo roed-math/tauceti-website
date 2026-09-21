@@ -163,6 +163,19 @@ class ReviewedLinks(unittest.TestCase):
         with self.assertRaises(ValueError):
             merge_links(self.atlas, [packet])
 
+    def test_links_from_upstream_prerequisites_do_not_stop_a_merge(self):
+        self.atlas["external"] = [{"id": "UPSTREAM:X"}]
+        self.atlas["stageEdges"] = [{"source": "UPSTREAM:X", "target": "A:0"}]
+        atlas = merge_links(self.atlas, [self.packet()])
+        self.assertIn(("A:0", "B:0"), {(e["source"], e["target"]) for e in atlas["stageEdges"]})
+
+    def test_a_link_to_a_layer_not_in_the_atlas_waits_and_the_rest_merges(self):
+        later = deepcopy(self.link)
+        later["target"] = "C:0"
+        atlas = merge_links(self.atlas, [self.packet(links=[deepcopy(self.link), later])])
+        self.assertEqual({(e["source"], e["target"]) for e in atlas["stageEdges"]}, {("A:0", "B:0")})
+        self.assertEqual(atlas["deferredLinks"], [{"source": "A:0", "target": "C:0", "packet": "A", "awaiting": ["C:0"]}])
+
     def test_link_that_closes_a_cycle_is_refused(self):
         reverse = deepcopy(self.link)
         reverse["source"], reverse["target"] = "B:0", "A:0"

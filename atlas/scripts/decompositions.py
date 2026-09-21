@@ -269,7 +269,8 @@ def merge_links(snapshot, packets):
 
     Each accepted link becomes a stage dependency with its quoted evidence; roadmap
     links are recomputed by merge_decompositions. A link that duplicates a recorded
-    one adds its evidence; a link that would create a cycle is refused.
+    one adds its evidence; a link that would create a cycle is refused. A link to a
+    layer not in the atlas (a roadmap still to be promoted) waits in deferredLinks.
     """
     atlas = deepcopy(snapshot)
     stages = {stage["id"]: stage for stage in atlas["stages"]}
@@ -281,8 +282,13 @@ def merge_links(snapshot, packets):
             raise ValueError(f"Link packet without an accepted review: {packet.get('roadmapId')}")
         for link in packet.get("links", []):
             source, target = link["source"], link["target"]
-            if source not in stages or target not in stages or source == target:
+            if source == target:
                 raise ValueError(f"Invalid reviewed link: {source} -> {target}")
+            missing = [end for end in (source, target) if end not in stages]
+            if missing:
+                atlas.setdefault("deferredLinks", []).append({"source": source, "target": target,
+                                                              "packet": packet["roadmapId"], "awaiting": missing})
+                continue
             require_text(link.get("reason"), f"Link {source} -> {target}")
             evidence = link.get("evidence") or []
             if len({item.get("stageId") for item in evidence} & {source, target}) < 2:
@@ -292,12 +298,12 @@ def merge_links(snapshot, packets):
                                                    "quotes": evidence, "packet": packet["roadmapId"],
                                                    "reviewer": review.get("reviewer")})
             merged += 1
-    acyclic(set(stages), edges, "reviewed roadmap links")
+    acyclic(set(stages) | {item["id"] for item in atlas.get("external", [])}, edges, "reviewed roadmap links")
     atlas["stageEdges"] = list(edges.values())
     for source, target in edges:
-        if source not in stages[target].setdefault("requires", []):
+        if target in stages and source not in stages[target].setdefault("requires", []):
             stages[target]["requires"].append(source)
-        if target not in stages[source].setdefault("consumers", []):
+        if source in stages and target not in stages[source].setdefault("consumers", []):
             stages[source]["consumers"].append(target)
     atlas.setdefault("meta", {})["reviewedLinks"] = merged
     return atlas
