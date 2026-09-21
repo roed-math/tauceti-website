@@ -258,6 +258,20 @@ def check_fields(page):
  shown=page.evaluate("Array.from(document.querySelectorAll('.tau-label-galaxy')).map(e=>e.getAttribute('data-label-for'))")
  fields=page.evaluate("Array.from(document.querySelectorAll('.tau-label-field')).map(e=>e.getAttribute('data-label-for'))")
  record('Overview names fields, not the areas inside them',len(closed)>=4 and not inside.intersection(shown) and {f['id'] for f in closed}<=set(fields))
+ # Each field with several areas is outlined faintly, as one region, behind its areas.
+ outlines=page.evaluate("Array.from(document.querySelectorAll('.tau-region')).map(e=>({id:e.getAttribute('data-field'),d:(e.getAttribute('d')||'').length,shown:e.getAttribute('display')!=='none'}))")
+ record('Each field with several areas has one faint outline',sorted(o['id'] for o in outlines)==sorted(f['id'] for f in d['fields']) and all(o['d']>50 and o['shown'] for o in outlines) and all(f['outlinePieces']==1 for f in d['fields']))
+ # A little closer: the areas are named inside the outline, which keeps its field's name in small capitals.
+ def zoom_to(factor):
+  page.evaluate("f => { const g=TauExplorer.graph; g.svg.interrupt(); const t=g.overviewTransform(),k=t.k*f,cx=(g.width/2-t.x)/t.k,cy=(g.height/2-t.y)/t.k; g.svg.call(g.zoom.transform,d3.zoomIdentity.translate(g.width/2-cx*k,g.height/2-cy*k).scale(k)); }",factor);page.wait_for_timeout(500)
+ zoom_to(1.3)
+ near=debug(page)
+ record('Zooming in names the areas inside faint outlines that keep their fields\' names',all(f['open'] for f in near['fields']) and page.locator('.tau-label-field').count()==0 and page.locator('.tau-label-region').count()>=1
+  and len(inside.intersection(page.evaluate("Array.from(document.querySelectorAll('.tau-label-galaxy')).map(e=>e.getAttribute('data-label-for'))")))>=4)
+ zoom_to(6)
+ record('Deep inside, the outlines and field names are gone',page.locator('.tau-label-region').count()==0 and page.evaluate("Array.from(document.querySelectorAll('.tau-region')).every(e=>e.getAttribute('display')==='none')"))
+ # Back to the whole map (the fit button would return to the area the camera settled in).
+ page.evaluate("TauExplorer.navigate({view:'all',id:null,layer:null,selected:null})");page.evaluate("TauExplorer.graph.fitAll(false)");page.wait_for_timeout(600)
  field='field:algebraic-number-theory'
  label=page.locator('.tau-label-field[data-label-for="%s"]'%field)
  label.hover();page.wait_for_timeout(300)
