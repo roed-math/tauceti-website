@@ -1,8 +1,11 @@
-"""Layer statuses implied by the reviewed library audit (data/library-coverage.json).
+"""What the reviewed library audit (data/library-coverage.json) changes in the atlas.
 
-A layer the accepted audit finds fully built, with declarations that show it,
-counts as complete. A partly built layer counts as in progress when nothing
-better is recorded. Recorded statuses are never lowered.
+On a Tau Ceti roadmap, a layer the accepted audit finds fully built, with
+declarations that show it, counts as complete, and a partly built one as in
+progress when nothing better is recorded; recorded statuses are never lowered.
+A proposed roadmap shows only what still has to be built: what the libraries
+already contain is its starting point, never its progress, so a layer the audit
+finds already built, or finds to be process rather than mathematics, is hidden.
 """
 from __future__ import annotations
 
@@ -37,4 +40,22 @@ def coverage_statuses(coverage: dict, current: dict, stage_ids) -> dict:
             evidence = [{"quote": "; ".join(f"{t.get('target')}: {t.get('library')}" for t in layer.get("targets") or [])}]
         out[sid] = {"status": status, "basis": "library_audit", "evidence": evidence,
                     "auditJob": layer.get("job"), "snapshotStatus": "library_audit"}
+    return out
+
+
+def already_available(coverage: dict, atlas: dict) -> dict:
+    """Presentation records hiding the layers of proposed roadmaps that the reviewed
+    audit finds already in Mathlib or Tau Ceti, or finds to be process."""
+    proposed = {roadmap["id"] for roadmap in atlas["roadmaps"] if roadmap.get("origin") != "tauceti"}
+    owner = {stage["id"]: stage["owner"] for stage in atlas["stages"]}
+    out = {}
+    for sid, layer in (coverage.get("layers") or {}).items():
+        if owner.get(sid) not in proposed:
+            continue
+        if layer.get("verdict") == "built" and layer.get("evidence"):
+            names = sorted({item.get("name") for item in layer["evidence"] if item.get("name")})
+            out[sid] = {"hidden": True, "summary": "Already in Mathlib or Tau Ceti, by the reviewed library audit: " + ", ".join(names[:6]) + "."}
+        elif layer.get("verdict") == "process":
+            what = "; ".join(t.get("target", "") for t in layer.get("targets") or [] if t.get("target"))
+            out[sid] = {"hidden": True, "summary": ("Process, not mathematics, by the reviewed library audit: " + what)[:400]}
     return out

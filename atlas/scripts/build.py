@@ -14,7 +14,7 @@ sys.path.insert(0, str(ROOT / "scripts"))
 from decompositions import merge_decompositions, merge_links  # noqa: E402
 from galaxies import apply_galaxies  # noqa: E402
 from retirements import apply_retirements, load_retirements  # noqa: E402
-from library_coverage import coverage_statuses, load_coverage  # noqa: E402
+from library_coverage import already_available, coverage_statuses, load_coverage  # noqa: E402
 
 
 def load_decompositions() -> list:
@@ -76,7 +76,9 @@ def build(output: Path) -> dict:
     atlas["progress"]["stages"].update(atlas["mappedStageStatuses"])
     # The reviewed library audit marks layers that Mathlib or Tau Ceti already contain.
     coverage = load_coverage(ROOT)
-    atlas["libraryStatuses"] = coverage_statuses(coverage, atlas["progress"]["stages"], {stage["id"] for stage in atlas["stages"]})
+    tauceti_roadmaps = {roadmap["id"] for roadmap in atlas["roadmaps"] if roadmap.get("origin") == "tauceti"}
+    atlas["libraryStatuses"] = coverage_statuses(coverage, atlas["progress"]["stages"],
+                                                 {stage["id"] for stage in atlas["stages"] if stage.get("owner") in tauceti_roadmaps})
     atlas["progress"]["stages"].update(atlas["libraryStatuses"])
     atlas["libraryCoverage"] = {"reviews": coverage.get("reviews", {}), "pendingReview": coverage.get("pendingReview", []),
                                 "layers": {sid: {"verdict": layer["verdict"], "duplicates": layer.get("duplicates", [])}
@@ -100,8 +102,15 @@ def build(output: Path) -> dict:
     def keep_stage(key):
         return key.split("::landmark:")[0] not in retired_stages
     atlas["stagePresentation"] = {k: v for k, v in json.loads(read_text("data/stage-presentation.json")).items() if keep_stage(k)}
-    atlas["landmarkLabels"] = {k: v for k, v in json.loads(read_text("data/landmark-labels.json")).items() if keep_stage(k)}
-    atlas["landmarkHidden"] = {k: v for k, v in json.loads(read_text("data/landmark-hidden.json")).items() if keep_stage(k)}
+    # A proposed roadmap shows only what still has to be built.
+    for stage_id, item in already_available(coverage, atlas).items():
+        if keep_stage(stage_id):
+            atlas["stagePresentation"][stage_id] = {**atlas["stagePresentation"].get(stage_id, {}), **item}
+    # Planet names and hidden planets matter only on layers that are drawn.
+    def drawn_stage(key):
+        return keep_stage(key) and not atlas["stagePresentation"].get(key.split("::landmark:")[0], {}).get("hidden")
+    atlas["landmarkLabels"] = {k: v for k, v in json.loads(read_text("data/landmark-labels.json")).items() if drawn_stage(k)}
+    atlas["landmarkHidden"] = {k: v for k, v in json.loads(read_text("data/landmark-hidden.json")).items() if drawn_stage(k)}
     # Edited overview summaries: mathematical prose for readers, keyed by roadmap id.
     atlas["roadmapSummaries"] = {k: v for k, v in json.loads(read_text("data/roadmap-summaries.json")).items() if k not in retired}
     roadmap_ids = {roadmap["id"] for roadmap in atlas["roadmaps"]}

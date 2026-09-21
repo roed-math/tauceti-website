@@ -258,9 +258,10 @@ def declaration_metrics(graph: dict, own_layers: list) -> dict:
 
 def structure(atlas: dict, root: Path = ROOT) -> tuple:
     """Per-roadmap structural measures, and the graph they came from."""
-    from library_coverage import load_coverage
+    from library_coverage import already_available, load_coverage
     presentation = load(root / "data" / "stage-presentation.json")
     hidden = {sid for sid, item in presentation.items() if isinstance(item, dict) and item.get("hidden")}
+    hidden |= set(already_available(load_coverage(root), atlas))
     graph = TheoryGraph(atlas, stage_statuses(root), hidden, coverage=load_coverage(root))
     declarations = declaration_graphs(root)
     # A collection roadmap is measured by its child roadmaps together.
