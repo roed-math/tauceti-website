@@ -1,0 +1,75 @@
+name: Swarm intake
+
+# Merges workers' pull requests once "Swarm submission check" has passed on their
+# latest commit, then records the jobs in the queue: a complete job goes to its
+# review, a checkpoint is released for the next worker. A pull request that is not
+# a ready submission for one unfinished job is left to the maintainer, with a
+# comment saying why (research/blueprint/intake.py). When a check fails, the pull
+# request is told where to read the errors. Runs the main branch's code only.
+#
+# Each run sweeps every open pull request, so a run that GitHub cancels while
+# another is in progress loses nothing; the schedule is a safety net.
+on:
+  workflow_run:
+    workflows: ["Swarm submission check"]
+    types: [completed]
+  schedule:
+    - cron: '17 */2 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+
+# One intake at a time, so merges and queue commits never race each other.
+concurrency:
+  group: swarm-intake
+  cancel-in-progress: false
+
+jobs:
+  intake:
+    if: github.event_name != 'workflow_run' || github.event.workflow_run.event == 'pull_request'
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Report a failed check
+        if: github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'failure'
+        env:
+          HEAD_BRANCH: ${{ github.event.workflow_run.head_branch }}
+          HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+          PULL_REQUESTS: ${{ toJSON(github.event.workflow_run.pull_requests) }}
+          RUN_URL: ${{ github.event.workflow_run.html_url }}
+        run: |
+          PR=$(python3 -c "import json, os; prs = json.loads(os.environ['PULL_REQUESTS'] or '[]'); print(prs[0]['number'] if prs else '')")
+          if [ -z "$PR" ]; then
+            PR=$(gh pr list --state open --head "$HEAD_BRANCH" --json number,headRefOid --jq ".[] | select(.headRefOid == \"$HEAD_SHA\") | .number" | head -n 1)
+          fi
+          # Only a check of the pull request's current commit counts.
+          if [ -n "$PR" ] && [ "$(gh pr view "$PR" --json state,headRefOid --jq 'select(.state == "OPEN") | .headRefOid')" = "$HEAD_SHA" ]; then
+            gh pr comment "$PR" --body "Swarm intake: the submission check failed on ${HEAD_SHA:0:7}, so nothing was merged. The errors are in the check's summary: $RUN_URL. Fix them on the same branch; the pull request is merged automatically once the check passes."
+          fi
+      - name: Merge every submission whose check has passed
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          python3 research/blueprint/intake.py sweep --yes
+      - name: Record the jobs in the queue
+        run: |
+          python3 research/blueprint/issues.py sync
+          if ! git diff --quiet -- research/blueprint/queue.json; then
+            git add research/blueprint/queue.json
+            git commit -q -m "Queue: record the swarm intake"
+            for attempt in 1 2 3 4 5; do
+              git pull --rebase -q && git push -q && exit 0
+              sleep $((attempt * 10))
+            done
+            exit 1
+          fi

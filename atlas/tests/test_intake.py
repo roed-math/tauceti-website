@@ -7,7 +7,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "research" / "blueprint"))
-from intake import auto_refusals, claimants, file_problems, issue_for, job_for, own_files  # noqa: E402
+from intake import auto_refusals, claimants, file_problems, issue_for, job_for, own_files, swarm_checked  # noqa: E402
 
 RS = "research/blueprint/restructure/"
 JOBS = [{"id": "RS-28", "kind": "restructure", "state": "pending", "after": [],
@@ -55,6 +55,20 @@ class AutomaticMerge(unittest.TestCase):
 
     def test_a_draft_waits(self):
         self.assertIn("the pull request is a draft", auto_refusals(BY_ID["RS-28"], [RS + "RS-28.md"], True, set(), set()))
+
+    def test_a_second_submission_for_a_finished_job_is_left_to_the_maintainer(self):
+        # Two workers did the same job: the first merge completed it on main.
+        found = auto_refusals(BY_ID["RS-28"], [RS + "RS-28.md"], False, set(), set(), already_complete=True)
+        self.assertIn("RS-28's deliverables on main are already complete", found)
+
+    def test_only_pull_requests_whose_submission_check_passed_are_swept(self):
+        def pr(*checks):
+            return {"statusCheckRollup": [{"workflowName": name, "name": "check", "status": "COMPLETED", "conclusion": result}
+                                          for name, result in checks]}
+        self.assertTrue(swarm_checked(pr(("Swarm submission check", "SUCCESS"))))
+        self.assertFalse(swarm_checked(pr(("Swarm submission check", "FAILURE"))))
+        self.assertFalse(swarm_checked(pr(("Some other workflow", "SUCCESS"))))
+        self.assertFalse(swarm_checked(pr()))
 
     def test_nobody_reviews_their_own_work(self):
         review = ["research/blueprint/reviews/REV-RS-28.md"]

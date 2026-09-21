@@ -1,0 +1,32 @@
+name: Swarm submissions
+
+# Keeps a job's issue in step with the worker's pull request: opening it marks the
+# job "state:submitted", so nobody else claims it while it waits for the check
+# and the intake; closing it unmerged makes the job available again. Runs the
+# main branch's code only, never the pull request's.
+on:
+  pull_request_target:
+    types: [opened, reopened, closed]
+    paths:
+      - 'research/**'
+
+permissions:
+  contents: read
+  issues: write
+  pull-requests: read
+
+jobs:
+  mark:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Mark the job's issue
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR: ${{ github.event.pull_request.number }}
+          ACTION: ${{ github.event.action }}
+          MERGED: ${{ github.event.pull_request.merged }}
+        run: python3 research/blueprint/intake.py mark "$PR" "$ACTION" "$MERGED"

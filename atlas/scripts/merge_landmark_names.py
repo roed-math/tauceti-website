@@ -1,9 +1,10 @@
 """Validate a landmark-naming result and merge accepted names into data/landmark-labels.json.
 
-Usage: python3 scripts/merge_landmark_names.py research/expansion/naming/NAME-13.result.json [--apply]
+Usage: python3 scripts/merge_landmark_names.py research/expansion/naming/NAME-13.result.json [--apply] [--strict]
 
 Without --apply nothing is written; the report lists what would be accepted and why
-each rejected entry fails. Rules (all mechanical):
+each rejected entry fails. The exit status is 1 when a planet of the job is undecided or,
+with --strict (the pull-request check), when any entry is rejected. Rules (all mechanical):
   * every result id must be a planet listed in research/expansion/naming/planets-current.json
     (or, for the first batches, landmarks-all.json), and every planet of the job must be decided
     exactly once;
@@ -139,7 +140,7 @@ def main(argv):
         (ROOT / 'data/landmark-hidden.json').write_text(json.dumps(dict(sorted(hidden.items())), indent=2, ensure_ascii=False) + '\n')
         (ROOT / f'research/expansion/naming/{job}.procedural.json').write_text(json.dumps(procedural, indent=2, ensure_ascii=False) + '\n')
         print(f'applied: {len(merged)} names, {len(hidden)} hidden planets; {len(procedural)} dropped by this job')
-    return 0 if not undecided else 1
+    return 1 if undecided or ('--strict' in argv and rejected) else 0
 
 
 if __name__ == '__main__':

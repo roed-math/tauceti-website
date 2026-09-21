@@ -1,13 +1,16 @@
 name: Swarm submission check
 
-# Validates blueprint packets and link files in pull requests against the
-# pinned Mathlib and Tau Ceti commits in research/blueprint/baseline.json.
+# Checks a worker's pull request. Every changed file must be a swarm deliverable
+# with no local paths and, where it is JSON, valid JSON; nothing may be deleted.
+# Blueprint packets and link maps are checked against the pinned Mathlib and
+# Tau Ceti commits in research/blueprint/baseline.json, restructuring proposals
+# against PROTOCOL.md section 15, and planet names by the naming rules. When the
+# check passes, the "Swarm intake" workflow merges the pull request.
 on:
   pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
     paths:
-      - 'research/blueprint/packets/**'
-      - 'research/blueprint/links/**'
-      - 'research/blueprint/roadmaps/**'
+      - 'research/**'
 
 permissions:
   contents: read
@@ -15,6 +18,9 @@ permissions:
 jobs:
   check:
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        shell: bash
     steps:
       - uses: actions/checkout@v4
         with:
@@ -22,7 +28,19 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
+      - name: List the changed files
+        id: changed
+        env:
+          BASE: ${{ github.event.pull_request.base.sha }}
+        run: |
+          git diff --name-only --no-renames --diff-filter=AM "$BASE" HEAD > "$RUNNER_TEMP/changed.txt"
+          git diff --name-only --no-renames --diff-filter=D "$BASE" HEAD > "$RUNNER_TEMP/deleted.txt"
+          cat "$RUNNER_TEMP/changed.txt"
+          if grep -qE '^research/blueprint/(packets|links)/[^/]+\.json$' "$RUNNER_TEMP/changed.txt"; then
+            echo "baseline=true" >> "$GITHUB_OUTPUT"
+          fi
       - name: Fetch the pinned library sources
+        if: steps.changed.outputs.baseline == 'true'
         run: |
           TAUCETI=$(python3 -c "import json;print(json.load(open('research/blueprint/baseline.json'))['tauceti'])")
           MATHLIB=$(python3 -c "import json;print(json.load(open('research/blueprint/baseline.json'))['mathlib'])")
@@ -35,14 +53,24 @@ jobs:
             git -C "$RUNNER_TEMP/baseline/$1" checkout -q FETCH_HEAD
           done
           python3 research/blueprint/index_declarations.py "$RUNNER_TEMP/baseline"
-      - name: Check changed files
+      - name: Check the changed files
         env:
           TAUCETI_BASELINE: ${{ runner.temp }}/baseline
         run: |
-          BASE=${{ github.event.pull_request.base.sha }}
           status=0
-          packets=$(git diff --name-only --diff-filter=AM "$BASE" HEAD -- 'research/blueprint/packets/*.json')
-          links=$(git diff --name-only --diff-filter=AM "$BASE" HEAD -- 'research/blueprint/links/*.json')
+          changed() { grep -E "$1" "$RUNNER_TEMP/changed.txt" || true; }
+          if [ -s "$RUNNER_TEMP/deleted.txt" ]; then
+            echo "A submission adds or edits deliverables; it deletes nothing. Deleted:" | tee -a "$GITHUB_STEP_SUMMARY"
+            tee -a "$GITHUB_STEP_SUMMARY" < "$RUNNER_TEMP/deleted.txt"
+            status=1
+          fi
+          python3 research/blueprint/intake.py check-files $(cat "$RUNNER_TEMP/changed.txt") | tee -a "$GITHUB_STEP_SUMMARY" || status=1
+          packets=$(changed '^research/blueprint/packets/[^/]+\.json$')
+          links=$(changed '^research/blueprint/links/[^/]+\.json$')
+          proposals=$(changed '^research/blueprint/restructure/RS-[0-9]+\.result\.json$')
+          names=$(changed '^research/expansion/naming/(NAME|PLANETS)-[0-9]+\.result\.json$')
           if [ -n "$packets" ]; then python3 scripts/check_blueprint.py $packets | tee -a "$GITHUB_STEP_SUMMARY" || status=1; fi
           if [ -n "$links" ]; then python3 scripts/check_links.py $links | tee -a "$GITHUB_STEP_SUMMARY" || status=1; fi
+          if [ -n "$proposals" ]; then python3 scripts/check_restructure.py $proposals | tee -a "$GITHUB_STEP_SUMMARY" || status=1; fi
+          for result in $names; do python3 scripts/merge_landmark_names.py "$result" --strict | tee -a "$GITHUB_STEP_SUMMARY" || status=1; done
           exit $status
