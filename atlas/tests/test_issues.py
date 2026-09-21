@@ -7,7 +7,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "research" / "blueprint"))
-from issues import deliverables_complete, labels_for, publicize, refresh_payload, transition  # noqa: E402
+from issues import body, deliverables_complete, labels_for, publicize, refresh_payload, title, transition  # noqa: E402
 
 
 def job(jid, state="pending", after=(), kind="review"):
@@ -126,6 +126,27 @@ class Deliverables(unittest.TestCase):
         self.write("packets/links-R.json", {"status": "complete"})
         self.assertTrue(deliverables_complete(links, self.root))
 
+    def test_a_red_team_is_finished_when_its_result_says_so(self):
+        attack = {"id": "RT-AUDIT-01", "kind": "redteam", "outputs": ["packets/RT-AUDIT-01.result.json", "packets/RT-AUDIT-01.md"]}
+        self.write("packets/RT-AUDIT-01.md", "Report.")
+        self.write("packets/RT-AUDIT-01.result.json", {"status": "partial"})
+        self.assertFalse(deliverables_complete(attack, self.root))
+        self.write("packets/RT-AUDIT-01.result.json", {"status": "complete"})
+        self.assertTrue(deliverables_complete(attack, self.root))
+
+
+class RedTeamText(unittest.TestCase):
+    def test_an_area_red_team_looks_for_what_is_missing_and_a_job_red_team_attacks_accepted_work(self):
+        area = {"id": "RT-AREA-padic-1", "kind": "redteam", "priority": 2, "name": "area: p-adic geometry, part 1 of 3", "roadmapIds": [], "after": []}
+        attack = dict(area, id="RT-AUDIT-01", name="library audit AUDIT-01")
+        self.assertIn("What the area is missing", body(area, [area], {}, {}))
+        self.assertNotIn("An attack on accepted work", body(area, [area], {}, {}))
+        self.assertIn("An attack on accepted work", body(attack, [attack], {}, {}))
+        self.assertEqual(title(area, {}), "[Red team] area: p-adic geometry, part 1 of 3")
+
+    def test_the_issue_names_the_work_its_worker_must_not_have_done(self):
+        attack = {"id": "RT-AUDIT-01", "kind": "redteam", "priority": 2, "roadmapIds": [], "after": [], "independentOf": ["AUDIT-01", "REV-AUDIT-01"]}
+        self.assertIn("Must be done by an agent that did none of `AUDIT-01`, `REV-AUDIT-01`.", body(attack, [attack], {}, {}))
 
 class PublicText(unittest.TestCase):
     def test_swarm_host_paths_never_reach_an_issue(self):

@@ -83,6 +83,12 @@ class AutomaticMerge(unittest.TestCase):
         broken = rollup(("Swarm submission check", "check", "SUCCESS", "13:11"), ("Swarm submission check", "check", "FAILURE", "13:12"))
         self.assertFalse(swarm_checked(broken))
 
+    def test_a_red_teamer_attacks_only_work_they_neither_did_nor_reviewed(self):
+        red = {"id": "RT-AUDIT-07", "kind": "redteam", "state": "pending", "after": [], "independentOf": ["AUDIT-07", "REV-AUDIT-07"],
+               "outputs": ["research/blueprint/redteam/RT-AUDIT-07.result.json"]}
+        self.assertIn("the red teamer codex-1 also did AUDIT-07 or REV-AUDIT-07",
+                      auto_refusals(red, ["research/blueprint/redteam/RT-AUDIT-07.result.json"], False, {"codex-1"}, {"codex-1"}))
+
     def test_nobody_reviews_their_own_work(self):
         review = ["research/blueprint/reviews/REV-RS-28.md"]
         self.assertIn("the reviewer codex-a71f92 also did RS-28",
