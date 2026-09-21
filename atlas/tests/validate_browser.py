@@ -35,6 +35,17 @@ def wheel_until(page, selector, delta, predicate, attempts=12):
    return True
   except PlaywrightTimeoutError:pass
  return bool(page.evaluate(predicate))
+def tap_until(page, selector, predicate, attempts=4):
+ # A tap made while a touch scroll is still settling can be taken as part of
+ # the scroll on a slow machine; tap again until the state changes.
+ for attempt in range(attempts):
+  page.locator(selector).tap()
+  try:
+   page.wait_for_function(predicate, timeout=5000);return
+  except PlaywrightTimeoutError:
+   if attempt==attempts-1:raise
+   page.wait_for_timeout(500)
+
 def touch_points(points):
  return [dict(x=x,y=y,id=i+1,radiusX=5,radiusY=5,force=1) for i,(x,y) in enumerate(points)]
 def touch_swipe(page, session, start, end, steps=10):
@@ -568,9 +579,9 @@ with sync_playwright() as p:
   record('Phone mathematical text has a readable size and no page overflow',mp.locator('.landmark-description').evaluate('(e)=>parseFloat(getComputedStyle(e).fontSize)>=12') and mp.evaluate('document.documentElement.scrollWidth<=innerWidth+1'))
   record('Phone system labels are legible and disjoint',labels_are_clean(mp) and names_are_unique(mp))
   mp.screenshot(path=str(ROOT/'preview-phone-planet.png'),animations='disabled')
-  mp.locator('.cosmic-back').tap();mp.wait_for_function("!TauExplorer.getState().layer");mp.wait_for_timeout(500)
-  mp.locator('.cosmic-back').tap();mp.wait_for_function("TauExplorer.getState().view==='group'");mp.wait_for_timeout(500)
-  mp.locator('.cosmic-back').tap();mp.wait_for_function("TauExplorer.getState().view==='all'")
+  tap_until(mp,'.cosmic-back',"!TauExplorer.getState().layer");mp.wait_for_timeout(500)
+  tap_until(mp,'.cosmic-back',"TauExplorer.getState().view==='group'");mp.wait_for_timeout(500)
+  tap_until(mp,'.cosmic-back',"TauExplorer.getState().view==='all'")
   record('Phone back buttons retrace every level',mp.evaluate("!TauExplorer.getState().layer && TauExplorer.graph.debugState().counts.constellations===%d"%BUILD['roadmaps']))
   mp.set_viewport_size({'width':375,'height':812});mp.wait_for_timeout(500);fit_all(mp,touch=True)
   check_overview(mp,'Narrow phone',touch=True)
