@@ -30,11 +30,12 @@ jobs:
           python-version: '3.12'
       - name: List the changed files
         id: changed
-        env:
-          BASE: ${{ github.event.pull_request.base.sha }}
+        # The checkout is the pull request merged into the current base branch, so
+        # its first parent is that base: the diff is the pull request's own changes,
+        # however far the base branch has moved since the pull request was opened.
         run: |
-          git diff --name-only --no-renames --diff-filter=AM "$BASE" HEAD > "$RUNNER_TEMP/changed.txt"
-          git diff --name-only --no-renames --diff-filter=D "$BASE" HEAD > "$RUNNER_TEMP/deleted.txt"
+          git diff --name-only --no-renames --diff-filter=AM HEAD^1 HEAD > "$RUNNER_TEMP/changed.txt"
+          git diff --name-only --no-renames --diff-filter=D HEAD^1 HEAD > "$RUNNER_TEMP/deleted.txt"
           cat "$RUNNER_TEMP/changed.txt"
           if grep -qE '^research/blueprint/(packets|links)/[^/]+\.json$' "$RUNNER_TEMP/changed.txt"; then
             echo "baseline=true" >> "$GITHUB_OUTPUT"
