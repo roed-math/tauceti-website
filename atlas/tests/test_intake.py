@@ -7,7 +7,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "research" / "blueprint"))
-from intake import auto_refusals, claimants, file_problems, issue_for, job_for, own_files, swarm_checked  # noqa: E402
+from intake import auto_refusals, claimants, file_problems, issue_for, job_for, latest_checks, mark_state, own_files, swarm_checked  # noqa: E402
 
 RS = "research/blueprint/restructure/"
 JOBS = [{"id": "RS-28", "kind": "restructure", "state": "pending", "after": [],
@@ -17,6 +17,12 @@ JOBS = [{"id": "RS-28", "kind": "restructure", "state": "pending", "after": [],
         {"id": "PLANETS-01", "kind": "naming", "state": "done", "after": [],
          "outputs": ["research/expansion/naming/PLANETS-01.result.json"]}]
 BY_ID = {job["id"]: job for job in JOBS}
+
+
+def rollup(*runs):
+    return {"statusCheckRollup": [{"__typename": "CheckRun", "workflowName": workflow, "name": name, "status": "COMPLETED",
+                                   "conclusion": result, "startedAt": f"2026-09-21T{time}:00Z"}
+                                  for workflow, name, result, time in runs]}
 
 
 class Job(unittest.TestCase):
@@ -62,19 +68,50 @@ class AutomaticMerge(unittest.TestCase):
         self.assertIn("RS-28's deliverables on main are already complete", found)
 
     def test_only_pull_requests_whose_submission_check_passed_are_swept(self):
-        def pr(*checks):
-            return {"statusCheckRollup": [{"workflowName": name, "name": "check", "status": "COMPLETED", "conclusion": result}
-                                          for name, result in checks]}
-        self.assertTrue(swarm_checked(pr(("Swarm submission check", "SUCCESS"))))
-        self.assertFalse(swarm_checked(pr(("Swarm submission check", "FAILURE"))))
-        self.assertFalse(swarm_checked(pr(("Some other workflow", "SUCCESS"))))
-        self.assertFalse(swarm_checked(pr()))
+        self.assertTrue(swarm_checked(rollup(("Swarm submission check", "check", "SUCCESS", "13:12"))))
+        self.assertFalse(swarm_checked(rollup(("Swarm submission check", "check", "FAILURE", "13:12"))))
+        self.assertFalse(swarm_checked(rollup(("Some other workflow", "check", "SUCCESS", "13:12"))))
+        self.assertFalse(swarm_checked(rollup()))
+
+    def test_only_the_latest_run_of_each_check_counts(self):
+        # A pull request run again on the same commit keeps its earlier runs in the rollup.
+        pr = rollup(("Swarm submission check", "check", "FAILURE", "13:11"), ("Swarm submission check", "check", "SUCCESS", "13:12"),
+                    ("Swarm submissions", "mark", "SUCCESS", "13:11"), ("Swarm submissions", "mark", "SUCCESS", "13:12"))
+        self.assertEqual([(c["workflowName"], c["conclusion"]) for c in latest_checks(pr["statusCheckRollup"])],
+                         [("Swarm submission check", "SUCCESS"), ("Swarm submissions", "SUCCESS")])
+        self.assertTrue(swarm_checked(pr))
+        broken = rollup(("Swarm submission check", "check", "SUCCESS", "13:11"), ("Swarm submission check", "check", "FAILURE", "13:12"))
+        self.assertFalse(swarm_checked(broken))
 
     def test_nobody_reviews_their_own_work(self):
         review = ["research/blueprint/reviews/REV-RS-28.md"]
         self.assertIn("the reviewer codex-a71f92 also did RS-28",
                       auto_refusals(BY_ID["REV-RS-28"], review, False, {"codex-a71f92"}, {"codex-a71f92", "gpt-1"}))
         self.assertEqual(auto_refusals(BY_ID["REV-RS-28"], review, False, {"astra-7c41e9"}, {"codex-a71f92"}), [])
+
+
+class Marking(unittest.TestCase):
+    """mark_state(event, merged, pull request's state now, issue labels, job done) -> label to set."""
+
+    def test_opening_a_pull_request_submits_the_job(self):
+        self.assertEqual(mark_state("opened", False, "OPEN", ["swarm", "state:claimed"], False), "state:submitted")
+        self.assertEqual(mark_state("reopened", False, "OPEN", ["swarm", "state:available"], False), "state:submitted")
+
+    def test_closing_it_unmerged_releases_the_job(self):
+        self.assertEqual(mark_state("closed", False, "CLOSED", ["swarm", "state:submitted"], False), "state:available")
+
+    def test_a_merged_or_finished_job_is_not_released(self):
+        self.assertIsNone(mark_state("closed", True, "MERGED", ["swarm", "state:submitted"], False))
+        self.assertIsNone(mark_state("closed", False, "CLOSED", ["swarm", "state:submitted"], True))
+
+    def test_an_event_overtaken_by_a_later_one_changes_nothing(self):
+        # Closed and reopened at once: each run acts only if the pull request is still as its event left it.
+        self.assertIsNone(mark_state("closed", False, "OPEN", ["swarm", "state:submitted"], False))
+        self.assertIsNone(mark_state("reopened", False, "CLOSED", ["swarm", "state:available"], False))
+
+    def test_a_blocked_or_running_job_is_left_alone(self):
+        self.assertIsNone(mark_state("opened", False, "OPEN", ["swarm", "state:blocked"], False))
+        self.assertIsNone(mark_state("opened", False, "OPEN", ["swarm", "state:running"], False))
 
 
 class Files(unittest.TestCase):

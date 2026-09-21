@@ -15,6 +15,11 @@ permissions:
   issues: write
   pull-requests: read
 
+# One event at a time per pull request, in the order they arrive.
+concurrency:
+  group: swarm-submission-${{ github.event.pull_request.number }}
+  cancel-in-progress: false
+
 jobs:
   mark:
     runs-on: ubuntu-latest
