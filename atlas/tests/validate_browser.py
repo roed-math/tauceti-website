@@ -255,7 +255,9 @@ def check_zoom_journey(page,scope):
  record(scope+' wheel zoom enters a galaxy',wheel_until(page,'.tau-galaxy[data-node-id="%s"] ellipse'%home,-300,"TauExplorer.getState().view==='group' && TauExplorer.getState().id==='%s'"%home,attempts=14))
  page.wait_for_timeout(400)
  record(scope+' inside a galaxy its constellations resolve into stars',wheel_until(page,'.tau-galaxy[data-node-id="%s"] ellipse'%home,-200,"(() => { const d=TauExplorer.graph.debugState(); return d.visible.resolved>0 && d.visible.stars>0; })()",attempts=6))
- record(scope+' wheel zoom enters a roadmap constellation',wheel_until(page,'[data-node-id="AnalyticNumberTheory"] .tau-hit',-300,"TauExplorer.getState().view==='roadmap' && TauExplorer.getState().id==='AnalyticNumberTheory' && !TauExplorer.getState().layer",attempts=14))
+ # One real wheel notch at a time (deltaY 100): a three-notch jump can carry the
+ # camera past the roadmap straight into a star, which is allowed.
+ record(scope+' wheel zoom enters a roadmap constellation',wheel_until(page,'[data-node-id="AnalyticNumberTheory"] .tau-hit',-100,"TauExplorer.getState().view==='roadmap' && TauExplorer.getState().id==='AnalyticNumberTheory' && !TauExplorer.getState().layer",attempts=24))
  record(scope+' constellation names and star names are legible and disjoint',labels_are_clean(page) and names_are_unique(page))
  record(scope+' wheel zoom enters a star system',wheel_until(page,'[data-node-id="AnalyticNumberTheory:AN.0"] .tau-hit',-300,"TauExplorer.getState().layer==='AnalyticNumberTheory:AN.0'",attempts=14))
  record(scope+' a star system shows its planets',page.locator('.tau-planet').count()>0 and page.locator('.tau-orbit').count()>0)

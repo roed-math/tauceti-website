@@ -124,6 +124,14 @@
       node.addEventListener('touchstart', event => { this.gestureTouches = Math.max(this.gestureTouches, event.touches.length); if (event.touches.length >= 2) this.suppressClicksUntil = Infinity; }, { passive: true, capture: true });
       node.addEventListener('touchend', gestureEnded, { passive: true, capture: true });
       node.addEventListener('touchcancel', gestureEnded, { passive: true, capture: true });
+      // Something the camera carries under a resting pointer is not being
+      // pointed at: after a travel, hovering waits until the pointer moves.
+      // Pointer events report fractional pixels and mouse events whole ones.
+      this.pointer = null; this.pointerAtTravel = null;
+      node.addEventListener('pointermove', event => {
+        this.pointer = [event.clientX, event.clientY];
+        if (!this.pointerResting(event)) this.pointerAtTravel = null;
+      }, { passive: true });
       this.width = 800; this.height = 600;
       this.resize = () => {
         if (this.destroyed) return;
@@ -184,31 +192,23 @@
       field.selectAll('circle').data(stars).enter().append('circle').attr('class', 'tau-field').attr('cx', d => d.x).attr('cy', d => d.y).attr('r', d => d.r).attr('fill', '#c7d3df').attr('opacity', d => d.opacity);
     }
 
-    // Mathlib at the centre, drawn flat: a black disc with a thin photon ring,
-    // the far side of the accretion disc lensed into arcs above and below,
-    // and the near side crossing in front as a flattened band.
+    // Mathlib at the centre, drawn flat as a sun: a golden disc inside a ring
+    // of short rays, long and short in turn. Its gold lies outside both the
+    // red-to-white progress ramp and the planets' colours.
     drawCore() {
       const core = this.universe.core, layer = this.layers.core;
       if (!core) return;
       const r = core.r, g = layer.append('g').attr('class', 'tau-core').attr('data-node-id', core.id).attr('transform', `translate(${core.x},${core.y})`);
-      const WARM = '#dcc49b', BRIGHT = '#f1e6cc';
-      // The near side of the disc: long, thin, almost edge-on bands.
-      const front = [[2.9, .075, .75, 2.4], [2.5, .06, .5, 1.4], [3.3, .095, .28, 1]];
-      const half = (rx, ry, sweep) => `M${-rx},0A${rx},${ry} 0 0,${sweep} ${rx},0`;
-      front.forEach(([a, b, opacity, width]) => g.append('path').attr('class', 'tau-core-band').attr('d', half(r * a, r * b, 1)).attr('fill', 'none')
-        .attr('stroke', WARM).attr('stroke-width', width).attr('vector-effect', 'non-scaling-stroke').attr('opacity', opacity * .6));
-      // The far side, lensed over the top of the hole and, faintly, beneath it.
-      [[1.18, 1.16, .9, 3.2], [1.28, 1.24, .55, 2], [1.42, 1.36, .28, 1.3], [1.6, 1.5, .14, 1]].forEach(([a, b, opacity, width]) =>
-        g.append('path').attr('class', 'tau-core-lens').attr('d', half(r * a, r * b, 1)).attr('fill', 'none').attr('stroke', WARM)
-          .attr('stroke-width', width).attr('vector-effect', 'non-scaling-stroke').attr('opacity', opacity));
-      [[1.1, 1.06, .45, 1.6], [1.2, 1.12, .2, 1]].forEach(([a, b, opacity, width]) =>
-        g.append('path').attr('class', 'tau-core-lens').attr('d', half(r * a, r * b, 0)).attr('fill', 'none').attr('stroke', WARM)
-          .attr('stroke-width', width).attr('vector-effect', 'non-scaling-stroke').attr('opacity', opacity));
-      g.append('circle').attr('class', 'tau-core-disc').attr('r', r).attr('fill', '#010203');
-      g.append('circle').attr('class', 'tau-core-ring').attr('r', r * 1.03).attr('fill', 'none').attr('stroke', BRIGHT)
-        .attr('stroke-width', 1.6).attr('vector-effect', 'non-scaling-stroke').attr('opacity', .9);
-      front.forEach(([a, b, opacity, width]) => g.append('path').attr('class', 'tau-core-band').attr('d', half(r * a, r * b, 0)).attr('fill', 'none')
-        .attr('stroke', index => BRIGHT).attr('stroke-width', width).attr('vector-effect', 'non-scaling-stroke').attr('opacity', opacity));
+      const SUN = '#f2c14e', RAY = '#f6d47a', RAYS = 24;
+      for (let i = 0; i < RAYS; i++) {
+        const angle = i / RAYS * 2 * Math.PI, long = i % 2 === 0, inner = r * 1.2, outer = r * (long ? 1.62 : 1.42);
+        g.append('line').attr('class', 'tau-core-ray')
+          .attr('x1', (Math.cos(angle) * inner).toFixed(2)).attr('y1', (Math.sin(angle) * inner).toFixed(2))
+          .attr('x2', (Math.cos(angle) * outer).toFixed(2)).attr('y2', (Math.sin(angle) * outer).toFixed(2))
+          .attr('stroke', RAY).attr('stroke-width', long ? 1.8 : 1.2).attr('stroke-linecap', 'round')
+          .attr('vector-effect', 'non-scaling-stroke').attr('opacity', long ? .85 : .55);
+      }
+      g.append('circle').attr('class', 'tau-core-disc').attr('r', r).attr('fill', SUN);
       g.append('title').text('Mathlib: the formalised baseline. Subjects and roadmaps lie farther out the more theory must be built before their targets can be stated and proved.');
     }
 
@@ -291,8 +291,8 @@
       // A very short chart leaves the centre unnamed so the nearest subjects keep theirs.
       if (universe.core && this.height >= 330 && intersects(universe.core.x, universe.core.y, universe.core.r * 3)) {
         const core = universe.core;
-        labels.push({ id: 'core:' + core.id, nodeId: core.id, kind: 'core', x: core.x, y: core.y + core.r * 1.62 + 12 / k, lines: ['Mathlib'], font: T.small ? 11 : 12,
-          anchor: 'middle', above: false, priority: 200, active: false, alternatives: [{ x: core.x, y: core.y + core.r * 1.05 + 12 / k, above: false }, { x: core.x, y: core.y - core.r * 1.5 - 6 / k, above: true }] });
+        labels.push({ id: 'core:' + core.id, nodeId: core.id, kind: 'core', x: core.x, y: core.y + core.r * 1.75 + 12 / k, lines: ['Mathlib'], font: T.small ? 11 : 12,
+          anchor: 'middle', above: false, priority: 200, active: false, alternatives: [{ x: core.x, y: core.y - core.r * 1.75 - 6 / k, above: true }] });
       }
       galaxies.forEach(galaxy => {
         const screenW = galaxy.w * k;
@@ -496,7 +496,7 @@
       (this.visible ? this.visible.planets : []).forEach(p => { const r = p.r * k; if (r >= 2.5) solids.push({ owner: p.id, x: p.x * k + t.x, y: p.y * k + t.y, r }); });
       // A roadmap drawn as a point, and Mathlib at the centre, are solid too.
       (this.visible ? this.visible.constellations : []).forEach(c => { if (c.resolved) return; const r = Math.max(2.4, Math.min(c.r * k * .9, 2.4 + Math.min(2.4, c.r * k * .1))); solids.push({ owner: c.id, x: c.x * k + t.x, y: c.y * k + t.y, r: r + 1.5 }); });
-      if (this.universe && this.universe.core) { const c = this.universe.core; solids.push({ owner: c.id, x: c.x * k + t.x, y: c.y * k + t.y, r: c.r * k * 1.1 + 1 }); }
+      if (this.universe && this.universe.core) { const c = this.universe.core; solids.push({ owner: c.id, x: c.x * k + t.x, y: c.y * k + t.y, r: c.r * k * 1.65 + 1 }); }
       const overlays = this.overlayBoxes();
       const onSolid = (box, own) => solids.some(s => s.owner !== own && Math.hypot(Math.max(box.x, Math.min(s.x, box.x + box.w)) - s.x, Math.max(box.y, Math.min(s.y, box.y + box.h)) - s.y) < s.r - 1)
         || overlays.some(o => Math.min(box.x + box.w, o.x + o.w) - Math.max(box.x, o.x) > 0 && Math.min(box.y + box.h, o.y + o.h) - Math.max(box.y, o.y) > 0);
@@ -550,7 +550,7 @@
       enter.append('text');
       const graph = this;
       enter.filter(d => d.kind === 'galaxy').on('click', d => { d3.event.stopPropagation(); if (Date.now() < graph.suppressClicksUntil) return; graph.options.onSelect?.(graph.universe.byId.get(d.nodeId)); })
-        .on('mouseenter', d => { if (!graph.isCoarse) { graph.hoveredId = d.nodeId; graph.scheduleRender(); } }).on('mouseleave', () => { if (!graph.isCoarse) { graph.hoveredId = null; graph.scheduleRender(); } });
+        .on('mouseenter', d => { if (!graph.isCoarse && !graph.pointerResting(d3.event)) { graph.hoveredId = d.nodeId; graph.scheduleRender(); } }).on('mouseleave', () => { if (!graph.isCoarse) { graph.hoveredId = null; graph.scheduleRender(); } });
       const all = enter.merge(join);
       all.classed('is-active', d => d.active).attr('transform', d => `translate(${d.x},${d.y}) scale(${1 / k})`);
       const cache = this.widthCache; let measured = false;
@@ -612,10 +612,16 @@
         .attr('marker-end', d => d.arrow ? 'url(#' + this.id + '-arrow)' : null);
     }
 
+    // True while the pointer has not moved since the camera last travelled.
+    pointerResting(event) {
+      const at = this.pointerAtTravel;
+      return !!(at && event && Math.abs(event.clientX - at[0]) < 1.5 && Math.abs(event.clientY - at[1]) < 1.5);
+    }
+
     bindInteractions(selection) {
       const graph = this;
       selection.on('click', d => { d3.event.stopPropagation(); if (Date.now() < graph.suppressClicksUntil) return; graph.options.onSelect?.(d); })
-        .on('mouseenter', d => { if (!graph.isCoarse) { graph.hoveredId = d.id; graph.scheduleRender(); } })
+        .on('mouseenter', d => { if (!graph.isCoarse && !graph.pointerResting(d3.event)) { graph.hoveredId = d.id; graph.scheduleRender(); } })
         .on('mouseleave', () => { if (!graph.isCoarse) { graph.hoveredId = null; graph.scheduleRender(); } })
         .on('focus', d => { graph.hoveredId = d.id; graph.scheduleRender(); }).on('blur', () => { graph.hoveredId = null; graph.scheduleRender(); })
         .on('keydown', d => { if (d3.event.key !== 'Enter' && d3.event.key !== ' ') return; d3.event.preventDefault(); d3.event.stopPropagation(); graph.options.onSelect?.(d); });
@@ -650,6 +656,8 @@
 
     travel(transform, animate) {
       this.svg.interrupt();
+      this.pointerAtTravel = this.pointer ? this.pointer.slice() : null;
+      if (!this.isCoarse) this.hoveredId = null;
       if (!animate || (matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches)) { this.svg.call(this.zoom.transform, transform); return this; }
       this.busy = true;
       this.svg.transition().duration(240).ease(d3.easeCubicOut).call(this.zoom.transform, transform)

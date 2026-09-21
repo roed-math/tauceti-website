@@ -60,7 +60,7 @@
     galaxies.forEach(galaxy => { galaxy.rx = galaxy.w / 2; galaxy.ry = galaxy.h / 2; });
   }
 
-  // The radial layout: Mathlib is a small black hole at the centre. A galaxy
+  // The radial layout: Mathlib is a small sun at the centre. A galaxy
   // lies farther out the more theory its roadmaps must build before their
   // targets can be stated and proved (their mean distance from Mathlib, on a
   // 0-10 scale), in a direction chosen so that related subjects are
