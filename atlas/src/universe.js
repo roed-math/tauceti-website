@@ -281,89 +281,6 @@
   // Seen from afar, an area is a galaxy: a field of faint stars, dense at
   // the centre and thinning outward, with two soft spiral arms. The field is
   // generated once per area, deterministically, and drawn as a few paths.
-  // A field's outline is the contour of a smooth potential that each of its
-  // areas raises, a thin bridge along a spanning tree of those areas raises
-  // too, and every other area near it lowers (a bubble set). The outline so
-  // wraps the field's areas, joins them, and bends around other fields' areas.
-  const bump = (e, reach) => e >= reach ? 0 : (1 - (e / reach) ** 2) ** 2;
-  function spanningTree(nodes) {
-    const joined = [nodes[0]], edges = [];
-    while (joined.length < nodes.length) {
-      let best = null;
-      joined.forEach(a => nodes.forEach(b => {
-        if (joined.includes(b)) return;
-        const d = Math.hypot(a.x - b.x, a.y - b.y);
-        if (!best || d < best.d) best = { a, b, d };
-      }));
-      edges.push(best); joined.push(best.b);
-    }
-    return edges;
-  }
-  function fieldOutline(members, others) {
-    const REACH = 2.4, LEVEL = bump(1.18, 2.4), CELLS = 84;
-    const span = g => Math.max(g.rx, g.ry) * (REACH + .2);
-    const x0 = Math.min(...members.map(g => g.x - span(g))), x1 = Math.max(...members.map(g => g.x + span(g)));
-    const y0 = Math.min(...members.map(g => g.y - span(g))), y1 = Math.max(...members.map(g => g.y + span(g)));
-    const step = Math.max(x1 - x0, y1 - y0) / CELLS, nx = Math.ceil((x1 - x0) / step) + 1, ny = Math.ceil((y1 - y0) / step) + 1;
-    const near = others.filter(g => g.x + g.rx * 2 > x0 && g.x - g.rx * 2 < x1 && g.y + g.ry * 2 > y0 && g.y - g.ry * 2 < y1);
-    const bridges = members.length > 1 ? spanningTree(members) : [];
-    const value = (px, py) => {
-      let v = 0;
-      members.forEach(g => { v += bump(Math.hypot((px - g.x) / g.rx, (py - g.y) / g.ry), REACH); });
-      bridges.forEach(({ a, b }) => {
-        const dx = b.x - a.x, dy = b.y - a.y, t = Math.max(0, Math.min(1, ((px - a.x) * dx + (py - a.y) * dy) / (dx * dx + dy * dy)));
-        const width = .34 * Math.min(a.rx, a.ry, b.rx, b.ry);
-        v += bump(Math.hypot(px - a.x - t * dx, py - a.y - t * dy) / width, REACH);
-      });
-      near.forEach(g => { v -= 1.4 * bump(Math.hypot((px - g.x) / g.rx, (py - g.y) / g.ry), 1.45); });
-      return v - LEVEL;
-    };
-    const grid = [];
-    for (let j = 0; j < ny; j++) { const row = []; for (let i = 0; i < nx; i++) row.push(value(x0 + i * step, y0 + j * step)); grid.push(row); }
-    // Marching squares: each cell contributes the pieces of the zero contour
-    // that cross it; pieces are joined through the edges they share.
-    const point = (i, j, edge) => {
-      const at = (ax, ay, bx, by) => { const va = grid[ay][ax], vb = grid[by][bx], t = va / (va - vb); return [x0 + (ax + (bx - ax) * t) * step, y0 + (ay + (by - ay) * t) * step]; };
-      return edge === 0 ? at(i, j, i + 1, j) : edge === 1 ? at(i + 1, j, i + 1, j + 1) : edge === 2 ? at(i, j + 1, i + 1, j + 1) : at(i, j, i, j + 1);
-    };
-    const key = (i, j, edge) => edge === 0 ? `h${i},${j}` : edge === 1 ? `v${i + 1},${j}` : edge === 2 ? `h${i},${j + 1}` : `v${i},${j}`;
-    const CASES = { 1: [[3, 2]], 2: [[2, 1]], 3: [[3, 1]], 4: [[0, 1]], 5: [[3, 0], [2, 1]], 6: [[0, 2]], 7: [[3, 0]], 8: [[0, 3]], 9: [[0, 2]], 10: [[0, 1], [2, 3]], 11: [[0, 1]], 12: [[1, 3]], 13: [[1, 2]], 14: [[2, 3]] };
-    // Each crossed grid edge joins exactly two pieces, so the pieces are
-    // joined without regard to direction.
-    const links = new Map(), where = new Map();
-    const link = (a, b) => { if (!links.has(a)) links.set(a, []); links.get(a).push(b); };
-    for (let j = 0; j < ny - 1; j++) for (let i = 0; i < nx - 1; i++) {
-      const c = (grid[j + 1][i] > 0 ? 1 : 0) | (grid[j + 1][i + 1] > 0 ? 2 : 0) | (grid[j][i + 1] > 0 ? 4 : 0) | (grid[j][i] > 0 ? 8 : 0);
-      (CASES[c] || []).forEach(([a, b]) => { const ka = key(i, j, a), kb = key(i, j, b); link(ka, kb); link(kb, ka); where.set(ka, point(i, j, a)); where.set(kb, point(i, j, b)); });
-    }
-    const loops = [], seen = new Set();
-    links.forEach((_, start) => {
-      if (seen.has(start)) return;
-      const loop = []; let previous = null, current = start;
-      while (current && !seen.has(current)) {
-        seen.add(current); loop.push(where.get(current));
-        const onward = links.get(current).find(k => k !== previous && !seen.has(k));
-        previous = current; current = onward;
-      }
-      if (loop.length > 8) loops.push(loop);
-    });
-    // Two rounds of corner cutting soften the grid's steps.
-    const smooth = loop => loop.flatMap((p, i) => { const q = loop[(i + 1) % loop.length]; return [[p[0] * .75 + q[0] * .25, p[1] * .75 + q[1] * .25], [p[0] * .25 + q[0] * .75, p[1] * .25 + q[1] * .75]]; });
-    const shapes = loops.map(loop => smooth(smooth(loop)));
-    const all = shapes.flat();
-    const top = all.reduce((best, p) => (!best || p[1] < best[1] ? p : best), null), bottom = all.reduce((best, p) => (!best || p[1] > best[1] ? p : best), null);
-    // Places for the field's name inside its outline: its centre of mass,
-    // then the gaps its bridges cross, nearest the centre first.
-    const weight = members.reduce((total, g) => total + Math.max(1, g.count), 0);
-    const centre = [members.reduce((t, g) => t + g.x * Math.max(1, g.count), 0) / weight, members.reduce((t, g) => t + g.y * Math.max(1, g.count), 0) / weight];
-    const gaps = bridges.map(({ a, b }) => [(a.x + b.x) / 2, (a.y + b.y) / 2])
-      .sort((p, q) => Math.hypot(p[0] - centre[0], p[1] - centre[1]) - Math.hypot(q[0] - centre[0], q[1] - centre[1]));
-    return {
-      path: shapes.map(shape => 'M' + shape.map(p => p[0].toFixed(1) + ',' + p[1].toFixed(1)).join('L') + 'Z').join(''),
-      top: top || [0, 0], bottom: bottom || [0, 0], pieces: shapes.length, inside: [centre, ...gaps]
-    };
-  }
-
   function galaxyDust(galaxy) {
     let seed = hash(galaxy.label + '|dust') || 1;
     const random = () => { seed = (seed + 0x6D2B79F5) >>> 0; let t = seed; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
@@ -474,7 +391,7 @@
     // A field groups areas. Zoomed out, a field with several areas is named
     // once, over the extent of its areas; zooming in names the areas.
     const fields = (input.fields || []).map(field => ({
-      id: 'field:' + field.id, level: 'field', label: field.label, short: field.short || '', caption: field.caption || null, color: field.color || '#c9d4de',
+      id: 'field:' + field.id, level: 'field', label: field.label, short: field.short || '', caption: field.caption || null,
       galaxyIds: (field.groupIds || []).filter(id => galaxyById.has(id) && galaxyById.get(id).constellationIds.length)
     })).filter(field => field.galaxyIds.length > 1);
     fields.forEach(field => {
@@ -485,7 +402,6 @@
       field.top = Math.min(...members.map(g => g.top)); field.bottom = Math.max(...members.map(g => g.bottom));
       field.x = (field.left + field.right) / 2; field.y = (field.top + field.bottom) / 2;
       field.w = field.right - field.left; field.h = field.bottom - field.top;
-      field.outline = fieldOutline(members, populated.filter(g => !field.galaxyIds.includes(g.id)));
     });
     const byId = new Map();
     [...fields, ...populated, ...constellations, ...stars, ...planets].forEach(node => byId.set(node.id, node));
