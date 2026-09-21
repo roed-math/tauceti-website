@@ -33,6 +33,36 @@ class Prompts(unittest.TestCase):
             self.assertIn("- Library baseline (what exists today):", template)
 
 
+class Verdicts(unittest.TestCase):
+    def setUp(self):
+        import tempfile
+        self.folder = tempfile.TemporaryDirectory()
+        self.saved = make_queue.REPO, make_queue.BP
+        make_queue.REPO = Path(self.folder.name)
+        make_queue.BP = make_queue.REPO / "research" / "blueprint"
+        for name in ("restructure", "papers"):
+            (make_queue.BP / name).mkdir(parents=True)
+
+    def tearDown(self):
+        make_queue.REPO, make_queue.BP = self.saved
+        self.folder.cleanup()
+
+    def test_only_work_its_review_accepted_counts_as_accepted(self):
+        job = {"id": "RS-01", "kind": "restructure", "outputs": ["research/blueprint/restructure/RS-01.result.json", "research/blueprint/restructure/RS-01.md"]}
+        result = make_queue.BP / "restructure" / "RS-01.result.json"
+        result.write_text(json.dumps({"family": "RS-01", "review": {"status": "needs_changes"}}))
+        self.assertFalse(make_queue.accepted_work(job))
+        self.assertEqual(make_queue.review_status(job["outputs"][0]), "needs_changes")
+        result.write_text(json.dumps({"family": "RS-01", "review": {"status": "accepted"}}))
+        self.assertTrue(make_queue.accepted_work(job))
+
+    def test_a_paper_is_accepted_by_its_review_file(self):
+        job = {"id": "PAPER-X", "kind": "paper", "outputs": ["research/blueprint/papers/PAPER-X.result.json"]}
+        self.assertFalse(make_queue.accepted_work(job))
+        (make_queue.BP / "papers" / "PAPER-X.review.json").write_text(json.dumps({"paper": "PAPER-X", "verdict": "accept"}))
+        self.assertTrue(make_queue.accepted_work(job))
+
+
 class Restructuring(unittest.TestCase):
     def test_a_family_blueprint_follows_its_accepted_restructuring(self):
         note = make_queue.restructuring_note("RS-07")
@@ -41,6 +71,20 @@ class Restructuring(unittest.TestCase):
 
 
 class Queue(unittest.TestCase):
+    def test_a_proposal_its_review_sent_back_is_revised_before_its_family_is_blueprinted(self):
+        jobs = {j["id"]: j for j in json.loads((ROOT / "research" / "blueprint" / "queue.json").read_text())["jobs"]}
+        for rs in ("RS-12", "RS-20"):
+            path = ROOT / "research" / "blueprint" / "restructure" / f"{rs}.result.json"
+            if make_queue.review_status(str(path.relative_to(ROOT))) != "needs_changes" or jobs.get("REV-" + rs, {}).get("state") != "done":
+                continue
+            self.assertEqual(jobs[rs + "~2"]["after"], ["REV-" + rs])
+            self.assertEqual(jobs["REV-" + rs + "~2"]["after"], [rs + "~2"])
+            members = jobs[rs]["roadmapIds"]
+            waiting = [j for j in jobs.values() if j["kind"] == "blueprint" and j["roadmapIds"][0] in members and j.get("state") == "pending"]
+            self.assertTrue(waiting)
+            self.assertTrue(all("REV-" + rs + "~2" in j["after"] for j in waiting))
+            self.assertNotIn("RT-" + rs, jobs)
+
     def test_a_verifier_is_independent_of_the_red_team_and_of_the_work_it_attacked(self):
         jobs = {j["id"]: j for j in json.loads((ROOT / "research" / "blueprint" / "queue.json").read_text())["jobs"]}
         verifications = [j for jid, j in jobs.items() if jid.startswith("REV-RT-")]
