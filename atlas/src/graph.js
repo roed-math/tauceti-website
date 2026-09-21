@@ -105,6 +105,14 @@
       defs.append('marker').attr('id', this.id + '-arrow-quiet').attr('viewBox', '0 -4 9 8').attr('refX', 8).attr('refY', 0)
         .attr('markerWidth', 7).attr('markerHeight', 7).attr('orient', 'auto').attr('markerUnits', 'strokeWidth')
         .append('path').attr('d', 'M0,-3.5L8,0L0,3.5Z').attr('fill', '#7d8a99');
+      // The sun at the centre: limb darkening from a white-gold centre to an
+      // orange rim, and a corona that fades into the dark.
+      const sun = defs.append('radialGradient').attr('id', this.id + '-sun');
+      [[0, '#fffbea'], [.45, '#ffe89c'], [.78, '#ffc34a'], [.93, '#f69b2d'], [1, '#e0701d']]
+        .forEach(([offset, colour]) => sun.append('stop').attr('offset', offset).attr('stop-color', colour));
+      const corona = defs.append('radialGradient').attr('id', this.id + '-corona');
+      [[.46, '#ffd06e', .55], [.52, '#ffb54a', .3], [.7, '#ff9b3d', .09], [1, '#ff9b3d', 0]]
+        .forEach(([offset, colour, opacity]) => corona.append('stop').attr('offset', offset).attr('stop-color', colour).attr('stop-opacity', opacity));
       this.viewport = this.svg.append('g').attr('class', 'tau-viewport');
       this.layers = {};
       ['field', 'core', 'galaxy', 'route', 'constellation', 'figure', 'link', 'star', 'planet', 'label'].forEach(name => { this.layers[name] = this.viewport.append('g').attr('class', 'tau-layer-' + name); });
@@ -192,23 +200,27 @@
       field.selectAll('circle').data(stars).enter().append('circle').attr('class', 'tau-field').attr('cx', d => d.x).attr('cy', d => d.y).attr('r', d => d.r).attr('fill', '#c7d3df').attr('opacity', d => d.opacity);
     }
 
-    // Mathlib at the centre, drawn flat as a sun: a golden disc inside a ring
-    // of short rays, long and short in turn. Its gold lies outside both the
-    // red-to-white progress ramp and the planets' colours.
+    // Mathlib at the centre as the sun: a disc that darkens towards its rim,
+    // a faint corona, light granulation and two small spots. It is the one
+    // object in the atlas drawn with gradients.
     drawCore() {
       const core = this.universe.core, layer = this.layers.core;
       if (!core) return;
       const r = core.r, g = layer.append('g').attr('class', 'tau-core').attr('data-node-id', core.id).attr('transform', `translate(${core.x},${core.y})`);
-      const SUN = '#f2c14e', RAY = '#f6d47a', RAYS = 24;
-      for (let i = 0; i < RAYS; i++) {
-        const angle = i / RAYS * 2 * Math.PI, long = i % 2 === 0, inner = r * 1.2, outer = r * (long ? 1.62 : 1.42);
-        g.append('line').attr('class', 'tau-core-ray')
-          .attr('x1', (Math.cos(angle) * inner).toFixed(2)).attr('y1', (Math.sin(angle) * inner).toFixed(2))
-          .attr('x2', (Math.cos(angle) * outer).toFixed(2)).attr('y2', (Math.sin(angle) * outer).toFixed(2))
-          .attr('stroke', RAY).attr('stroke-width', long ? 1.8 : 1.2).attr('stroke-linecap', 'round')
-          .attr('vector-effect', 'non-scaling-stroke').attr('opacity', long ? .85 : .55);
+      g.append('circle').attr('class', 'tau-core-corona').attr('r', r * 2.1).attr('fill', `url(#${this.id}-corona)`);
+      g.append('circle').attr('class', 'tau-core-disc').attr('r', r).attr('fill', `url(#${this.id}-sun)`);
+      // Granulation: faint bright cells, placed the same way every time.
+      let seed = 20260921;
+      const next = () => (seed = seed * 16807 % 2147483647) / 2147483647;
+      for (let i = 0; i < 90; i++) {
+        const angle = next() * 2 * Math.PI, reach = Math.sqrt(next()) * r * .9;
+        g.append('circle').attr('class', 'tau-core-granule').attr('cx', (Math.cos(angle) * reach).toFixed(2)).attr('cy', (Math.sin(angle) * reach).toFixed(2))
+          .attr('r', (r * (.025 + .035 * next())).toFixed(2)).attr('fill', '#fff4cc').attr('opacity', (.08 + .1 * next()).toFixed(3));
       }
-      g.append('circle').attr('class', 'tau-core-disc').attr('r', r).attr('fill', SUN);
+      [[-.36, .22, .075], [.3, -.32, .05]].forEach(([x, y, size]) => {
+        g.append('circle').attr('class', 'tau-core-spot').attr('cx', x * r).attr('cy', y * r).attr('r', size * r * 1.8).attr('fill', '#b8621f').attr('opacity', .35);
+        g.append('circle').attr('class', 'tau-core-spot').attr('cx', x * r).attr('cy', y * r).attr('r', size * r).attr('fill', '#7a3510').attr('opacity', .6);
+      });
       g.append('title').text('Mathlib: the formalised baseline. Subjects and roadmaps lie farther out the more theory must be built before their targets can be stated and proved.');
     }
 
@@ -496,7 +508,7 @@
       (this.visible ? this.visible.planets : []).forEach(p => { const r = p.r * k; if (r >= 2.5) solids.push({ owner: p.id, x: p.x * k + t.x, y: p.y * k + t.y, r }); });
       // A roadmap drawn as a point, and Mathlib at the centre, are solid too.
       (this.visible ? this.visible.constellations : []).forEach(c => { if (c.resolved) return; const r = Math.max(2.4, Math.min(c.r * k * .9, 2.4 + Math.min(2.4, c.r * k * .1))); solids.push({ owner: c.id, x: c.x * k + t.x, y: c.y * k + t.y, r: r + 1.5 }); });
-      if (this.universe && this.universe.core) { const c = this.universe.core; solids.push({ owner: c.id, x: c.x * k + t.x, y: c.y * k + t.y, r: c.r * k * 1.65 + 1 }); }
+      if (this.universe && this.universe.core) { const c = this.universe.core; solids.push({ owner: c.id, x: c.x * k + t.x, y: c.y * k + t.y, r: c.r * k * 1.2 + 1 }); }
       const overlays = this.overlayBoxes();
       const onSolid = (box, own) => solids.some(s => s.owner !== own && Math.hypot(Math.max(box.x, Math.min(s.x, box.x + box.w)) - s.x, Math.max(box.y, Math.min(s.y, box.y + box.h)) - s.y) < s.r - 1)
         || overlays.some(o => Math.min(box.x + box.w, o.x + o.w) - Math.max(box.x, o.x) > 0 && Math.min(box.y + box.h, o.y + o.h) - Math.max(box.y, o.y) > 0);
