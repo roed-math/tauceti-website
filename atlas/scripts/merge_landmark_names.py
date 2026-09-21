@@ -4,8 +4,9 @@ Usage: python3 scripts/merge_landmark_names.py research/expansion/naming/NAME-13
 
 Without --apply nothing is written; the report lists what would be accepted and why
 each rejected entry fails. Rules (all mechanical):
-  * every result id must be a landmark listed in research/expansion/naming/landmarks-all.json,
-    and every landmark of the job must be decided exactly once;
+  * every result id must be a planet listed in research/expansion/naming/planets-current.json
+    (or, for the first batches, landmarks-all.json), and every planet of the job must be decided
+    exactly once;
   * decision "keep": current label unchanged (curated entries must be "keep");
   * decision "name": 3-48 characters, no trailing punctuation or quotes, does not start with an
     imperative or bookkeeping word, differs from the current label, unique within its star
@@ -15,6 +16,8 @@ each rejected entry fails. Rules (all mechanical):
   * decision "drop" (or "procedural"): the planet is hidden from the map through
     data/landmark-hidden.json with the job's reason, and any curated name it had is removed;
     a later "keep" or "name" for the same id un-hides it.
+A planet that is a node of a source decomposition (an id without "::landmark:") takes its name
+as the title of that node in data/stage-presentation.json, and a drop hides the node there.
 """
 import json, re, sys, unicodedata
 from pathlib import Path
@@ -53,7 +56,11 @@ def main(argv):
         print(__doc__); return 2
     result_path = Path(argv[1]); apply = '--apply' in argv
     job = result_path.name.split('.')[0]
-    landmarks = {r['id']: r for r in json.loads((ROOT / 'research/expansion/naming/landmarks-all.json').read_text())}
+    landmarks = {}
+    for universe in ('landmarks-all.json', 'planets-current.json'):
+        path = ROOT / 'research/expansion/naming' / universe
+        if path.exists():
+            landmarks.update({r['id']: r for r in json.loads(path.read_text())})
     job_ids = {r['id'] for r in json.loads((ROOT / f'research/expansion/naming/{job}.json').read_text())}
     atlas = json.loads((ROOT / 'data/atlas.json').read_text())
     stages = {s['id']: s for s in atlas['stages']}
@@ -101,12 +108,32 @@ def main(argv):
     if undecided:
         print('  undecided:', ', '.join(u.split('::')[0] for u in undecided[:10]), '...' if len(undecided) > 10 else '')
     if apply:
+        # Nodes of source decompositions are named and hidden through the stage presentation.
+        presentation = json.loads((ROOT / 'data/stage-presentation.json').read_text())
+        is_node = lambda pid: '::landmark:' not in pid
+        named_nodes = sum(1 for pid in accepted if is_node(pid))
+        hidden_nodes = sum(1 for e in procedural if is_node(e['id']))
+        for pid, name in [(pid, name) for pid, name in accepted.items() if is_node(pid)]:
+            item = presentation.setdefault(pid, {})
+            item['title'] = name
+            item.setdefault('summary', (landmarks[pid].get('excerpt') or name)[:400])
+            item.pop('hidden', None)
+            del accepted[pid]
+        for entry in [e for e in procedural if is_node(e['id'])]:
+            item = presentation.setdefault(entry['id'], {})
+            item['hidden'] = True
+            item.setdefault('summary', (landmarks[entry['id']].get('excerpt') or entry['reason'])[:400])
+            procedural.remove(entry)
+        for pid in [e['id'] for e in seen.values() if e.get('decision') == 'keep' and is_node(e['id'])]:
+            presentation.get(pid, {}).pop('hidden', None)
+        (ROOT / 'data/stage-presentation.json').write_text(json.dumps(presentation, indent=2, ensure_ascii=False) + '\n')
+        print(f'decomposition planets: {named_nodes} named, {hidden_nodes} hidden')
         hidden = json.loads((ROOT / 'data/landmark-hidden.json').read_text())
         merged = dict(curated); merged.update(accepted)
         for item in procedural:
             merged.pop(item['id'], None)
             hidden[item['id']] = f"{job}: {item['reason']}"[:200]
-        for lid in list(accepted) + [e['id'] for e in seen.values() if e.get('decision') == 'keep']:
+        for lid in list(accepted) + [e['id'] for e in seen.values() if e.get('decision') == 'keep' and not is_node(e['id'])]:
             hidden.pop(lid, None)
         (ROOT / 'data/landmark-labels.json').write_text(json.dumps(merged, indent=2, ensure_ascii=False) + '\n')
         (ROOT / 'data/landmark-hidden.json').write_text(json.dumps(dict(sorted(hidden.items())), indent=2, ensure_ascii=False) + '\n')
