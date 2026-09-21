@@ -2,9 +2,10 @@
 
 scripts/promote.py copies a proposal into data/restructure/ once its independent
 review accepts it. The build applies it here: an extended roadmap takes its new
-title ("<base>, Part II: ...") and builds on its base; a narrowed layer plans
-only what it keeps, and says who supplies the rest; a dropped layer leaves the
-map, naming its suppliers; and the proposal's links join the atlas. Tau Ceti
+title ("<base>, Part II: ...") and builds on its base; a narrowed layer records
+what it keeps and who supplies the rest (its text, from which its planets are
+read until its blueprint names them, stays); a dropped layer leaves the map,
+naming its suppliers; and the proposal's links join the atlas. Tau Ceti
 roadmaps never change. Links whose ends are not in the atlas, or that would
 close a cycle, are left out and recorded. The snapshot passed in is never changed.
 """
@@ -79,9 +80,6 @@ def apply_restructurings(snapshot: dict, proposals: list) -> tuple:
             suppliers = [s for s in entry.get("suppliedBy") or [] if isinstance(s, str)]
             stage["restructured"] = {"proposal": rs, "action": action, **({"keeps": entry["keeps"]} if action == "narrow" else {}),
                                      "suppliedBy": suppliers, "reason": entry.get("reason", "")}
-            if action == "narrow" and entry.get("keeps"):
-                supplied = f" The rest is supplied by {', '.join(suppliers)}." if suppliers else ""
-                stage["description"] = f"{entry['keeps']}\n\n*Narrowed by the restructuring {rs}.{supplied}*"
             if action == "drop":
                 hidden[sid] = {"hidden": True, "summary": f"Dropped by the restructuring {rs}; "
                                                           f"{', '.join(suppliers) or 'other layers'} supply it. {entry.get('reason', '')}".strip()}

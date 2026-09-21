@@ -199,7 +199,7 @@ def main() -> int:
         import subprocess
         jobs = json.loads((ROOT / "research" / "blueprint" / "queue.json").read_text(encoding="utf-8"))["jobs"]
         for number, body in notices(ROOT, summary, jobs):
-            subprocess.run(["gh", "issue", "comment", str(number), "--body", body], cwd=ROOT, check=False)
+            subprocess.run(["gh", "issue", "comment", str(number), "--body", body], cwd=ROOT, check=False, capture_output=True)
     for path in summary["promoted"]:
         print("promoted", path)
     for path, reason in summary["refused"]:

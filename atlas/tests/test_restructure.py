@@ -43,10 +43,11 @@ class Restructurings(unittest.TestCase):
         self.assertEqual((a["title"], a["extends"]), ("Upstream X, Part II: more", "tauceti:X"))
         self.assertIn({"source": "tauceti:X", "target": "A", "kind": "declared"}, result["edges"])
 
-    def test_a_narrowed_layer_plans_only_what_it_keeps(self):
+    def test_a_narrowed_layer_says_what_it_keeps_and_keeps_its_planets(self):
+        # Its planets are read from its text until its blueprint names them, so the text stays.
         result, _ = self.applied()
         layer = next(s for s in result["stages"] if s["id"] == "A:1")
-        self.assertTrue(layer["description"].startswith("Only the local statement."))
+        self.assertEqual(layer["description"], "Everything A:1 plans.")
         self.assertEqual(layer["restructured"], {"proposal": "RS-01", "action": "narrow", "keeps": "Only the local statement.",
                                                  "suppliedBy": ["B:1"], "reason": "B owns the global one."})
 
