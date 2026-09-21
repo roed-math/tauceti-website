@@ -5,7 +5,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "research" / "blueprint"))
-from issues import labels_for, merged_labels, publicize  # noqa: E402
+from issues import labels_for, merged_labels, publicize, refresh_payload  # noqa: E402
 
 
 def job(jid, state="pending", after=(), kind="review"):
@@ -34,6 +34,22 @@ class Refresh(unittest.TestCase):
         current = ["swarm", "kind:review", "priority:2", "state:available", "area:iwasawa", "local-only"]
         self.assertEqual(merged_labels(current, review, {}, by_id),
                          ["swarm", "kind:review", "priority:2", "area:iwasawa", "local-only", "state:blocked"])
+
+
+class RefreshPayload(unittest.TestCase):
+    def test_a_superseded_job_closes_its_issue_as_not_planned_and_says_why(self):
+        gone = job("BP-X", state="superseded", kind="blueprint")
+        gone["note"] = "Planned upstream."
+        payload = refresh_payload(gone, ["swarm", "state:available"], "Body.", {}, {"BP-X": gone})
+        self.assertEqual(payload["state"], "closed")
+        self.assertEqual(payload["state_reason"], "not_planned")
+        self.assertTrue(payload["body"].startswith("**Superseded.** Planned upstream."))
+        self.assertTrue(payload["body"].endswith("Body."))
+
+    def test_a_live_job_keeps_its_issue_open_with_fresh_labels(self):
+        live = job("BP-Y", kind="blueprint")
+        payload = refresh_payload(live, ["swarm", "state:claimed"], "Body.", {}, {"BP-Y": live})
+        self.assertEqual(payload, {"body": "Body.", "labels": ["swarm", "state:available"]})
 
 
 class PublicText(unittest.TestCase):
