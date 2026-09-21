@@ -176,3 +176,82 @@ def agreement(judgements, ordering):
         farther, nearer = (a, b) if verdict == "a" else (b, a)
         agree += ordering[farther] > ordering[nearer]
     return (round(agree / total, 3), total) if total else (None, 0)
+
+
+def _solve(matrix, vector):
+    """Solve a small linear system by Gaussian elimination with partial pivoting."""
+    size = len(vector)
+    rows = [list(row) + [value] for row, value in zip(matrix, vector)]
+    for col in range(size):
+        pivot = max(range(col, size), key=lambda r: abs(rows[r][col]))
+        rows[col], rows[pivot] = rows[pivot], rows[col]
+        for r in range(size):
+            if r != col and rows[col][col]:
+                factor = rows[r][col] / rows[col][col]
+                for k in range(col, size + 1):
+                    rows[r][k] -= factor * rows[col][k]
+    return [rows[i][size] / rows[i][i] if rows[i][i] else 0.0 for i in range(size)]
+
+
+def fit_weights(features, judgements, ridge=1e-3, iterations=100, tolerance=1e-10):
+    """Weights w such that sigmoid(w . (x_i - x_j)) is the chance that roadmap i is judged farther than j.
+
+    features: roadmap -> list of numbers, the same length for every roadmap.
+    Verdicts count as in outcomes(): a clear verdict is a whole win, a slight
+    one three quarters of a win, a tie half a win each way. The weights are the
+    maximum likelihood estimates with a small ridge penalty, found by Newton's
+    method; the likelihood is concave, so the steps converge.
+    """
+    games = [([a - b for a, b in zip(features[winner], features[loser])], credit)
+             for winner, loser, credit in outcomes([j for j in judgements if j.get("a") in features and j.get("b") in features])]
+    size = len(next(iter(features.values()))) if features else 0
+    weights = [0.0] * size
+    if not games or not size:
+        return weights
+    for _ in range(iterations):
+        gradient = [-ridge * w for w in weights]
+        curvature = [[ridge if r == c else 0.0 for c in range(size)] for r in range(size)]
+        for dx, credit in games:
+            p = _sigmoid(sum(w * x for w, x in zip(weights, dx)))
+            for r in range(size):
+                gradient[r] += credit * (1 - p) * dx[r]
+                for c in range(size):
+                    curvature[r][c] += credit * p * (1 - p) * dx[r] * dx[c]
+        step = _solve(curvature, gradient)
+        weights = [w + s for w, s in zip(weights, step)]
+        if max(abs(s) for s in step) < tolerance:
+            break
+    return weights
+
+
+def cross_validate(blocks, fit_and_score):
+    """Leave-one-block-out check of a distance model against judgements it has not seen.
+
+    blocks: block name -> judgements. fit_and_score(training judgements) returns
+    a score per roadmap on the log-odds scale: a difference of d means odds of
+    e^d to one that the higher roadmap is judged farther. Each block is scored
+    by a model fitted to the others. Returns the held-out log-likelihood per
+    judgement (verdicts weighted as in outcomes()) and the share of decided
+    verdicts whose farther roadmap has the higher score, a tied score counting
+    half.
+    """
+    names = sorted(blocks)
+    total = right = 0.0
+    count = decided = 0
+    for held in names:
+        score = fit_and_score([item for name in names if name != held for item in blocks[name]])
+        for item in blocks[held]:
+            a, b = item.get("a"), item.get("b")
+            games = outcomes([item]) if a in score and b in score else []
+            if not games:
+                continue
+            count += 1
+            for winner, loser, credit in games:
+                total += credit * math.log(max(1e-12, _sigmoid(score[winner] - score[loser])))
+            if item.get("farther") in ("a", "b"):
+                decided += 1
+                farther, nearer = (a, b) if item["farther"] == "a" else (b, a)
+                right += 1.0 if score[farther] > score[nearer] else 0.5 if score[farther] == score[nearer] else 0.0
+    return {"judgements": count,
+            "logLikelihoodPerJudgement": round(total / count, 4) if count else None,
+            "accuracy": round(right / decided, 4) if decided else None}

@@ -8,7 +8,8 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
-from bradley_terry import fit, outcomes  # noqa: E402
+from bradley_terry import cross_validate, fit, fit_weights, outcomes  # noqa: E402
+from measure_distances import on_atlas_scale  # noqa: E402
 from radial_layout import galaxy_size, layout, radius_for, GALAXY_GAP  # noqa: E402
 from theory_graph import TheoryGraph, page_spans, tfidf_similarity  # noqa: E402
 
@@ -45,6 +46,88 @@ class BradleyTerry(unittest.TestCase):
         self.assertAlmostEqual(sum(scores.values()), 0.0, places=9)
 
 
+def judged(a, b, farther, strength="clear"):
+    return {"a": a, "b": b, "farther": farther, "strength": strength}
+
+
+class FeatureWeights(unittest.TestCase):
+    # One feature, x one unit farther than y: when x is judged farther in three
+    # games out of four, sigmoid(w) = 3/4 and so w = ln 3.
+    def test_weights_match_the_share_of_verdicts_either_way_round(self):
+        features = {"x": [1.0], "y": [0.0]}
+        verdicts = [judged("x", "y", "a"), judged("x", "y", "a"), judged("y", "x", "b"), judged("y", "x", "a")]
+        self.assertAlmostEqual(fit_weights(features, verdicts)[0], math.log(3), delta=0.01)
+
+    def test_a_slight_verdict_is_three_quarters_of_a_win(self):
+        features = {"x": [1.0], "y": [0.0]}
+        self.assertAlmostEqual(fit_weights(features, [judged("x", "y", "a", "slight")] * 4)[0], math.log(3), delta=0.01)
+
+    def test_a_tie_is_half_a_win_each_way(self):
+        features = {"x": [1.0], "y": [0.0]}
+        verdicts = [judged("x", "y", "a"), judged("x", "y", "tie", "slight")]
+        self.assertAlmostEqual(fit_weights(features, verdicts)[0], math.log(3), delta=0.01)
+
+    def test_recovers_a_known_two_feature_model(self):
+        rng = random.Random(7)
+        features = {f"r{i}": [rng.uniform(0, 5), rng.uniform(0, 30)] for i in range(40)}
+        truth = [1.2, 0.05]
+        verdicts = []
+        for _ in range(3000):
+            a, b = rng.sample(sorted(features), 2)
+            logit = sum(w * (x - y) for w, x, y in zip(truth, features[a], features[b]))
+            verdicts.append(judged(a, b, "a" if rng.random() < 1 / (1 + math.exp(-logit)) else "b"))
+        weights = fit_weights(features, verdicts)
+        self.assertAlmostEqual(weights[0], 1.2, delta=0.15)
+        self.assertAlmostEqual(weights[1], 0.05, delta=0.02)
+
+
+class CrossValidation(unittest.TestCase):
+    def test_held_out_blocks_prefer_the_feature_that_generated_the_verdicts(self):
+        rng = random.Random(11)
+        signal = {f"r{i}": [rng.uniform(0, 6)] for i in range(30)}
+        noise = {rid: [rng.uniform(0, 6)] for rid in signal}
+        blocks = {}
+        for block in range(6):
+            items = []
+            for _ in range(100):
+                a, b = rng.sample(sorted(signal), 2)
+                p = 1 / (1 + math.exp(-1.5 * (signal[a][0] - signal[b][0])))
+                items.append(judged(a, b, "a" if rng.random() < p else "b"))
+            blocks[f"B{block}"] = items
+
+        def model(features):
+            def fit_and_score(training):
+                weights = fit_weights(features, training)
+                return {rid: sum(w * x for w, x in zip(weights, xs)) for rid, xs in features.items()}
+            return fit_and_score
+
+        good, bad = cross_validate(blocks, model(signal)), cross_validate(blocks, model(noise))
+        self.assertEqual(good["judgements"], 600)
+        self.assertGreater(good["logLikelihoodPerJudgement"], bad["logLikelihoodPerJudgement"] + 0.1)
+        self.assertGreater(good["accuracy"], 0.75)
+        self.assertLess(bad["accuracy"], 0.65)
+
+    def test_a_model_that_cannot_tell_two_roadmaps_apart_scores_half(self):
+        # Integer scores tie often; a tie is a coin toss, neither right nor wrong.
+        blocks = {"B0": [judged("x", "y", "a")], "B1": [judged("y", "x", "a")]}
+        result = cross_validate(blocks, lambda training: {"x": 1.0, "y": 1.0})
+        self.assertEqual(result["accuracy"], 0.5)
+        self.assertAlmostEqual(result["logLikelihoodPerJudgement"], math.log(0.5), places=4)
+
+
+class AtlasScale(unittest.TestCase):
+    def test_the_farthest_roadmap_sits_at_ten_and_nothing_below_zero(self):
+        scaled = on_atlas_scale({"x": 2.0, "y": 4.0, "z": -1.0}, {"x": 0.4, "y": 1.0, "z": 0.2})
+        self.assertEqual(scaled["x"], (5.0, 4.0, 6.0))
+        self.assertEqual(scaled["y"], (10.0, 7.5, 10.0))
+        self.assertEqual(scaled["z"], (0.0, 0.0, 0.0))
+
+    def test_a_roadmap_with_nothing_left_to_build_sits_at_zero_whatever_its_judgements(self):
+        scaled = on_atlas_scale({"x": 2.0, "y": 4.0, "done": 0.5}, {"x": 0.4, "y": 1.0, "done": 0.3}, built={"done"})
+        self.assertEqual(scaled["done"], (0.0, 0.0, 0.0))
+        self.assertEqual(scaled["x"], (5.0, 4.0, 6.0))
+
+
 def toy_atlas():
     stages = [{"id": "A:1", "owner": "A"}, {"id": "A:2", "owner": "A"},
               {"id": "B:1", "owner": "B"}, {"id": "B:2", "owner": "B", "parentStageId": None},
@@ -67,6 +150,21 @@ class Graph(unittest.TestCase):
         self.assertIn("A:1", needed)
         self.assertEqual(graph.weight["A:1"], 0.0)
         self.assertEqual(graph.weight["B:2"], 0.0)
+
+    def test_missing_targets_come_from_the_audit_where_it_exists(self):
+        # A:2 is audited: two targets absent, one partial, one in Tau Ceti -> 2.5.
+        # B:1 is audited as process -> 0. C:1 is audited absent but recorded built -> 0.
+        # Unaudited layers still to build count at the mean of the audited ones
+        # still to build, (2.5 + 0) / 2 = 1.25: B:2a fully, B:2b (in progress) half.
+        coverage = {"layers": {
+            "A:2": {"verdict": "partly built", "targets": [{"library": "absent"}, {"library": "absent"},
+                                                            {"library": "partial"}, {"library": "tauceti"}]},
+            "B:1": {"verdict": "process", "targets": [{"library": "absent"}]},
+            "C:1": {"verdict": "not built", "targets": [{"library": "absent"}]},
+        }}
+        graph = TheoryGraph(toy_atlas(), {"A:1": "complete", "C:1": "complete", "B:2b": "in_progress"}, hidden=set(), coverage=coverage)
+        self.assertEqual(graph.missing_targets(graph.roadmap_closure("B")), 2.5 + 1.25 + 0.625)
+        self.assertEqual(graph.missing_targets(graph.roadmap_closure("A")), 2.5)
 
     def test_related_layers_include_built_ones(self):
         graph = TheoryGraph(toy_atlas(), {"A:2": "complete"}, hidden=set())

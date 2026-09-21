@@ -70,7 +70,7 @@ function aggregateProgressLabel(p,suffix='layers'){return hasProgressData(p)?Mat
 function statString(p){return `${p.complete||0} / ${p.total||0} layers complete`;}
 // Mathlib sits at the centre by default; #layout=areas opens the older area map, and the choice is kept in every link.
 const LAYOUT=/(^|[#&])layout=areas(&|$)/.test(location.hash)?'areas':'radial';
-// Where a roadmap sits: its distance from Mathlib (0-10) and why, from the classification of its references.
+// Where a roadmap sits: its distance from Mathlib (0-10), measured from the theory it still needs and moved by pairwise judgements.
 // Why a subject is in the atlas: who builds on it, directly and through chains of layers.
 function whyHere(box,id){const use=DATA.roadmapDistances?.galaxies?.[id];if(!use)return;section(box,'Why it is here');
  const name=gid=>groups.get(gid)?.label||gid,list=items=>items.map(x=>`${name(x.galaxy)} (${x.links??x.roadmaps})`).join(', ');
@@ -80,11 +80,11 @@ function whyHere(box,id){const use=DATA.roadmapDistances?.galaxies?.[id];if(!use
  if(!use.supplies.length&&!use.frontierRoadmaps)box.append(el('p','detail-note',use.upstreamOnly?'No other roadmap in the atlas builds on these yet. They are Tau Ceti project roadmaps, which the atlas tracks in full.':'No other roadmap in the atlas builds on these yet.'));}
 function placeNote(box,id){const place=DATA.roadmapClassification?.roadmaps?.[id],measured=DATA.roadmapDistances?.roadmaps?.[id];if(!place&&!measured)return;
  const fmt=v=>Number(v).toFixed(1).replace(/\.0$/,''),lines=[];
- if(measured){const range=measured.basis==='pairwise'&&Number.isFinite(measured.low)?` (${fmt(measured.low)} to ${fmt(measured.high)})`:'';
-  const basis=measured.basis==='pairwise'?`from ${measured.pairwise?.judgements??0} pairwise judgements, starting from its classification score of ${fmt(measured.classification)}`:measured.basis==='children'?'the mean of its child roadmaps':measured.basis==='declarations'?'from its reviewed declaration count':'from the reference classification; pairwise judgements are pending';
-  lines.push(`Distance from Mathlib ${fmt(measured.distance)} of 10${range}, ${basis}.`);
+ if(measured){const range=measured.basis==='judged'&&Number.isFinite(measured.low)?` (${fmt(measured.low)} to ${fmt(measured.high)})`:'',n=measured.judgements||0;
+  const basis=measured.basis==='judged'?`measured at ${fmt(measured.measurement)} from the theory it still needs, then moved by ${n} pairwise judgement${n===1?'':'s'}`:measured.basis==='measured'?'measured from the theory it still needs; no pairwise judgements yet':measured.basis==='built'?'everything it needs is built':'the mean of its child roadmaps';
+  lines.push(`Distance from Mathlib ${fmt(measured.distance)} of 10${range}, ${basis}. The farthest roadmap in the atlas is at 10.`);
   const st=measured.structure,plural=(n,w)=>`${fmt(n)} ${w}${Number(n)===1?'':'s'}`;
-  if(st)lines.push(!st.missingLayers?'Every layer it needs is recorded as built.':`Still to build: ${plural(st.missingLayers,'layer')}, ${st.suppliers?`in this roadmap and ${plural(st.suppliers,'supplier roadmap')}`:'all in this roadmap'}; the longest chain of them is ${plural(st.depth,'layer')}.`);
+  if(st)lines.push(!st.missingLayers?'Every layer it needs is recorded as built.':`Still to build: ${plural(st.missingLayers,'layer')} with about ${plural(Math.round(st.missingTargets),'target')} missing from Mathlib and Tau Ceti, ${st.suppliers?`in this roadmap and ${plural(st.suppliers,'supplier roadmap')}`:'all in this roadmap'}; the longest chain of them is ${plural(st.depth,'layer')}.`);
   if(Array.isArray(measured.usedBy))lines.push(measured.usedBy.length?`Used by roadmaps in other subjects: ${measured.usedBy.map(x=>`${groups.get(x.galaxy)?.label||x.galaxy} (${x.roadmaps})`).join(', ')}.`:'No roadmap in another subject uses it yet.');
   // The reviewed library audit: what Mathlib and Tau Ceti already contain, and overlaps with other roadmaps.
   const audited=(r=>(DATA.stages||[]).filter(x=>x.owner===id&&!x.expansion&&DATA.libraryCoverage?.layers?.[x.id]))(),counts={};

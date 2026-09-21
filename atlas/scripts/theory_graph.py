@@ -8,6 +8,11 @@ links. A layer recorded as complete (data/status.json and
 data/stage-status-reports.json) is library material: it costs nothing and
 ends every chain through it. A layer in progress counts half.
 
+The reviewed library audit (data/library-coverage.json) lists each audited
+layer's targets and whether Mathlib or Tau Ceti has them; a target absent from
+both counts one, a partial one a half, and a process layer none. That gives a
+finer measure of missing theory than whole layers, which differ in size.
+
 Where layers have been decomposed into single declarations (the reviewed
 decompositions in data/decompositions and the blueprint packets in
 research/blueprint/packets), the declaration graph gives a finer count, its
@@ -23,6 +28,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 WEIGHT = {"complete": 0.0, "in_progress": 0.5}
+MISSING_SHARE = {"absent": 1.0, "partial": 0.5}
 PAGES = re.compile(r"\b(?:pp?\.|pages?)\s*(\d+)(?:\s*[–—-]\s*(\d+))?", re.IGNORECASE)
 
 
@@ -46,7 +52,7 @@ def stage_statuses(root: Path = ROOT) -> dict:
 class TheoryGraph:
     """Layers, their prerequisites and their weights (1 when still to be built)."""
 
-    def __init__(self, atlas: dict, statuses: dict, hidden: set):
+    def __init__(self, atlas: dict, statuses: dict, hidden: set, coverage=None):
         self.owner = {stage["id"]: stage["owner"] for stage in atlas["stages"] if not stage.get("expansion")}
         ids = set(self.owner)
         self.prereqs = defaultdict(set)
@@ -69,6 +75,17 @@ class TheoryGraph:
         for sid in ids:
             self.weight[sid] = 0.0 if sid in self.aggregate else WEIGHT.get(statuses.get(sid), 1.0)
         self.built = {sid for sid in ids if statuses.get(sid) == "complete"}
+        # Missing targets per layer still to be built: the reviewed audit's count
+        # where there is one; elsewhere the layer's weight times the mean count of
+        # the audited layers still to be built (one per layer without an audit).
+        audited = {}
+        for sid, layer in ((coverage or {}).get("layers") or {}).items():
+            if sid in ids:
+                audited[sid] = 0.0 if layer.get("verdict") == "process" else \
+                    sum(MISSING_SHARE.get(target.get("library"), 0.0) for target in layer.get("targets") or [])
+        still_open = [count for sid, count in audited.items() if self.weight[sid] > 0]
+        self.target_fallback = sum(still_open) / len(still_open) if still_open else 1.0
+        self.targets = {sid: 0.0 if self.weight[sid] == 0 else audited.get(sid, self.weight[sid] * self.target_fallback) for sid in ids}
         self.by_owner = defaultdict(list)
         for sid, owner in sorted(self.owner.items()):
             self.by_owner[owner].append(sid)
@@ -136,6 +153,9 @@ class TheoryGraph:
 
     def missing(self, stages) -> float:
         return sum(self.weight[sid] for sid in stages)
+
+    def missing_targets(self, stages) -> float:
+        return sum(self.targets[sid] for sid in stages)
 
 
 def page_spans(locators) -> dict:
@@ -238,9 +258,10 @@ def declaration_metrics(graph: dict, own_layers: list) -> dict:
 
 def structure(atlas: dict, root: Path = ROOT) -> tuple:
     """Per-roadmap structural measures, and the graph they came from."""
+    from library_coverage import load_coverage
     presentation = load(root / "data" / "stage-presentation.json")
     hidden = {sid for sid, item in presentation.items() if isinstance(item, dict) and item.get("hidden")}
-    graph = TheoryGraph(atlas, stage_statuses(root), hidden)
+    graph = TheoryGraph(atlas, stage_statuses(root), hidden, coverage=load_coverage(root))
     declarations = declaration_graphs(root)
     # A collection roadmap is measured by its child roadmaps together.
     members = defaultdict(lambda: [])
@@ -258,6 +279,7 @@ def structure(atlas: dict, root: Path = ROOT) -> tuple:
             "layers": len(own),
             "missingOwn": round(graph.missing(own), 1),
             "missingLayers": round(graph.missing(needed), 1),
+            "missingTargets": round(graph.missing_targets(needed), 1),
             "depth": max((graph.depth(sid) for sid in layers), default=0),
             "suppliers": len({graph.owner[sid] for sid in needed if graph.weight[sid] > 0} - set(members[rid])),
         }
