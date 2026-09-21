@@ -95,6 +95,15 @@ def world():
     return atlas, stages, roadmaps, nodes, blueprints, reserved
 
 
+def layer_of(node, own, own_stages):
+    """The layer a node belongs to, following sub-structure up to a stage."""
+    parent, seen = node.get("parentStageId"), set()
+    while parent in own and parent not in seen:
+        seen.add(parent)
+        parent = own[parent].get("parentStageId")
+    return parent if parent in own_stages else (node.get("realises") or [None])[0]
+
+
 def check(path, index, context):
     atlas, stages, roadmaps, nodes, blueprints, reserved = context
     errors, warnings = [], []
@@ -180,6 +189,8 @@ def check(path, index, context):
     edges = []
     counts = Counter()
     api_items = 0
+    unit_tests = 0
+    planets = Counter()
     resolved = Counter()
     for nid, node in own.items():
         kind = node.get("kind")
@@ -227,6 +238,24 @@ def check(path, index, context):
                     errors.append(f"{nid}: api item needs name and statement")
                 if item.get("role") not in ROLES:
                     errors.append(f"{nid}: api item {item.get('name')!r} has unknown role {item.get('role')!r}")
+            # Unit tests pin the definition down: a wrong definition fails one of them.
+            tests = node.get("tests") or []
+            if len(tests) < 3:
+                errors.append(f"{nid}: a {kind} needs at least 3 unit tests")
+            for item in tests:
+                unit_tests += 1
+                if not text(item.get("name")) or not text(item.get("statement")):
+                    errors.append(f"{nid}: unit test {item.get('name')!r} needs a name and a statement")
+        # Planets are what the atlas shows inside a layer: key definitions,
+        # central constructions and named theorems, with short names.
+        planet = node.get("planet")
+        if planet is not None:
+            if kind not in ("definition", "construction", "theorem"):
+                errors.append(f"{nid}: only definitions, constructions and theorems can be planets")
+            name = planet.get("name") if isinstance(planet, dict) else None
+            if not text(name) or len(name) > 60:
+                errors.append(f"{nid}: a planet needs a name of at most 60 characters")
+            planets[layer_of(node, own, own_stages)] += 1
         for pre in node.get("prerequisites", []) or []:
             if pre in own:
                 edges.append((pre, nid)); resolved["node (this packet)"] += 1
@@ -249,6 +278,9 @@ def check(path, index, context):
                 warnings.append(f"{nid}: prerequisite {pre} is reserved for {reserved[pre].get('job')} and not yet written")
             else:
                 errors.append(f"{nid}: unresolved prerequisite {pre!r}")
+    for layer, count in sorted(planets.items(), key=lambda kv: str(kv[0])):
+        if count > 6:
+            errors.append(f"{layer}: {count} planets; a layer shows at most 6")
     # acyclicity within the packet
     graph = defaultdict(list)
     for a, b in edges:
@@ -300,7 +332,8 @@ def check(path, index, context):
         if any(covered.get(s, {}).get("status") != "closed" for s in scope):
             errors.append("closed packet has stages that are not closed")
     summary = {"packet": str(path), "roadmap": rid, "status": packet.get("status"), "nodes": len(own),
-               "kinds": dict(counts), "apiItems": api_items, "baselineDeclarations": len(declared),
+               "kinds": dict(counts), "apiItems": api_items, "unitTests": unit_tests, "planets": sum(planets.values()),
+               "baselineDeclarations": len(declared),
                "prerequisites": dict(resolved), "gaps": len(packet.get("gaps", [])),
                "requests": len(packet.get("requests", [])), "stagesInScope": len(scope),
                "stagesClosed": sum(1 for s in scope if covered.get(s, {}).get("status") == "closed")}
