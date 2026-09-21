@@ -148,6 +148,23 @@ class RedTeamText(unittest.TestCase):
         attack = {"id": "RT-AUDIT-01", "kind": "redteam", "priority": 2, "roadmapIds": [], "after": [], "independentOf": ["AUDIT-01", "REV-AUDIT-01"]}
         self.assertIn("Must be done by an agent that did none of `AUDIT-01`, `REV-AUDIT-01`.", body(attack, [attack], {}, {}))
 
+class Listing(unittest.TestCase):
+    # `gh issue list` stops at 1000 issues; the swarm has more.
+    def test_every_issue_is_listed_page_by_page_without_pull_requests(self):
+        from issues import issue_command
+        command = issue_command("swarm", "all")
+        self.assertEqual(command[:3], ["gh", "api", "--paginate"])
+        self.assertIn("issues?labels=swarm&state=all&per_page=100", command[3])
+        self.assertIn("select(.pull_request | not)", command[-1])
+        self.assertNotIn("body", command[-1])
+        self.assertIn("body", issue_command("swarm", "open", body=True)[-1])
+
+    def test_the_listing_reads_one_issue_a_line(self):
+        from issues import parse_issues
+        text = '{"number": 82, "state": "OPEN", "labels": [{"name": "swarm"}]}\n{"number": 83, "state": "CLOSED", "labels": []}\n'
+        self.assertEqual([item["number"] for item in parse_issues(text)], [82, 83])
+
+
 class PublicText(unittest.TestCase):
     def test_swarm_host_paths_never_reach_an_issue(self):
         prompt = ("You run unattended in a tmux session as job BP-X. Work in /home/chris/tauceti-swarm/tauceti-explorer. "
