@@ -96,6 +96,15 @@
         .tau-graph .tau-orbit { fill: none; stroke: #3a4652; }
         .tau-graph .tau-link { fill: none; stroke: ${ACCENT}; }
         .tau-graph .tau-link.is-reference { stroke: #8fa0b0; }
+        .tau-graph .tau-link.is-selected { stroke: #f0e4c8; }
+        .tau-graph .tau-link-hit { fill: none; stroke: transparent; pointer-events: stroke; cursor: pointer; outline: none; }
+        .tau-graph .tau-link-hit:focus-visible { stroke: rgba(240, 228, 200, .18); }
+        .tau-graph .tau-link-card-box { fill: #0f151c; stroke: #3a4652; }
+        .tau-graph .tau-link-card text { fill: #dbe1e7; stroke: none; }
+        .tau-graph .tau-link-card .tau-link-card-caption { fill: #dfc186; letter-spacing: .4px; text-transform: uppercase; }
+        .tau-graph .tau-link-card [data-end] { cursor: pointer; }
+        .tau-graph .tau-link-card [data-end] rect { fill: transparent; pointer-events: all; }
+        .tau-graph .tau-link-card [data-end]:hover text { fill: #f0e4c8; text-decoration: underline; }
         .tau-graph .tau-route { fill: none; stroke: #6f8496; }
       `);
       const defs = this.svg.append('defs');
@@ -116,6 +125,9 @@
       this.viewport = this.svg.append('g').attr('class', 'tau-viewport');
       this.layers = {};
       ['field', 'core', 'galaxy', 'route', 'constellation', 'figure', 'link', 'star', 'planet', 'label'].forEach(name => { this.layers[name] = this.viewport.append('g').attr('class', 'tau-layer-' + name); });
+      // Drawn in screen space, above everything: the card of a selected link.
+      this.overlay = this.svg.append('g').attr('class', 'tau-overlay');
+      this.selectedLinkId = null; this.hoveredLinkId = null;
       // The universe spans thousands of times in scale, so a wheel or trackpad
       // step must move the camera a long way; a pinch keeps a gentler gain.
       this.zoom = d3.zoom().scaleExtent([.015, 900]).clickDistance(6)
@@ -596,32 +608,91 @@
       const links = [];
       if (activeNode) {
         const universe = this.universe;
-        const curve = (a, b, bend) => { const dx = b.x - a.x, dy = b.y - a.y, length = Math.max(1, Math.hypot(dx, dy)); const mx = (a.x + b.x) / 2 - dy / length * bend, my = (a.y + b.y) / 2 + dx / length * bend; return `M${a.x},${a.y}Q${mx},${my} ${b.x},${b.y}`; };
+        // A gentle quadratic curve from a to b, and the point halfway along it.
+        const curve = (a, b, bend) => {
+          const dx = b.x - a.x, dy = b.y - a.y, length = Math.max(1, Math.hypot(dx, dy));
+          const mx = (a.x + b.x) / 2 - dy / length * bend, my = (a.y + b.y) / 2 + dx / length * bend;
+          return { path: `M${a.x},${a.y}Q${mx},${my} ${b.x},${b.y}`, mid: { x: (a.x + 2 * mx + b.x) / 4, y: (a.y + 2 * my + b.y) / 4 } };
+        };
         if (activeNode.level === 'star') universe.starEdges.forEach((edge, index) => {
           if (edge.source !== activeNode.id && edge.target !== activeNode.id) return;
           const a = universe.byId.get(edge.source), b = universe.byId.get(edge.target);
-          links.push({ id: 'star:' + index, path: curve(a, b, Math.min(12, Math.hypot(b.x - a.x, b.y - a.y) * .12)), arrow: true, reference: false });
+          links.push({ id: 'star:' + index, ...curve(a, b, Math.min(12, Math.hypot(b.x - a.x, b.y - a.y) * .12)), arrow: true, reference: false,
+            level: 'star', source: edge.source, target: edge.target });
         });
         if (activeNode.level === 'constellation') {
           universe.constellationEdges.forEach((edge, index) => {
             if (edge.source !== activeNode.id && edge.target !== activeNode.id) return;
             const a = universe.byId.get(edge.source), b = universe.byId.get(edge.target);
-            links.push({ id: 'roadmap:' + index, path: curve(a, b, Math.min(60, Math.hypot(b.x - a.x, b.y - a.y) * .1)), arrow: true, reference: false });
+            links.push({ id: 'roadmap:' + index, ...curve(a, b, Math.min(60, Math.hypot(b.x - a.x, b.y - a.y) * .1)), arrow: true, reference: false,
+              level: 'constellation', source: edge.source, target: edge.target, count: edge.count });
           });
           if (this.showReferences) universe.relatedEdges.forEach((edge, index) => {
             if (edge.source !== activeNode.id && edge.target !== activeNode.id) return;
             const a = universe.byId.get(edge.source), b = universe.byId.get(edge.target);
-            links.push({ id: 'related:' + index, path: curve(a, b, 0), arrow: false, reference: true });
+            links.push({ id: 'related:' + index, ...curve(a, b, 0), arrow: false, reference: true, level: 'constellation', source: edge.source, target: edge.target });
           });
         }
         if (activeNode.level === 'galaxy') this.layers.route.selectAll('path.tau-route').attr('opacity', d => d.source === activeNode.id || d.target === activeNode.id ? .6 : 0);
       }
       if (!activeNode || activeNode.level !== 'galaxy') this.layers.route.selectAll('path.tau-route').attr('opacity', 0);
+      if (this.selectedLinkId && !links.some(link => link.id === this.selectedLinkId)) this.selectedLinkId = null;
+      const chosen = this.selectedLinkId, near = this.hoveredLinkId;
       const join = this.layers.link.selectAll('path.tau-link').data(links, d => d.id);
       join.exit().remove();
       join.enter().append('path').attr('class', d => 'tau-link' + (d.reference ? ' is-reference tau-reference-edge' : '')).attr('vector-effect', 'non-scaling-stroke').merge(join)
-        .attr('d', d => d.path).attr('stroke-width', 1.1).attr('opacity', .6).attr('stroke-dasharray', d => d.reference ? '2 6' : null)
+        .classed('is-selected', d => d.id === chosen)
+        .attr('d', d => d.path).attr('stroke-width', d => d.id === chosen ? 2.4 : d.id === near ? 1.8 : 1.1)
+        .attr('opacity', d => d.id === chosen || d.id === near ? 1 : chosen ? .22 : .6).attr('stroke-dasharray', d => d.reference ? '2 6' : null)
         .attr('marker-end', d => d.arrow ? 'url(#' + this.id + '-arrow)' : null);
+      // Each link has a wide invisible stroke on top, so that a pointer or a
+      // finger can pick it out; selecting it names the two things it joins.
+      const graph = this, name = id => { const node = this.universe.byId.get(id); return (node && (node.label || node.title)) || id; };
+      const hits = this.layers.link.selectAll('path.tau-link-hit').data(links, d => d.id);
+      hits.exit().remove();
+      hits.enter().append('path').attr('class', 'tau-link-hit').attr('vector-effect', 'non-scaling-stroke').attr('stroke-width', 14).attr('tabindex', 0).attr('role', 'button')
+        .on('click', d => { d3.event.stopPropagation(); if (Date.now() < graph.suppressClicksUntil) return; graph.selectedLinkId = graph.selectedLinkId === d.id ? null : d.id; graph.scheduleRender(); })
+        .on('keydown', d => { if (d3.event.key !== 'Enter' && d3.event.key !== ' ') return; d3.event.preventDefault(); graph.selectedLinkId = d.id; graph.scheduleRender(); })
+        .on('mouseenter', d => { if (!graph.isCoarse && !graph.pointerResting(d3.event)) { graph.hoveredLinkId = d.id; graph.scheduleRender(); } })
+        .on('mouseleave', () => { if (!graph.isCoarse) { graph.hoveredLinkId = null; graph.scheduleRender(); } })
+        .merge(hits).attr('d', d => d.path).attr('data-source', d => d.source).attr('data-target', d => d.target)
+        .attr('aria-label', d => `${d.reference ? 'Related plans' : 'Prerequisite'}: ${name(d.source)} to ${name(d.target)}`);
+      this.renderLinkCard(links.find(link => link.id === chosen), name, k);
+    }
+
+    // The card of a selected link: what kind of link it is, and its two ends,
+    // prerequisite first; either name travels to its end.
+    renderLinkCard(link, name, k) {
+      const card = this.overlay.selectAll('g.tau-link-card').data(link ? [link] : [], d => d.id);
+      card.exit().remove();
+      if (!link) return;
+      const g = card.enter().append('g').attr('class', 'tau-link-card').merge(card);
+      g.selectAll('*').remove();
+      const font = this.isCoarse ? 13 : 12, pad = 8, line = font + 7;
+      const caption = link.reference ? 'Related plans' : `${link.level === 'star' ? 'Layer' : 'Roadmap'} prerequisite` +
+        (link.count ? ` · ${link.count} layer link${link.count === 1 ? '' : 's'}` : '');
+      const ends = [[link.source, link.reference ? '' : ''], [link.target, link.reference ? '↔ ' : '→ ']];
+      const box = g.append('rect').attr('class', 'tau-link-card-box').attr('rx', 4);
+      g.append('text').attr('class', 'tau-link-card-caption').attr('x', pad).attr('y', pad + 9).attr('font-size', 9).text(caption);
+      const graph = this;
+      let width = caption.length * 6.2;
+      ends.forEach(([id, prefix], index) => {
+        const label = prefix + name(id), y = pad + 14 + (index + 1) * line - 6;
+        const end = g.append('g').attr('data-end', index ? 'target' : 'source').attr('data-node-id', id)
+          .on('click', () => { d3.event.stopPropagation(); graph.selectedLinkId = null; const node = graph.universe.byId.get(id); if (node) graph.options.onSelect?.(node); });
+        const hit = end.append('rect').attr('x', pad - 3).attr('y', y - font).attr('height', line);
+        const text = end.append('text').attr('x', pad).attr('y', y).attr('font-size', font).text(label);
+        let measured = label.length * font * .6;
+        try { measured = text.node().getComputedTextLength(); } catch (_) { /* detached */ }
+        hit.attr('width', measured + 6);
+        width = Math.max(width, measured);
+      });
+      const w = Math.ceil(width + pad * 2), h = pad * 2 + 14 + 2 * line - 4;
+      box.attr('width', w).attr('height', h);
+      // Beside the middle of the link, kept wholly on the chart.
+      const t = this.transform, sx = link.mid.x * t.k + t.x, sy = link.mid.y * t.k + t.y;
+      const x = Math.max(4, Math.min(this.width - w - 4, sx + 12)), y = Math.max(4, Math.min(this.height - h - 4, sy + 12));
+      g.attr('transform', `translate(${x},${y})`);
     }
 
     // True while the pointer has not moved since the camera last travelled.
@@ -642,6 +713,7 @@
     // ----- selection ----------------------------------------------------------
     select(id, fromBackground) {
       this.selectedId = this.universe && this.universe.byId.has(id) ? id : null;
+      this.selectedLinkId = null;
       this.scheduleRender();
       if (fromBackground && this.options.onClear) this.options.onClear();
       return this;
