@@ -231,17 +231,21 @@ def check_overview(page,scope,touch=False):
  # A heading waits for room rather than overlap. A large chart holds every
  # subject heading; a phone-width chart may hold back up to a quarter of them
  # and a chart under 400px tall up to 40%, which reappear as the camera closes in.
- # A field with several areas that is small on the chart is named once for
- # all of them; every other area on the chart has its own heading.
- headings=page.locator('.tau-label-galaxy, .tau-label-field').count();box=page.locator('#graph').bounding_box()
- areas=page.evaluate("""() => { const g=TauExplorer.graph,t=g.transform,d=g.debugState(),closed=new Map();
-  d.fields.filter(f=>!f.open).forEach(f=>f.galaxyIds.forEach(id=>closed.set(id,f.id)));
-  return new Set(TauExplorer.getUniverse().galaxies.filter(n=>{const x=n.x*t.k+t.x,y=n.y*t.k+t.y;return x>0&&x<g.width&&y>0&&y<g.height;}).map(n=>closed.get(n.id)||n.id)).size; }""")
- allowed=math.ceil(areas*.4) if box['height']<400 else math.ceil(areas*.25) if box['width']<600 else 0
+ # Every area on the chart keeps its own heading; fields are named above them.
+ headings=page.locator('.tau-label-galaxy').count();box=page.locator('#graph').bounding_box()
+ areas=page.evaluate("() => { const g=TauExplorer.graph,t=g.transform; return TauExplorer.getUniverse().galaxies.filter(n=>{const x=n.x*t.k+t.x,y=n.y*t.k+t.y;return x>0&&x<g.width&&y>0&&y<g.height;}).length; }")
+ allowed=math.ceil(areas*.4) if box['height']<400 else math.ceil(areas*.25) if box['width']<600 else math.ceil(areas*.1)
  record(scope+' every subject heading is drawn once, legibly, without overlap',headings>=areas-allowed and labels_are_clean(page) and names_are_unique(page))
- # One level of abstraction on every screen: the overview names no area of a field that has several.
- record(scope+' overview names fields, not the areas inside them',page.evaluate("""() => { const d=TauExplorer.graph.debugState(),inside=new Set(d.fields.flatMap(f=>f.galaxyIds));
-  return d.fields.length>=4&&d.fields.every(f=>!f.open)&&Array.from(document.querySelectorAll('.tau-label-galaxy')).every(e=>!inside.has(e.getAttribute('data-label-for'))); }"""))
+ # Names in two tiers from the overview on: fields in capitals, and the areas
+ # inside them, while the areas' progress colours are in view.
+ tiers=page.evaluate("""() => { const d=TauExplorer.graph.debugState(),inside=new Set(d.fields.flatMap(f=>f.galaxyIds));
+  const named=Array.from(document.querySelectorAll('.tau-label-galaxy')).map(e=>e.getAttribute('data-label-for'));
+  const dust=id=>{const e=document.querySelector('.tau-galaxy[data-node-id="'+CSS.escape(id)+'"] .tau-dust-far');return e?Number(e.getAttribute('opacity')):0;};
+  const fieldNames=Array.from(document.querySelectorAll('.tau-label-field text, .tau-label-galaxy.is-field text'));
+  return {fields:fieldNames.length,areas:named.filter(id=>inside.has(id)).length,
+          faded:named.filter(id=>dust(id)<.95).length,capitals:fieldNames.every(t=>t.textContent===t.textContent.toUpperCase())}; }""")
+ record(scope+' overview names fields over their areas, in two tiers',tiers['fields']>=2 and tiers['areas']>=3 and tiers['capitals'])
+ record(scope+' named areas show their progress colours',tiers['faded']==0)
  # A large chart shows the whole universe; a much smaller one keeps the
  # desktop scale with Mathlib in view, and the reader pans.
  record(scope+' overview shows the universe, or Mathlib at desktop scale',page.evaluate("""() => { const g=TauExplorer.graph,t=g.debugState().transform,box=document.querySelector('#graph').getBoundingClientRect(); const u=TauExplorer.getUniverse(),b=u.bounds; const x0=b.x*t.k+t.x,x1=(b.x+b.w)*t.k+t.x,y0=b.y*t.k+t.y,y1=(b.y+b.h)*t.k+t.y; const fits=x0>=-2&&x1<=box.width+2&&y0>=-2&&y1<=box.height+2; const target=g.overviewTransform(); const cx=u.core.x*t.k+t.x,cy=u.core.y*t.k+t.y; const atScale=Math.abs(t.k-target.k)<1e-6*target.k+1e-9&&cx>0&&cx<box.width&&cy>0&&cy<box.height; return fits||(!fits&&atScale&&box.width<900); }"""))
@@ -249,15 +253,14 @@ def check_overview(page,scope,touch=False):
  record(scope+' legend colours match the map encoding',legend_matches_map_encoding(page))
  record(scope+' page has no horizontal overflow',page.evaluate('document.documentElement.scrollWidth<=innerWidth+1'))
 def check_fields(page):
- # Labels sit at one level of abstraction: zoomed out, a field with several
- # areas is named once and its areas are not; zooming in names the areas.
+ # Two tiers from the overview on: each field's name in capitals over its
+ # areas, and each area's own name, while its progress colours are in view.
  fit_all(page)
  d=debug(page)
- closed=[f for f in d['fields'] if not f['open']]
- inside={gid for f in closed for gid in f['galaxyIds']}
+ inside={gid for f in d['fields'] for gid in f['galaxyIds']}
  shown=page.evaluate("Array.from(document.querySelectorAll('.tau-label-galaxy')).map(e=>e.getAttribute('data-label-for'))")
  fields=page.evaluate("Array.from(document.querySelectorAll('.tau-label-field')).map(e=>e.getAttribute('data-label-for'))")
- record('Overview names fields, not the areas inside them',len(closed)>=4 and not inside.intersection(shown) and {f['id'] for f in closed}<=set(fields))
+ record('Overview names each field above its areas, and the areas',len(set(fields))>=4 and len(inside.intersection(shown))>=10)
  field='field:algebraic-number-theory'
  label=page.locator('.tau-label-field[data-label-for="%s"]'%field)
  label.hover();page.wait_for_timeout(300)
@@ -265,10 +268,18 @@ def check_fields(page):
  lit=page.evaluate("Array.from(document.querySelectorAll('.tau-galaxy')).filter(g=>Number(g.querySelector('.tau-galaxy-ring').getAttribute('opacity'))>0).map(g=>g.getAttribute('data-node-id'))")
  record('Hovering a field\'s name outlines exactly its areas',sorted(lit)==sorted(members))
  label.click();page.wait_for_timeout(900)
- after=next(f for f in debug(page)['fields'] if f['id']==field)
- named=page.evaluate("Array.from(document.querySelectorAll('.tau-label-galaxy')).map(e=>e.getAttribute('data-label-for'))")
- record('Clicking a field\'s name zooms in until its areas are named',after['open'] and not after['labelVisible'] and len(set(members)&set(named))>=len(members)-1 and page.locator('.tau-label-field[data-label-for="%s"]'%field).count()==0)
- page.mouse.move(5,5);fit_all(page)
+ view=page.evaluate("""ids => { const g=TauExplorer.graph,t=g.transform,u=TauExplorer.getUniverse();
+  const named=new Set(Array.from(document.querySelectorAll('.tau-label-galaxy')).map(e=>e.getAttribute('data-label-for')));
+  const members=ids.map(id=>u.byId.get(id));
+  return {inView:members.every(n=>{const x=n.x*t.k+t.x,y=n.y*t.k+t.y;return x>0&&x<g.width&&y>0&&y<g.height;}),named:ids.filter(id=>named.has(id)).length}; }""",members)
+ record('Clicking a field\'s name brings all its areas into view, named',view['inView'] and view['named']>=len(members)-2)
+ # Closer in, named areas keep their colours on every screen.
+ page.mouse.move(5,5)
+ page.evaluate("f => { const g=TauExplorer.graph; g.svg.interrupt(); const t=g.overviewTransform(),k=t.k*f,cx=(g.width/2-t.x)/t.k,cy=(g.height/2-t.y)/t.k; g.svg.call(g.zoom.transform,d3.zoomIdentity.translate(g.width/2-cx*k,g.height/2-cy*k).scale(k)); }",1.7);page.wait_for_timeout(500)
+ faded=page.evaluate("""() => Array.from(document.querySelectorAll('.tau-label-galaxy')).map(e=>e.getAttribute('data-label-for')).filter(id=>{
+  const e=document.querySelector('.tau-galaxy[data-node-id="'+CSS.escape(id)+'"] .tau-dust-far');return !e||Number(e.getAttribute('opacity'))<.9;}).length""")
+ record('Named areas keep their progress colours closer in',faded==0)
+ page.evaluate("TauExplorer.navigate({view:'all',id:null,layer:null,selected:null})");page.evaluate("TauExplorer.graph.fitAll(false)");page.wait_for_timeout(600)
 def check_hover_links(page):
  heading=page.locator('.tau-label-galaxy').first
  heading.hover();page.wait_for_timeout(200)

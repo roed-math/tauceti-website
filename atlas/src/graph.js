@@ -81,8 +81,8 @@
         .tau-graph .tau-core, .tau-graph .tau-galaxy-disc, .tau-graph .tau-dust, .tau-graph .tau-constellation-disc, .tau-graph .tau-figure, .tau-graph .tau-orbit, .tau-graph .tau-field, .tau-graph .tau-link, .tau-graph .tau-route, .tau-graph .tau-ring { pointer-events: none; }
         .tau-graph .tau-label-core text { fill: #efe3c8; font-weight: 600; letter-spacing: 2.5px; text-transform: uppercase; stroke-width: 3px; }
         .tau-label-galaxy text { fill: #b3bec9; font-weight: 500; letter-spacing: .2px; stroke-width: 2.5px; }
-        .tau-label-field text { fill: #cdd5dd; font-weight: 600; letter-spacing: .4px; stroke-width: 3px; }
-        .tau-graph .tau-label-field.is-active text { fill: #eef1f4; }
+        .tau-label-field text, .tau-graph .tau-label-galaxy.is-field text { fill: #d3dae1; font-weight: 600; letter-spacing: 1.3px; stroke-width: 3px; }
+        .tau-graph .tau-label-field.is-active text, .tau-graph .tau-label-galaxy.is-field.is-active text { fill: #f1f3f5; }
         .tau-graph .tau-label-galaxy.is-active text { fill: #e2e6eb; }
         .tau-graph .tau-label-constellation text { fill: #c9d2da; font-weight: 400; stroke-width: 2.5px; }
         .tau-graph .tau-label-star text { fill: #dbe1e7; font-weight: 500; stroke-width: 3px; }
@@ -299,7 +299,7 @@
       const small = this.width < 600 || this.height < 300;
       // Fields with several areas open (their areas are named instead of them)
       // once the camera is this many times closer than the overview.
-      return { resolve: 22, constellationName: small ? 40 : 44, starName: small ? 46 : 54, system: 26, planetName: small ? 96 : 120, fieldOpen: 1.4, small };
+      return { resolve: 22, constellationName: small ? 40 : 44, starName: small ? 46 : 54, system: 26, planetName: small ? 96 : 120, small };
     }
 
     render() {
@@ -322,37 +322,39 @@
         labels.push({ id: 'core:' + core.id, nodeId: core.id, kind: 'core', x: core.x, y: core.y + core.r * 1.75 + 12 / k, lines: ['Mathlib'], font: T.small ? 11 : 12,
           anchor: 'middle', above: false, priority: 200, active: false, alternatives: [{ x: core.x, y: core.y - core.r * 1.75 - 6 / k, above: true }] });
       }
-      // Labels sit at one level of abstraction: at the overview a field with
-      // several areas is named once, and zooming in hands over to the names of
-      // the areas of every such field at once, on every screen alike.
-      const closed = new Set(), opened = !this.atOverview(T.fieldOpen);
+      // Names come in two tiers, as on a map. A field is named in spaced
+      // capitals above its areas, and each area keeps its own name from the
+      // overview on, while its colours are in view. A field with one area is
+      // named once, as a field. A field's name gives way once the camera is
+      // inside the field.
       (universe.fields || []).forEach(field => {
-        field.open = opened;
         field.labelVisible = false;
-        if (field.open) return;
-        field.galaxyIds.forEach(id => closed.add(id));
-        if (!intersects(field.x, field.y, Math.max(field.w, field.h) / 2)) return;
+        if (field.w * k > this.width * 1.2 || !intersects(field.x, field.y, Math.max(field.w, field.h) / 2)) return;
         field.labelVisible = true;
-        const lines = T.small || field.w * k < 170 ? [field.short || wrapText(field.label, 16, 1)[0]] : (field.caption || wrapText(field.label, 22, 2));
-        // Where its areas' headings would go, largest area first, so the name
-        // always sits on the field it names.
-        const spots = field.galaxyIds.map(id => universe.byId.get(id)).sort((a, b) => b.count - a.count || a.id.localeCompare(b.id))
-          .flatMap(g => [{ x: g.x, y: g.top - 8 / k, above: true }, { x: g.x, y: g.bottom + 14 / k, above: false }]);
-        labels.push({ id: 'field:' + field.id, nodeId: field.id, kind: 'field', x: spots[0].x, y: spots[0].y, lines, font: T.small ? 11 : 12, anchor: 'middle', above: true,
+        const lines = T.small ? [(field.short || field.label).toUpperCase()] : wrapText(field.label.toUpperCase(), 28, 2);
+        // Above the field, clear of its top area's name; else above one of its
+        // areas, largest first; else below the field.
+        const middle = (field.left + field.right) / 2;
+        const spots = [{ x: middle, y: field.top - 42 / k, above: true }]
+          .concat(field.galaxyIds.map(id => universe.byId.get(id)).sort((a, b) => b.count - a.count || a.id.localeCompare(b.id))
+            .map(g => ({ x: g.x, y: g.top - 42 / k, above: true })), [{ x: middle, y: field.bottom + 16 / k, above: false }]);
+        labels.push({ id: 'field:' + field.id, nodeId: field.id, kind: 'field', x: spots[0].x, y: spots[0].y, lines, font: T.small ? 10 : 11, anchor: 'middle', above: true,
           priority: 150 + field.count, active: active === field.id, members: new Set(field.galaxyIds), alternatives: spots.slice(1) });
       });
       galaxies.forEach(galaxy => {
         const screenW = galaxy.w * k;
-        galaxy.headingVisible = !closed.has(galaxy.id) && screenW < this.width * 1.6 && intersects(galaxy.x, galaxy.y - galaxy.ry, galaxy.rx);
+        galaxy.headingVisible = screenW < this.width * 1.6 && intersects(galaxy.x, galaxy.y - galaxy.ry, galaxy.rx);
         if (galaxy.headingVisible) {
-          const compact = galaxy.w * k < 150 || T.small;
-          const lines = compact ? [galaxy.short || wrapText(galaxy.label, 16, 1)[0]] : (galaxy.caption || wrapText(galaxy.label, 21, 2));
+          const compact = galaxy.w * k < 150 || T.small, field = !galaxy.fieldId;
+          const named = compact ? [galaxy.short || wrapText(galaxy.label, 16, 1)[0]] : (galaxy.caption || wrapText(galaxy.label, 21, 2));
+          const lines = field ? named.map(line => line.toUpperCase()) : named;
           const edge = (value, fallback) => Number.isFinite(value) ? value : fallback;
           const top = edge(galaxy.top, galaxy.y - galaxy.ry) - 8 / k, bottom = edge(galaxy.bottom, galaxy.y + galaxy.ry) + 12 / k;
           const left = edge(galaxy.left, galaxy.x - galaxy.rx) - 6 / k, right = edge(galaxy.right, galaxy.x + galaxy.rx) + 6 / k, middle = galaxy.y + 3.5 / k;
           // Above the galaxy, then below it, then flush with either side of
           // it, then beside it: a heading steps aside rather than vanish.
-          labels.push({ id: 'galaxy:' + galaxy.id, nodeId: galaxy.id, kind: 'galaxy', x: galaxy.x, y: top, lines, font: T.small ? 10 : 11, anchor: 'middle', above: true, priority: 100 + galaxy.count, active: active === galaxy.id,
+          labels.push({ id: 'galaxy:' + galaxy.id, nodeId: galaxy.id, kind: 'galaxy', field, x: galaxy.x, y: top, lines, font: T.small ? 10 : 11, anchor: 'middle', above: true,
+            priority: (field ? 150 : 100) + galaxy.count, active: active === galaxy.id,
             alternatives: [{ x: galaxy.x, y: bottom, above: false }, { x: left + 6 / k, y: top, above: true, anchor: 'start' }, { x: right - 6 / k, y: top, above: true, anchor: 'end' },
               { x: right, y: middle, above: false, anchor: 'start' }, { x: left, y: middle, above: false, anchor: 'end' },
               { x: left + 6 / k, y: bottom, above: false, anchor: 'start' }, { x: right - 6 / k, y: bottom, above: false, anchor: 'end' }] });
@@ -421,9 +423,15 @@
       galaxySelection.select('.tau-galaxy-disc').attr('opacity', d => active === d.id ? .04 : .014);
       // Coarse dust is for the far view only; it is gone before a galaxy fills
       // the chart, while the fine dust takes over as a faint background.
-      const farFade = Math.max(0, Math.min(1, (.85 - k) / .45)), nearFade = .6 * Math.max(0, Math.min(1, (k - .35) / .4)) * Math.max(0, Math.min(1, (9 - k) / 4));
-      galaxySelection.select('.tau-dust-far').attr('opacity', farFade).attr('display', farFade > 0 ? null : 'none');
-      galaxySelection.select('.tau-dust-near').attr('opacity', nearFade).attr('display', nearFade > 0 ? null : 'none');
+      // Each galaxy keeps its coarse dust, which carries its progress colours,
+      // until it grows to fill most of the chart, on every screen alike. A
+      // short chart (a phone held sideways) counts as 600 pixels, so the map at
+      // desktop scale keeps its colours there too.
+      const shorter = Math.max(600, Math.min(this.width, this.height)), size = g => g.w * k / shorter;
+      const farFade = g => Math.max(0, Math.min(1, (1.1 - size(g)) / .6));
+      const nearFade = g => .6 * Math.max(0, Math.min(1, (size(g) - .35) / .5)) * Math.max(0, Math.min(1, (9 - k) / 4));
+      galaxySelection.select('.tau-dust-far').attr('opacity', farFade).attr('display', g => farFade(g) > 0 ? null : 'none');
+      galaxySelection.select('.tau-dust-near').attr('opacity', nearFade).attr('display', g => nearFade(g) > 0 ? null : 'none');
     }
 
     renderConstellations(items, k, active) {
@@ -602,7 +610,7 @@
       enter.filter(d => d.kind === 'galaxy').on('click', d => { d3.event.stopPropagation(); if (Date.now() < graph.suppressClicksUntil) return; graph.options.onSelect?.(graph.universe.byId.get(d.nodeId)); })
         .on('mouseenter', d => { if (!graph.isCoarse && !graph.pointerResting(d3.event)) { graph.hoveredId = d.nodeId; graph.scheduleRender(); } }).on('mouseleave', () => { if (!graph.isCoarse) { graph.hoveredId = null; graph.scheduleRender(); } });
       const all = enter.merge(join);
-      all.classed('is-active', d => d.active).attr('transform', d => `translate(${d.x},${d.y}) scale(${1 / k})`);
+      all.classed('is-active', d => d.active).classed('is-field', d => !!d.field).attr('transform', d => `translate(${d.x},${d.y}) scale(${1 / k})`);
       const cache = this.widthCache; let measured = false;
       all.select('text').attr('text-anchor', d => d.anchor).attr('font-size', d => d.font).each(function (d) {
         const text = d3.select(this); text.selectAll('tspan').remove();
@@ -786,15 +794,7 @@
       const rect = this.footprint(id), node = this.universe && this.universe.byId.get(id);
       if (!rect) return this;
       const headroom = node && (node.level === 'galaxy' || node.level === 'field') ? 44 : node && node.level === 'constellation' ? 36 : 24;
-      let transform = this.transformWithHeadroom(rect, headroom, 8);
-      // A field is shown close enough for its areas to be named, even where
-      // (on a phone) the whole field would not fit at that scale.
-      const open = node && node.level === 'field' ? this.overviewTransform().k * this.thresholds().fieldOpen * 1.08 : 0;
-      if (transform.k < open) {
-        const reserve = this.width < 600 ? 56 : this.height < 400 ? 24 : 0;
-        transform = d3.zoomIdentity.translate(this.width / 2 - (rect.x + rect.w / 2) * open, (this.height - reserve) / 2 - (rect.y + rect.h / 2) * open).scale(open);
-      }
-      return this.travel(transform, animate !== false);
+      return this.travel(this.transformWithHeadroom(rect, headroom, 8), animate !== false);
     }
     // The whole universe at the scale a desktop chart gives it. A chart much
     // smaller than that (a phone) keeps the scale instead of shrinking the map,
@@ -910,7 +910,7 @@
         counts: { galaxies: universe.galaxies.length, constellations: universe.constellations.length, stars: universe.stars.length, planets: universe.planets.length, routes: universe.routes.length, strongRoutes: universe.routes.filter(r => r.strong).length },
         visible: { galaxies: visible.galaxies.length, constellations: visible.constellations.length, resolved: visible.constellations.filter(c => c.resolved).length, stars: visible.stars.length, planets: visible.planets.length, labels: visible.labels.filter(l => l.shown).length },
         rendered: this.container.querySelectorAll('.tau-layer-constellation g, .tau-layer-star g, .tau-layer-planet g, .tau-layer-label g').length,
-        fields: (universe.fields || []).map(f => ({ id: f.id, label: f.label, galaxyIds: f.galaxyIds, open: !!f.open, labelVisible: !!f.labelVisible })),
+        fields: (universe.fields || []).map(f => ({ id: f.id, label: f.label, galaxyIds: f.galaxyIds, labelVisible: !!f.labelVisible })),
         galaxies: universe.galaxies.map(g => ({ id: g.id, label: g.label, fieldId: g.fieldId || null, x: g.x, y: g.y, rx: g.rx, ry: g.ry, count: g.count, headingVisible: !!g.headingVisible })),
         constellations: universe.constellations.map(c => ({ id: c.id, galaxyId: c.galaxyId, x: c.x, y: c.y, r: c.r, stars: c.starIds.length, resolved: !!c.resolved, nameVisible: !!c.nameVisible, progress: progressValue(c.progress), hasProgress: hasProgress(c), accent: accentOf(c), unmapped: !!c.unmapped })),
         stars: universe.stars.map(s => ({ id: s.id, constellationId: s.constellationId, x: s.x, y: s.y, r: s.r, room: s.room, planets: s.planetIds.length, rank: s.rank, dependencyOrderValid: s.dependencyOrderValid, progress: progressValue(s.progress), accent: accentOf(s) })),
