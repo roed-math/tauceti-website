@@ -238,6 +238,12 @@ def check(path, index, context):
                     errors.append(f"{nid}: api item needs name and statement")
                 if item.get("role") not in ROLES:
                     errors.append(f"{nid}: api item {item.get('name')!r} has unknown role {item.get('role')!r}")
+            # The API is derived from use: where and how the object is used.
+            uses = node.get("uses") or []
+            if not uses:
+                errors.append(f"{nid}: a {kind} needs its uses (where and how it is used)")
+            elif any(not text(use.get("where")) or not text(use.get("how")) for use in uses):
+                errors.append(f"{nid}: each use needs 'where' and 'how'")
             # Unit tests pin the definition down: a wrong definition fails one of them.
             tests = node.get("tests") or []
             if len(tests) < 3:

@@ -24,6 +24,7 @@ def definition(nid="R:L0/object", stage="R:L0", **extra):
             "acceptance": ["It agrees with the classical object."], "prerequisites": [],
             "api": [{"name": f"Object.lemma{i}", "role": "simp", "statement": "An evaluation rule."} for i in range(3)],
             "tests": unit_tests(3),
+            "uses": [{"where": "Source, Theorem 2.1", "how": "Its universal property builds the comparison map."}],
             "sources": [{"sourceId": "s", "locator": "p. 1", "excerpt": "Definition.", "match": "exact"}],
             "implementationStatus": "unchecked"}
     node.update(extra)
@@ -66,15 +67,27 @@ class UnitTests(unittest.TestCase):
         self.assertIn("R:L0/object: unit test 't1' needs a name and a statement", errors_for(packet([definition(tests=tests)])))
 
 
+class Uses(unittest.TestCase):
+    # The API outline is derived from where and how the definition is used.
+    def test_a_definition_records_where_it_is_used(self):
+        node = definition()
+        del node["uses"]
+        self.assertIn("R:L0/object: a definition needs its uses (where and how it is used)", errors_for(packet([node])))
+
+    def test_every_use_says_where_and_how(self):
+        node = definition(uses=[{"where": "Source, Theorem 2.1", "how": ""}])
+        self.assertIn("R:L0/object: each use needs 'where' and 'how'", errors_for(packet([node])))
+
+
 class Planets(unittest.TestCase):
     def test_a_named_definition_or_theorem_may_be_a_planet(self):
         theorem = definition(nid="R:L0/main", kind="theorem", planet={"name": "Main theorem"})
-        del theorem["api"], theorem["tests"]
+        del theorem["api"], theorem["tests"], theorem["uses"]
         self.assertEqual(errors_for(packet([definition(planet={"name": "The object"}), theorem])), [])
 
     def test_a_lemma_is_not_a_planet(self):
         lemma = definition(nid="R:L0/step", kind="lemma", planet={"name": "A step"})
-        del lemma["api"], lemma["tests"]
+        del lemma["api"], lemma["tests"], lemma["uses"]
         self.assertIn("R:L0/step: only definitions, constructions and theorems can be planets", errors_for(packet([lemma])))
 
     def test_a_planet_name_is_a_short_phrase(self):
