@@ -43,5 +43,21 @@ class Queue(unittest.TestCase):
             self.assertEqual(set(verification.get("independentOf") or []), {red["id"], *red["independentOf"]}, verification["id"])
 
 
+class Reviews(unittest.TestCase):
+    def test_a_review_may_write_its_verdict_into_the_files_it_reviews(self):
+        # The verdict goes into the reviewed file (PROTOCOL.md section 8), and the
+        # intake merges only a job's own outputs.
+        jobs = {j["id"]: j for j in json.loads((ROOT / "research" / "blueprint" / "queue.json").read_text())["jobs"]}
+        checked = 0
+        for job in jobs.values():
+            live = job["kind"] == "review" and job.get("state") != "superseded"
+            target = jobs.get((job.get("after") or [None])[0]) if live else None
+            if target and target["kind"] in ("blueprint", "design", "link", "restructure"):
+                reviewed = {path for path in target["outputs"] if path.endswith(".json")}
+                self.assertLessEqual(reviewed, set(job["outputs"]), job["id"])
+                checked += 1
+        self.assertGreater(checked, 300)
+
+
 if __name__ == "__main__":
     unittest.main()
