@@ -7,7 +7,8 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "research" / "blueprint"))
-from intake import auto_refusals, claimants, file_problems, issue_for, job_for, latest_checks, mark_state, own_files, swarm_checked  # noqa: E402
+from intake import (auto_refusals, claimants, file_problems, follow_up, issue_for, job_for, latest_checks, mark_state,  # noqa: E402
+                    own_files, review_started, reviews_of, swarm_checked)
 
 RS = "research/blueprint/restructure/"
 JOBS = [{"id": "RS-28", "kind": "restructure", "state": "pending", "after": [],
@@ -59,6 +60,14 @@ class AutomaticMerge(unittest.TestCase):
         found = auto_refusals(BY_ID["PLANETS-01"], ["research/expansion/naming/PLANETS-01.result.json"], False, set(), set())
         self.assertIn("PLANETS-01 is already done", found)
 
+    def test_its_own_worker_may_correct_a_finished_job_before_its_review_starts(self):
+        files = ["research/expansion/naming/PLANETS-01.result.json"]
+        self.assertEqual(auto_refusals(BY_ID["PLANETS-01"], files, False, set(), set(), follow_up=True), [])
+        self.assertEqual(auto_refusals(BY_ID["RS-28"], [RS + "RS-28.md"], False, set(), set(), already_complete=True, follow_up=True), [])
+        # A follow-up still touches only the job's own files.
+        self.assertIn("research/blueprint/reviews/REV-RS-28.md is not a deliverable of PLANETS-01",
+                      auto_refusals(BY_ID["PLANETS-01"], files + ["research/blueprint/reviews/REV-RS-28.md"], False, set(), set(), follow_up=True))
+
     def test_a_draft_waits(self):
         self.assertIn("the pull request is a draft", auto_refusals(BY_ID["RS-28"], [RS + "RS-28.md"], True, set(), set()))
 
@@ -94,6 +103,33 @@ class AutomaticMerge(unittest.TestCase):
         self.assertIn("the reviewer codex-a71f92 also did RS-28",
                       auto_refusals(BY_ID["REV-RS-28"], review, False, {"codex-a71f92"}, {"codex-a71f92", "gpt-1"}))
         self.assertEqual(auto_refusals(BY_ID["REV-RS-28"], review, False, {"astra-7c41e9"}, {"codex-a71f92"}), [])
+
+
+class FollowUp(unittest.TestCase):
+    """A finished job's own worker may still correct it while nobody has started its review."""
+
+    def test_the_branch_is_named_after_a_session_that_claimed_the_job(self):
+        self.assertTrue(follow_up("cc-fb70e5-paper-bsw22-fix", {"cc-fb70e5"}, False))
+        self.assertTrue(follow_up("g6-astra-20260921-r7c4", {"g6-astra-20260921-r7c4"}, False))
+        self.assertFalse(follow_up("codex-a71f92-paper-fix", {"cc-fb70e5"}, False))
+        self.assertFalse(follow_up("cc-fb70e5x-fix", {"cc-fb70e5"}, False))
+
+    def test_a_session_too_short_to_tell_workers_apart_does_not_count(self):
+        self.assertFalse(follow_up("cc-anything", {"cc"}, False))
+
+    def test_not_once_the_review_has_started(self):
+        self.assertFalse(follow_up("cc-fb70e5-paper-bsw22-fix", {"cc-fb70e5"}, True))
+
+    def test_the_reviews_of_a_job_are_those_that_check_it(self):
+        self.assertEqual([job["id"] for job in reviews_of(BY_ID["RS-28"], JOBS)], ["REV-RS-28"])
+        self.assertEqual(reviews_of(BY_ID["PLANETS-01"], JOBS), [])
+
+    def test_a_review_has_started_once_claimed_or_past_pending(self):
+        self.assertFalse(review_started(BY_ID["REV-RS-28"], ["swarm", "state:available"]))
+        self.assertFalse(review_started(BY_ID["REV-RS-28"], ["swarm", "state:blocked"]))
+        self.assertTrue(review_started(BY_ID["REV-RS-28"], ["swarm", "state:claimed"]))
+        self.assertTrue(review_started(dict(BY_ID["REV-RS-28"], state="external"), ["swarm"]))
+        self.assertTrue(review_started(dict(BY_ID["REV-RS-28"], state="done"), []))
 
 
 class Marking(unittest.TestCase):
