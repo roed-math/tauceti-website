@@ -107,6 +107,9 @@ class Reviews(unittest.TestCase):
                 reviewed = {path for path in target["outputs"] if path.endswith(".json")}
                 self.assertLessEqual(reviewed, set(job["outputs"]), job["id"])
                 checked += 1
+            if target and target["kind"] == "paper":
+                # A paper's reviewer corrects the extraction and its report in place (PROTOCOL.md section 16).
+                self.assertLessEqual(set(target["outputs"]), set(job["outputs"]), job["id"])
         self.assertGreater(checked, 300)
 
 
