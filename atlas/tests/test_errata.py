@@ -68,7 +68,12 @@ class Register(unittest.TestCase):
         self.assertNotIn("claim 4", text)
         self.assertIn("PAPER-Y", text[text.index("## Not yet checked"):])
         self.assertIn("PAPER-Z", text[text.index("## Not yet checked"):])
-        self.assertNotIn("an older form", text)
+
+    def test_findings_in_the_older_form_are_shown_apart_until_converted(self):
+        text = register(collect(self.root, JOBS))
+        older = text.index("## Recorded in an older form")
+        self.assertIn("an older form", text[older:text.index("## Not yet checked")])
+        self.assertNotIn("an older form", text[:older])
 
 
 if __name__ == "__main__":

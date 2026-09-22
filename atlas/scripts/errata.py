@@ -40,7 +40,7 @@ def collect(root: Path = ROOT, jobs: list | None = None) -> dict:
     if jobs is None:
         jobs = (load(root / "research" / "blueprint" / "queue.json") or {"jobs": []})["jobs"]
     papers = {entry["id"]: entry for entry in (load(root / "research" / "blueprint" / "papers" / "papers.json") or {}).get("papers", [])}
-    issues, unchecked = [], []
+    issues, unchecked, older = [], [], []
     files = [(p, "paper") for p in sorted((root / "research" / "blueprint" / "papers").glob("PAPER-*.result.json"))]
     files += [(p, "packet") for p in sorted((root / "research" / "blueprint" / "packets").glob("*.json"))]
     # Files of the errata jobs, which record what work finished earlier found (PROTOCOL.md section 18).
@@ -69,7 +69,13 @@ def collect(root: Path = ROOT, jobs: list | None = None) -> dict:
             sources = {s.get("id"): ", ".join(x for x in (s.get("authors"), s.get("title"), s.get("edition")) if x) for s in listing.get("sources") or []}
         listed = data.get("sourceIssues")
         if not isinstance(listed, list) or any(not isinstance(item, dict) or "kind" not in item for item in listed):
-            # Not yet checked, or recorded in an older form that its errata job converts.
+            # Not yet checked, or recorded in an older form that its errata job converts;
+            # older-form findings are shown apart meanwhile, as recorded.
+            for item in listed if isinstance(listed, list) else []:
+                if isinstance(item, dict) and "kind" not in item and owner not in checked_by_errata:
+                    older.append({"owner": owner, "citation": default, "file": relative, "id": item.get("id"),
+                                  "locator": item.get("locator"), "finding": item.get("finding"), "resolution": item.get("resolution"),
+                                  "classification": item.get("classification")})
             if kind != "errata" and owner not in checked_by_errata:
                 unchecked.append(owner)
             continue
@@ -84,7 +90,7 @@ def collect(root: Path = ROOT, jobs: list | None = None) -> dict:
                            "status": review["verdict"] if valid else "awaiting review",
                            "reviewedBy": review.get("by") if valid else None, "reviewReason": review.get("reason") if valid else None})
     return {"purpose": "Mistakes found in published sources by the atlas's workers (research/blueprint/PROTOCOL.md section 18).",
-            "issues": issues, "unchecked": sorted(unchecked)}
+            "issues": issues, "older": older, "unchecked": sorted(unchecked)}
 
 
 def code(value) -> str:
@@ -131,6 +137,18 @@ def register(data: dict) -> str:
     out += ["## Already corrected in print", ""]
     out += [f"- {item['citation']} (`{item['owner']}`), {item['locator']}: corrected in {item['known']}." for item in sorted(printed, key=lambda i: i["id"])] or ["None yet."]
     out += ["", "## Rejected on review", "", f"{len(rejected)} findings were rejected by their reviewers; they are kept in `data/source-issues.json`.", ""]
+    out += ["## Recorded in an older form", "",
+            "Found before these findings had a standard form, and not yet reviewed: each is being restated and checked by its "
+            "paper's errata job. Shown as their workers recorded them.", ""]
+    by_source = defaultdict(list)
+    for item in data.get("older", []):
+        by_source[(item["citation"], item["owner"])].append(item)
+    for (citation, owner), group in sorted(by_source.items(), key=lambda kv: kv[0][1]):
+        out += [f"### {citation} (`{owner}`)", ""]
+        out += [f"- **{item['id']}** at {item['locator']}" + (f" ({item['classification']})" if item.get("classification") else "")
+                + f". {item['finding']} *Resolution recorded:* {item['resolution']}" for item in group] + [""]
+    if not by_source:
+        out += ["None.", ""]
     out += ["## Not yet checked", "", "These extractions and packets were written before mistakes were recorded, and are being checked: "
             + (", ".join(f"`{owner}`" for owner in data["unchecked"]) or "none") + ".", ""]
     return "\n".join(out)
