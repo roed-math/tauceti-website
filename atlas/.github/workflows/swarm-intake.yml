@@ -73,6 +73,21 @@ jobs:
             done
             exit 1
           fi
+      # Mistakes found in published sources (PROTOCOL.md section 18) are
+      # collected into research/errata/REGISTER.md after every merge.
+      - name: Update the register of mistakes in published sources
+        run: |
+          git pull --rebase -q
+          python3 scripts/errata.py
+          if [ -n "$(git status --porcelain -- research/errata data/source-issues.json)" ]; then
+            git add research/errata data/source-issues.json
+            git commit -q -m "Register of mistakes in published sources: update"
+            for attempt in 1 2 3 4 5; do
+              git pull --rebase -q && git push -q && exit 0
+              sleep $((attempt * 10))
+            done
+            exit 1
+          fi
       # Work whose independent review accepted it goes live in the atlas
       # (scripts/promote.py, PROTOCOL.md section 8): it is copied into data/,
       # distances are measured again, the page is rebuilt and tested, and the

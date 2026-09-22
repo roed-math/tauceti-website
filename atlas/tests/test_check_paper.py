@@ -83,6 +83,14 @@ class Extractions(unittest.TestCase):
         data["routes"][1]["roadmap"] = "R"
         self.assertIn("route 2: R already exists; extend it instead", errors(data))
 
+    def test_mistakes_found_in_the_paper_are_recorded_in_full(self):
+        data = extraction()
+        data["sourceIssues"] = [{"id": "PAPER-X/E1", "kind": "misprint", "locator": "Theorem 1.1", "printed": "p ≤ q", "correction": "q ≤ p",
+                                 "reason": "The proof uses q ≤ p.", "affects": "nothing", "known": "new", "searched": ["arXiv v1–v3"]}]
+        self.assertEqual(errors(data), [])
+        data["sourceIssues"][0]["searched"] = []
+        self.assertIn("PAPER-X/E1: searched lists where an existing correction was looked for", errors(data))
+
     def test_the_file_names_its_paper(self):
         self.assertIn("paper must be PAPER-Y", errors(extraction(), name="PAPER-Y"))
 

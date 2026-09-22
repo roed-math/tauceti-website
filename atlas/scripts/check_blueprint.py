@@ -19,6 +19,8 @@ from collections import Counter, defaultdict
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / "scripts"))
+from source_issues import check_issues  # noqa: E402
 KINDS = {"definition", "construction", "lemma", "theorem", "comparison", "application"}
 COVERAGE = {"not_read", "partial", "source_decomposed", "closed"}
 ROLES = {"constructor", "data", "projection", "extensionality", "characterisation", "simp", "instance",
@@ -335,6 +337,7 @@ def check(path, index, context):
     for sid in scope:
         if sid not in covered:
             errors.append(f"no coverage record for stage {sid}")
+    errors += check_issues(packet.get("sourceIssues"), str(rid))
     for gap in packet.get("gaps", []):
         if not text(gap.get("title")) or not text(gap.get("detail")):
             errors.append("gap needs title and detail")

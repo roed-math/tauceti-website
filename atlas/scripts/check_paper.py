@@ -17,6 +17,8 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / "scripts"))
+from source_issues import check_issues  # noqa: E402
 KINDS = {"definition", "construction", "theorem"}
 STATUSES = {"library", "planned", "missing"}
 ROUTES = {"source", "part-ii", "new"}
@@ -123,6 +125,7 @@ def check(data, name: str, roadmaps: dict, stages: dict) -> list:
             if item.get("status") == "missing" and not taken.get(iid):
                 errors.append(f"{iid} is missing but no route takes it")
     errors += [f"{iid} is taken by {count} routes" for iid, count in taken.items() if count > 1 and items[iid].get("status") == "missing"]
+    errors += check_issues(data.get("sourceIssues"), name)
     return errors
 
 

@@ -106,6 +106,17 @@ class Planets(unittest.TestCase):
 
 
 
+class SourceMistakes(unittest.TestCase):
+    def test_a_packet_records_the_mistakes_found_in_its_sources(self):
+        data = packet([definition()])
+        data["sourceIssues"] = [{"id": "R/E1", "kind": "gap", "locator": "Lemma 3", "printed": "Clearly f is surjective.",
+                                 "correction": "Surjectivity needs the hypothesis n ≥ 2.", "reason": "It fails for n = 1.",
+                                 "affects": "the proof", "known": "new", "searched": ["arXiv v2"]}]
+        self.assertEqual(errors_for(data), [])
+        data["sourceIssues"][0]["id"] = "Q/E1"
+        self.assertIn("finding id 'Q/E1' must start with R/E", errors_for(data))
+
+
 class Restructuring(unittest.TestCase):
     def test_a_layer_an_accepted_restructuring_drops_is_closed_without_nodes(self):
         import check_blueprint
