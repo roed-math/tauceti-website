@@ -42,6 +42,9 @@ class Findings(unittest.TestCase):
         self.assertIn("finding id 'OTHER/E1' must start with PAPER-X/E", errors([dict(ISSUE, id="OTHER/E1")]))
         self.assertIn("PAPER-X/E1 appears twice", errors([ISSUE, copy.deepcopy(ISSUE)]))
 
+    def test_a_finding_in_an_older_form_waits_for_its_errata_job(self):
+        self.assertEqual(errors([{"id": "S1", "finding": "An older form.", "resolution": "Kept."}]), [])
+
     def test_a_reviewer_confirms_or_rejects_each_finding_with_a_reason(self):
         self.assertEqual(errors([dict(ISSUE, review={"verdict": "confirmed", "reason": "Checked n = 1.", "by": "REV-PAPER-X"})]), [])
         found = errors([dict(ISSUE, review={"verdict": "maybe", "reason": "", "by": ""})])

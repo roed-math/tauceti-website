@@ -20,7 +20,9 @@ def issue(n, known="new", review=None, **extra):
 
 JOBS = [{"id": "PAPER-X", "kind": "paper", "state": "done", "outputs": ["research/blueprint/papers/PAPER-X.result.json"]},
         {"id": "REV-PAPER-X", "kind": "review", "state": "done", "after": ["PAPER-X"], "outputs": ["research/blueprint/papers/PAPER-X.result.json"]},
-        {"id": "PAPER-Y", "kind": "paper", "state": "done", "outputs": ["research/blueprint/papers/PAPER-Y.result.json"]}]
+        {"id": "PAPER-Y", "kind": "paper", "state": "done", "outputs": ["research/blueprint/papers/PAPER-Y.result.json"]},
+        {"id": "ERRATA-PAPER-W", "kind": "errata", "state": "done", "outputs": ["research/blueprint/errata/PAPER-W.json"]},
+        {"id": "REV-ERRATA-PAPER-W", "kind": "review", "state": "done", "after": ["ERRATA-PAPER-W"], "outputs": ["research/blueprint/errata/PAPER-W.json"]}]
 
 
 class Register(unittest.TestCase):
@@ -37,6 +39,11 @@ class Register(unittest.TestCase):
                              issue(5, review={"verdict": "confirmed", "reason": "Self-confirmed.", "by": "PAPER-X"})]}))
         (papers / "PAPER-Y.result.json").write_text(json.dumps({"paper": "PAPER-Y", "source": {"title": "Another", "authors": "Someone"}}))
         (papers / "PAPER-Z.result.json").write_text(json.dumps({"paper": "PAPER-Z", "sourceIssues": [{"id": "S1", "finding": "an older form"}]}))
+        errata = self.root / "research" / "blueprint" / "errata"
+        errata.mkdir()
+        (papers / "PAPER-W.result.json").write_text(json.dumps({"paper": "PAPER-W"}))
+        (errata / "PAPER-W.json").write_text(json.dumps({"paper": "PAPER-W", "protocol": "errata-v1", "sourceIssues": [
+            dict(issue(1), id="PAPER-W/E1", printed="claim from W", review={"verdict": "confirmed", "reason": "Checked.", "by": "REV-ERRATA-PAPER-W"})]}))
 
     def tearDown(self):
         self.folder.cleanup()
@@ -46,7 +53,10 @@ class Register(unittest.TestCase):
 
     def test_a_finding_counts_as_confirmed_only_by_a_finished_review_of_its_file(self):
         self.assertEqual(self.statuses(), {"PAPER-X/E1": "confirmed", "PAPER-X/E2": "awaiting review", "PAPER-X/E3": "confirmed",
-                                           "PAPER-X/E4": "rejected", "PAPER-X/E5": "awaiting review"})
+                                           "PAPER-X/E4": "rejected", "PAPER-X/E5": "awaiting review", "PAPER-W/E1": "confirmed"})
+
+    def test_a_paper_checked_by_its_errata_job_is_no_longer_unchecked(self):
+        self.assertNotIn("PAPER-W", collect(self.root, JOBS)["unchecked"])
 
     def test_the_register_puts_new_confirmed_mistakes_first_and_lists_what_is_unchecked(self):
         text = register(collect(self.root, JOBS))

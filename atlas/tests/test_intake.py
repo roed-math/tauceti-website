@@ -127,6 +127,10 @@ class Files(unittest.TestCase):
                    for path in sorted(own_files(job)) if file_problems(path, "{}")]
         self.assertEqual(refused, [])
 
+    def test_errata_files_are_swarm_output(self):
+        self.assertEqual(file_problems("research/blueprint/errata/PAPER-FU-24.json", '{"paper": "PAPER-FU-24"}'), [])
+        self.assertEqual(file_problems("research/blueprint/errata/PAPER-FU-24.md", "What the paper says."), [])
+
     def test_code_and_local_paths_are_refused(self):
         self.assertEqual(file_problems("scripts/build.py", ""), ["file outside swarm output paths: scripts/build.py"])
         self.assertEqual(file_problems(RS + "RS-28.md", "See /Users/someone/notes."), [f"local path in {RS}RS-28.md"])

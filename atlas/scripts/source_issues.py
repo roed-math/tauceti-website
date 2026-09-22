@@ -31,6 +31,9 @@ def check_issues(issues, owner: str) -> list:
         return ["sourceIssues is a list"]
     errors, seen = [], set()
     for issue in issues:
+        if isinstance(issue, dict) and "kind" not in issue and "finding" in issue:
+            # A finding in the older form, recorded before section 18; its errata job converts it.
+            continue
         fid = issue.get("id") if isinstance(issue, dict) else None
         if not text(fid) or not fid.startswith(owner + "/E"):
             errors.append(f"finding id {fid!r} must start with {owner}/E")

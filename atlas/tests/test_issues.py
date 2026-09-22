@@ -127,13 +127,12 @@ class Deliverables(unittest.TestCase):
         self.assertTrue(deliverables_complete(links, self.root))
 
     def test_an_errata_job_is_finished_when_every_mistake_is_recorded_in_full(self):
-        job = {"id": "ERRATA-PAPER-X", "kind": "errata", "outputs": ["packets/PAPER-X.result.json", "packets/PAPER-X.md"]}
-        self.write("packets/PAPER-X.md", "Report.")
-        self.write("packets/PAPER-X.result.json", {"paper": "PAPER-X"})
+        job = {"id": "ERRATA-PAPER-X", "kind": "errata", "outputs": ["packets/PAPER-X.errata.json", "packets/PAPER-X.errata.md"]}
+        self.write("packets/PAPER-X.errata.md", "Report.")
         self.assertFalse(deliverables_complete(job, self.root))
-        self.write("packets/PAPER-X.result.json", {"paper": "PAPER-X", "sourceIssues": [{"id": "S1", "finding": "an older form"}]})
+        self.write("packets/PAPER-X.errata.json", {"paper": "PAPER-X", "sourceIssues": [{"id": "S1", "finding": "an older form"}]})
         self.assertFalse(deliverables_complete(job, self.root))
-        self.write("packets/PAPER-X.result.json", {"paper": "PAPER-X", "sourceIssues": []})
+        self.write("packets/PAPER-X.errata.json", {"paper": "PAPER-X", "sourceIssues": []})
         self.assertTrue(deliverables_complete(job, self.root))
 
     def test_a_red_team_is_finished_when_its_result_says_so(self):
@@ -157,7 +156,7 @@ class RedTeamText(unittest.TestCase):
     def test_an_errata_issue_says_what_it_records(self):
         job = {"id": "ERRATA-PAPER-X", "kind": "errata", "priority": 1, "name": "Fu (2024): Bianchi multiplicities", "roadmapIds": [], "after": []}
         self.assertEqual(title(job, {}), "[Errata] Fu (2024): Bianchi multiplicities")
-        self.assertIn("Every mistake in the paper", body(job, [job], {}, {}))
+        self.assertIn("Every mistake in the published source", body(job, [job], {}, {}))
 
     def test_the_issue_names_the_work_its_worker_must_not_have_done(self):
         attack = {"id": "RT-AUDIT-01", "kind": "redteam", "priority": 2, "roadmapIds": [], "after": [], "independentOf": ["AUDIT-01", "REV-AUDIT-01"]}

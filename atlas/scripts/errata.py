@@ -43,12 +43,20 @@ def collect(root: Path = ROOT, jobs: list | None = None) -> dict:
     issues, unchecked = [], []
     files = [(p, "paper") for p in sorted((root / "research" / "blueprint" / "papers").glob("PAPER-*.result.json"))]
     files += [(p, "packet") for p in sorted((root / "research" / "blueprint" / "packets").glob("*.json"))]
+    # Files of the errata jobs, which record what work finished earlier found (PROTOCOL.md section 18).
+    errata = [(p, "errata") for p in sorted((root / "research" / "blueprint" / "errata").glob("*.json"))]
+    checked_by_errata = set()
+    for path, _ in errata:
+        data = load(path)
+        if isinstance(data, dict) and isinstance(data.get("sourceIssues"), list):
+            checked_by_errata.add(data.get("paper") or data.get("roadmapId") or path.stem)
+    files += errata
     for path, kind in files:
         data = load(path)
         if not isinstance(data, dict):
             continue
         relative = str(path.relative_to(root))
-        if kind == "paper":
+        if kind in ("paper", "errata") and (data.get("paper") or kind == "paper"):
             owner = data.get("paper") or path.name.split(".")[0]
             source = data.get("source") or {}
             default = papers.get(owner, {}).get("citation") or ", ".join(x for x in (source.get("authors"), source.get("title")) if x)
@@ -56,11 +64,14 @@ def collect(root: Path = ROOT, jobs: list | None = None) -> dict:
         else:
             owner = data.get("roadmapId") or path.stem
             default = f"Sources of the blueprint of {owner}"
-            sources = {s.get("id"): ", ".join(x for x in (s.get("authors"), s.get("title"), s.get("edition")) if x) for s in data.get("sources") or []}
+            # An errata file for a blueprint cites the sources listed in its packet.
+            listing = data if kind == "packet" else (load(root / "research" / "blueprint" / "packets" / f"{owner}.json") or {})
+            sources = {s.get("id"): ", ".join(x for x in (s.get("authors"), s.get("title"), s.get("edition")) if x) for s in listing.get("sources") or []}
         listed = data.get("sourceIssues")
         if not isinstance(listed, list) or any(not isinstance(item, dict) or "kind" not in item for item in listed):
-            # Not yet checked, or recorded in an older form that its next worker converts.
-            unchecked.append(owner)
+            # Not yet checked, or recorded in an older form that its errata job converts.
+            if kind != "errata" and owner not in checked_by_errata:
+                unchecked.append(owner)
             continue
         reviewers = valid_reviews(relative, jobs)
         for item in data.get("sourceIssues") or []:
