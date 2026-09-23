@@ -129,7 +129,11 @@ def run_reference_checks(page,browser):
  reading.locator('.reference-source').first.scroll_into_view_if_needed()
  page.screenshot(path=str(ROOT/'preview-planet-references.png'),animations='disabled')
  reading.locator('.reference-source').first.click()
- record('A planet reference opens its owning roadmap source',page.locator('#reader[open]').is_visible() and page.locator('#reader-title').inner_text()=='K-theory of curves and elliptic curves' and 'Weibel V; Handbook II.2 and II.3' in page.locator('#reader-body').inner_text())
+ # The reader shows the owning roadmap's document, so take its title from the data:
+ # an accepted restructuring may retitle a roadmap (here, to a Part II) without
+ # changing what a reference opens.
+ owner_title=page.evaluate("() => (TauExplorer.data.roadmaps.find(r => r.id === 'EllipticKTheory') || {}).title")
+ record('A planet reference opens its owning roadmap source',page.locator('#reader[open]').is_visible() and page.locator('#reader-title').inner_text()==owner_title and 'Weibel V; Handbook II.2 and II.3' in page.locator('#reader-body').inner_text())
  page.locator('#close-reader').click()
 
  # An explicit paper in a TauCeti target belongs to that topic, not to every
@@ -176,7 +180,8 @@ def run_reference_checks(page,browser):
   record('Phone bibliography remains readable without covering navigation',mp.locator('.planet-references .reference-text').first.evaluate('(e)=>parseFloat(getComputedStyle(e).fontSize)>=12') and mp.locator('.cosmic-back').is_visible() and mp.evaluate('document.documentElement.scrollWidth<=innerWidth+1'))
   mp.screenshot(path=str(ROOT/'preview-phone-planet-references.png'),animations='disabled')
   button.tap()
-  record('Phone tap opens the embedded citation source',mp.locator('#reader[open]').is_visible() and mp.locator('#reader-title').inner_text()=='K-theory of curves and elliptic curves' and 'Thomason–Trobaugh' in mp.locator('#reader-body').inner_text())
+  phone_owner_title=mp.evaluate("() => (TauExplorer.data.roadmaps.find(r => r.id === 'EllipticKTheory') || {}).title")
+  record('Phone tap opens the embedded citation source',mp.locator('#reader[open]').is_visible() and mp.locator('#reader-title').inner_text()==phone_owner_title and 'Thomason–Trobaugh' in mp.locator('#reader-body').inner_text())
   mp.locator('#close-reader').tap()
   record('Closing a citation reader preserves the selected planet',mp.evaluate('TauExplorer.getState().selected')==FORMULA_PLANET and mp.locator('.landmark-description math').count()>0)
   mobile.close()
