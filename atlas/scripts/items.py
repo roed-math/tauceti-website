@@ -24,6 +24,8 @@ ROOT = Path(__file__).resolve().parents[1]
 KINDS = ("definition", "construction", "theorem")
 STATUSES = ("missing", "planned", "library")
 DETAIL = ("id", "kind", "name", "statement", "locator", "status", "planned", "library", "note", "prerequisites", "api", "uses")
+# Fields the page draws as lists. An extraction may write one as a sentence instead.
+LISTS = ("planned", "library", "prerequisites", "api", "uses")
 
 
 def summary(statement: str, limit: int = 160) -> str:
@@ -61,10 +63,16 @@ def catalogue(results: list, papers: dict) -> dict:
     return out
 
 
+def as_list(value):
+    return value if isinstance(value, list) else [value]
+
+
 def shard(result: dict) -> dict:
-    """One paper's items in full, read when a reader opens it."""
+    """One paper's items in full, read when a reader opens it, with the fields the
+    page draws as lists made uniform."""
     return {"paper": result.get("paper", ""), "summary": result.get("summary", ""), "status": result.get("status", ""),
-            "items": [{key: item[key] for key in DETAIL if key in item} for item in result.get("items", [])]}
+            "items": [{key: as_list(item[key]) if key in LISTS else item[key] for key in DETAIL if key in item}
+                      for item in result.get("items", [])]}
 
 
 STYLE = """
@@ -169,7 +177,10 @@ async function show(i) {
   if (chosen !== i) return;
   const item = data.items[index.rows.slice(0, i).filter(r => r[3] === p).length];
   if (!item) { panel.innerHTML = '<p class="empty">Not found.</p>'; return; }
-  const list = (label, xs) => xs && xs.length ? '<p class="sub">' + label + '</p><ul>' + xs.map(x => '<li>' + esc(typeof x === 'string' ? x : JSON.stringify(x)) + '</li>').join('') + '</ul>' : '';
+  const list = (label, xs) => {
+    const all = xs == null ? [] : Array.isArray(xs) ? xs : [xs];
+    return all.length ? '<p class="sub">' + label + '</p><ul>' + all.map(x => '<li>' + esc(typeof x === 'string' ? x : JSON.stringify(x)) + '</li>').join('') + '</ul>' : '';
+  };
   panel.innerHTML = '<h2>' + esc(item.name) + '</h2>' +
     '<p class="where"><span class="tag ' + esc(item.status) + '">' + esc(item.status) + '</span> <span class="tag">' + esc(item.kind) + '</span> · ' +
     esc(item.locator || '') + '</p>' +

@@ -52,6 +52,16 @@ class Catalogue(unittest.TestCase):
         self.assertEqual(one["items"][1]["planned"], ["PerfectoidSpaces:PS.2"])
         self.assertIn("tilting story", one["items"][0]["statement"])
 
+    def test_a_field_written_as_one_string_becomes_a_list(self):
+        # Some extractions write api, planned or uses as a sentence rather than a list;
+        # the page draws them as lists, so the shard makes them uniform.
+        one = shard({"paper": "P", "items": [{"name": "X", "api": "mk, tensor and the quotient adapter",
+                                              "planned": "Roadmap:R.1", "uses": ["a", "b"]}]})
+        item = one["items"][0]
+        self.assertEqual(item["api"], ["mk, tensor and the quotient adapter"])
+        self.assertEqual(item["planned"], ["Roadmap:R.1"])
+        self.assertEqual(item["uses"], ["a", "b"])
+
     def test_the_page_carries_the_counts_and_no_local_paths(self):
         html = page(self.found)
         self.assertIn("3 items", html)
