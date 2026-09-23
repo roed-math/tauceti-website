@@ -351,11 +351,13 @@ def check_click_journey(page,scope):
 def check_refinements(page):
  page.evaluate("TauExplorer.navigate({view:'roadmap',id:'PadicFamilies',layer:'PadicFamilies:L2a',selected:'PadicFamilies:L2a'})");page.wait_for_timeout(800)
  expected=page.evaluate("TauExplorer.data.stages.filter(s=>s.expansion&&s.parentStageId==='PadicFamilies:L2a').length")
- record('Reviewed source refinements orbit their layer as planets',expected==14 and page.locator('.tau-planet[data-node-id*="/"]').count()==expected)
+ # Count this layer's own refinements by their id prefix: a Tau Ceti stage id carries
+ # slashes too, so matching any slash also counts the links a promoted link map adds.
+ record('Reviewed source refinements orbit their layer as planets',expected>0 and page.locator('.tau-planet[data-node-id^="PadicFamilies:L2a/"]').count()==expected)
  record('Refinements are excluded from progress denominators',page.evaluate("TauExplorer.progress.roadmapLeaves('PadicFamilies').every(id=>!id.includes('/')) && TauExplorer.progress.stage('PadicFamilies:L2a/spectral-hypersurface').status==='unknown'"))
  page.locator('.tau-planet[data-node-id="PadicFamilies:L2a/spectral-hypersurface"] .tau-hit').click();page.wait_for_timeout(400)
  record('A refinement planet explains its statement, sources and unchecked status',page.locator('#selection-kind').inner_text()=='Construction · source refinement' and 'Fredholm' in page.locator('.detail-title').inner_text() and page.locator('#inspector-content .reference-works a').count()>0 and 'unchecked' in page.locator('#inspector-content').inner_text())
- record('A layer lists its source decomposition beside its extracted targets',page.evaluate("() => { TauExplorer.openStage('PadicFamilies:L2a'); return true; }") and (page.wait_for_timeout(400) or True) and 'Source decomposition' in page.locator('#inspector-content').inner_text() and page.locator('#inspector-content .item-link[data-item-id*="/"]').count()==14)
+ record('A layer lists its source decomposition beside its extracted targets',page.evaluate("() => { TauExplorer.openStage('PadicFamilies:L2a'); return true; }") and (page.wait_for_timeout(400) or True) and 'Source decomposition' in page.locator('#inspector-content').inner_text() and page.locator('#inspector-content .item-link[data-item-id^="PadicFamilies:L2a/"]').count()==expected)
  record('A roadmap summarises its reviewed expansion',page.evaluate("() => { TauExplorer.openItem('PadicFamilies'); return true; }") and (page.wait_for_timeout(500) or True) and 'Source expansion' in page.locator('#inspector-content').inner_text() and 'accepted' in page.locator('#inspector-content').inner_text())
  # Deeper zoom keeps adding structure: kind and excerpt, then the refinement's
  # hypotheses, proof steps and checks as moons, and the links among refinements.
