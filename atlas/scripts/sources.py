@@ -29,6 +29,14 @@ CONTENT = ROOT / "content"
 
 URL = re.compile(r'https?://[^\s<>()\[\]"\'`]+')
 
+# What separates a source from a mention. A roadmap that names a book in a reading list
+# has not made it a dependency; one that pins a chapter, a theorem or an extraction point
+# has, because a worker has to open that page to do the stage.
+LOCATOR = re.compile(r"(?:Ch(?:apter|apters|\.|s\.)?|§{1,2}|Theorem|Thm\.?|Prop(?:osition)?|Lemma|Cor(?:ollary)?"
+                     r"|Appendix|pp?\.)\s*[IVXL\d]", re.I)
+MARKER = re.compile(r"\bextract\b|reference for|source for|primary source|source route"
+                    r"|principal (?:construction )?reference", re.I)
+
 
 def register(path: Path = REGISTER) -> dict:
     """The access register."""
@@ -54,13 +62,37 @@ def citations(text: str, reg: dict) -> set:
     return found
 
 
-def dependencies(documents: dict, reg: dict) -> dict:
-    """Work id -> the roadmaps that cite it."""
+def citation_role(text: str, work: dict, window: int = 80) -> str:
+    """Whether this document depends on the work, or merely names it.
+
+    "source" when some citation of it is pinned -- a chapter, a theorem, an
+    extraction point -- and "background" when every mention is a bare reference.
+    The distinction is the difference between a book somebody has to obtain and a
+    book somebody listed as further reading.
+    """
+    patterns = work.get("match", []) + [re.escape(url) for url in work.get("urls", [])]
+    for pattern in patterns:
+        for match in re.finditer(pattern, text):
+            near = text[max(0, match.start() - window):match.end() + window]
+            if LOCATOR.search(near) or MARKER.search(near):
+                return "source"
+    return "background"
+
+
+def dependencies(documents: dict, reg: dict, role: str = "") -> dict:
+    """Work id -> the roadmaps that cite it, optionally only those depending on it.
+
+    `role` is "source" for the roadmaps whose mathematics rests on the work, or
+    "background" for those that only name it. Empty counts every citation.
+    """
+    index = works(reg)
     found: dict = {}
     for name, text in documents.items():
-        for work in citations(text, reg):
-            found.setdefault(work, set()).add(name)
-    return {work: sorted(names) for work, names in found.items()}
+        for wid in citations(text, reg):
+            if role and citation_role(text, index[wid]) != role:
+                continue
+            found.setdefault(wid, set()).add(name)
+    return {wid: sorted(names) for wid, names in found.items()}
 
 
 def unregistered(documents: dict, reg: dict) -> list:
@@ -176,8 +208,8 @@ def report(deps: dict, reg: dict) -> str:
                 lines.append(f"    {work['note']}")
         lines.append("")
 
-    listing("Books to provide -- restricted, and no free source covers the cited material",
-            blocked(deps, reg, "book"))
+    listing("Books to provide -- restricted, no free source covers them, and a stage pins a "
+            "chapter or theorem to them", blocked(deps, reg, "book"))
     listing("Articles behind a subscription", blocked(deps, reg, "article"))
     swaps = substitutable(deps, reg)
     lines.append(f"Restricted works a free source already covers ({len(swaps)}):")
@@ -265,9 +297,19 @@ def everything(roots=(CONTENT, ROOT / "research")) -> dict:
 def main(argv: list) -> int:
     reg = register()
     docs = documents()
-    deps = dependencies(docs, reg)
+    deps = dependencies(docs, reg, role="source")
+    mentions = dependencies(docs, reg, role="background")
     rows = leaning(docs, reg)
     print(report(deps, reg))
+    spare = sorted({work for work in mentions} - set(deps))
+    index = works(reg)
+    named = [index[work]["title"] for work in spare
+             if index[work].get("kind", "book") == "book" and index[work].get("access") != "free"
+             and not index[work].get("substitute")]
+    print(f"\nNamed in a reading list but nothing is pinned to them ({len(named)}) -- "
+          f"no one has to obtain these:")
+    for title in sorted(named):
+        print(f"  {title}")
     print()
     print(leaning_report(rows))
     banned = unlawful(everything(), reg)

@@ -119,6 +119,35 @@ class Documents(unittest.TestCase):
         self.assertEqual(citations(self.found["EXTENSION_SOURCES"], REGISTER), {"TAO-VU"})
 
 
+class Roles(unittest.TestCase):
+    """A reference list is not a dependency; a pinned locator is."""
+
+    DOCS = {
+        "Surgery": "(Hub96, Chapter 9, is the reference for the surgery picture throughout this layer, extract.)",
+        "Reading": "- Hub96, an adic spaces reference.\n- Milne, *Algebraic Number Theory*, background reading.",
+        "Pinned": "The collar theorem: Milne, *Algebraic Number Theory*, Theorem 6.1, extract.",
+    }
+
+    def test_a_citation_with_a_locator_is_what_the_work_rests_on(self):
+        found = dependencies(self.DOCS, REGISTER, role="source")
+        self.assertEqual(found["HUBER96"], ["Surgery"])
+        self.assertEqual(found["MILNE-ANT"], ["Pinned"])
+
+    def test_a_bare_reference_list_entry_is_only_background(self):
+        found = dependencies(self.DOCS, REGISTER, role="background")
+        self.assertEqual(found["HUBER96"], ["Reading"])
+        self.assertIn("Reading", found["MILNE-ANT"])
+
+    def test_naming_a_named_theorem_is_not_a_locator(self):
+        docs = {"Reading": "- Hub96, Vieweg (1996) - the Jacobson density theorem and primitive rings."}
+        self.assertEqual(dependencies(docs, REGISTER, role="source"), {})
+        self.assertEqual(dependencies(docs, REGISTER, role="background")["HUBER96"], ["Reading"])
+
+    def test_without_a_role_every_citation_counts(self):
+        found = dependencies(self.DOCS, REGISTER)
+        self.assertEqual(found["HUBER96"], ["Reading", "Surgery"])
+
+
 class Only(unittest.TestCase):
     """Which roadmap carries a book nobody else cites."""
 
