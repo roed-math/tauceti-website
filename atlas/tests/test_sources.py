@@ -7,10 +7,11 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
-from sources import blocked, citations, dependencies, documents, report, unregistered  # noqa: E402
+from sources import blocked, citations, dependencies, documents, leaning, report, unlawful, unregistered  # noqa: E402
 
 REGISTER = {
     "checkHosts": ["doi.org", "link.springer.com", "www.jstor.org"],
+    "blockedHosts": ["blocked.example", "libgen.is", "sci-hub.se"],
     "works": [
         {"id": "NEUKIRCH-ANT", "title": "Neukirch, Algebraic Number Theory", "access": "restricted",
          "match": [r"Neukirch, \*Algebraic Number Theory\*"],
@@ -116,6 +117,49 @@ class Documents(unittest.TestCase):
 
     def test_a_guide_file_stands_for_itself(self):
         self.assertEqual(citations(self.found["EXTENSION_SOURCES"], REGISTER), {"TAO-VU"})
+
+
+class Unlawful(unittest.TestCase):
+    """A scan site is not a free source; citing one has to fail loudly."""
+
+    def test_a_link_to_a_scan_site_is_named_with_its_file(self):
+        docs = {"SomeReview": "read it at https://blocked.example/some-book.html here"}
+        self.assertEqual(unlawful(docs, REGISTER), [("SomeReview", "https://blocked.example/some-book.html")])
+
+    def test_a_legitimate_source_passes(self):
+        docs = {"Roadmap": "[BMS](https://arxiv.org/abs/1602.03148) and the author's copy at https://www.jmilne.org/math/CourseNotes/ANT.pdf"}
+        self.assertEqual(unlawful(docs, REGISTER), [])
+
+    def test_a_subdomain_of_a_scan_site_is_caught(self):
+        docs = {"R": "https://files.libgen.is/x.pdf"}
+        self.assertEqual(len(unlawful(docs, REGISTER)), 1)
+
+
+class Leaning(unittest.TestCase):
+    """A roadmap that cites one work and nothing else is following that book."""
+
+    def setUp(self):
+        self.docs = {
+            "OneBook": "Hub96 4.1.1, Hub96 5.2, Hub96 6.3, and Hub96 7.",
+            "TwoBooks": "Hub96 4.1.1 and Hub96 5.2, with Milne, *Algebraic Number Theory*, Ch. II, "
+                        "Milne, *Algebraic Number Theory*, Ch. III, and Milne, *Algebraic Number Theory*, Ch. IV.",
+            "NothingCited": "Define the Witt vectors and prove the comparison.",
+        }
+
+    def test_a_roadmap_citing_one_work_is_named_with_its_share(self):
+        found = {row["roadmap"]: row for row in leaning(self.docs, REGISTER)}
+        self.assertEqual(found["OneBook"]["work"], "HUBER96")
+        self.assertEqual(found["OneBook"]["share"], 1.0)
+        self.assertEqual(found["OneBook"]["access"], "restricted")
+
+    def test_a_roadmap_drawing_on_two_works_is_below_the_threshold(self):
+        self.assertNotIn("TwoBooks", [row["roadmap"] for row in leaning(self.docs, REGISTER, share=0.7)])
+
+    def test_a_roadmap_citing_nothing_registered_is_not_reported(self):
+        self.assertNotIn("NothingCited", [row["roadmap"] for row in leaning(self.docs, REGISTER)])
+
+    def test_the_threshold_belongs_to_the_caller(self):
+        self.assertIn("TwoBooks", [row["roadmap"] for row in leaning(self.docs, REGISTER, share=0.4)])
 
 
 if __name__ == "__main__":

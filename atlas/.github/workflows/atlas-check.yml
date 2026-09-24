@@ -6,7 +6,7 @@ name: Atlas check
 on:
   push:
     branches: [main]
-    paths: ['index.html', 'src/**', 'scripts/**', 'tests/**', 'content/**', 'research/blueprint/atlas/roadmaps/**', 'research/blueprint/sources/**']
+    paths: ['index.html', 'src/**', 'scripts/**', 'tests/**', 'content/**', 'research/**']
   workflow_dispatch:
 
 permissions:

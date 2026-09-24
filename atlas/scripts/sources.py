@@ -76,6 +76,25 @@ def unregistered(documents: dict, reg: dict) -> list:
     return found
 
 
+def unlawful(documents: dict, reg: dict) -> list:
+    """(where, url) for every link to a site that hosts copies without permission.
+
+    These are not free sources, whatever they cost: citing one puts an unlicensed
+    copy into the record and leaves the claim resting on a text nobody may legally
+    read. A hit is a failure, not a warning -- replace the citation with the work
+    itself, and re-read the passage in a copy that may be read.
+    """
+    hosts = [host.lower() for host in reg.get("blockedHosts", [])]
+    found = []
+    for name in sorted(documents):
+        for url in URL.findall(documents[name]):
+            url = url.rstrip(".,;:)")
+            host = urlparse(url).netloc.lower()
+            if any(host == bad or host.endswith("." + bad) for bad in hosts):
+                found.append((name, url))
+    return found
+
+
 def blocked(deps: dict, reg: dict, kind: str = "") -> list:
     """The cited works a reader cannot get and no free source replaces.
 
@@ -95,6 +114,35 @@ def substitutable(deps: dict, reg: dict) -> list:
     pairs = [(index[work], index[index[work]["substitute"]]) for work in deps
              if index[work].get("access") != "free" and index[work].get("substitute")]
     return sorted(pairs, key=lambda pair: (-len(deps[pair[0]["id"]]), pair[0]["id"]))
+
+
+def leaning(documents: dict, reg: dict, share: float = 0.7, least: int = 3) -> list:
+    """Roadmaps whose citations nearly all point at one work.
+
+    A roadmap built from a single book inherits that book's arrangement, which is
+    both a mathematical weakness -- one author's choices, one route through the
+    material -- and, where the book is not free, a dependency that cannot be met.
+    `share` is how much of the citation traffic the leading work has to carry, and
+    `least` how many times it must be named before the count means anything.
+    """
+    index = works(reg)
+    found = []
+    for name in sorted(documents):
+        text = documents[name]
+        counts = {}
+        for wid in citations(text, reg):
+            patterns = index[wid].get("match", []) + [re.escape(url) for url in index[wid].get("urls", [])]
+            counts[wid] = sum(len(re.findall(pattern, text)) for pattern in patterns)
+        total = sum(counts.values())
+        if not total:
+            continue
+        top, hits = max(counts.items(), key=lambda kv: kv[1])
+        if hits >= least and hits / total >= share:
+            found.append({"roadmap": name, "work": top, "title": index[top]["title"],
+                          "share": hits / total, "hits": hits, "works": len(counts),
+                          "access": index[top].get("access", "restricted"),
+                          "substitute": index[top].get("substitute")})
+    return sorted(found, key=lambda row: (-row["share"], -row["hits"], row["roadmap"]))
 
 
 def report(deps: dict, reg: dict) -> str:
@@ -123,6 +171,16 @@ def report(deps: dict, reg: dict) -> str:
     free = [index[work] for work in deps if index[work].get("access") == "free"]
     lines.append("")
     lines.append(f"Freely available and already cited: {len(free)} works.")
+    return "\n".join(lines)
+
+
+def leaning_report(rows: list) -> str:
+    """The roadmaps that lean on one work, worst first."""
+    lines = [f"Roadmaps whose citations nearly all point at one work ({len(rows)}):"]
+    for row in rows:
+        lines.append(f"  {row['share']:.0%} of {row['hits']} citations  {row['roadmap']}")
+        standing = row["access"] + (f", free substitute {row['substitute']}" if row.get("substitute") else "")
+        lines.append(f"    {row['title']} [{standing}]")
     return "\n".join(lines)
 
 
@@ -166,11 +224,34 @@ def documents(content: Path = CONTENT, roadmaps: Path = ROADMAPS) -> dict:
     return found
 
 
+def everything(roots=(CONTENT, ROOT / "research")) -> dict:
+    """Every text file under the roadmap and research trees, by repository path.
+
+    The roadmap documents are what the citation report is about, but an unlawful
+    copy can be cited anywhere -- the one this check was written for sat in an
+    errata review -- so the sweep for those reads the lot.
+    """
+    found = {}
+    for root in roots:
+        for path in sorted(Path(root).rglob("*")):
+            if path.suffix in (".md", ".json") and path.is_file():
+                found[str(path.relative_to(ROOT))] = path.read_text(errors="ignore")
+    return found
+
+
 def main(argv: list) -> int:
     reg = register()
     docs = documents()
     deps = dependencies(docs, reg)
+    rows = leaning(docs, reg)
     print(report(deps, reg))
+    print()
+    print(leaning_report(rows))
+    banned = unlawful(everything(), reg)
+    if banned:
+        print(f"\n{len(banned)} link(s) to a site that hosts copies without permission:")
+        for name, url in banned:
+            print(f"  [{name}] {url}")
     loose = unregistered(docs, reg)
     if loose:
         print(f"\n{len(loose)} link(s) to a publisher that the register does not know:")
@@ -179,9 +260,10 @@ def main(argv: list) -> int:
     if "--write" in argv:
         REPORT.write_text("# Sources the roadmaps depend on\n\n"
                           "Generated by `python3 scripts/sources.py --write`; the decisions live in\n"
-                          "`ACCESS.json`, which is the file to edit.\n\n```\n" + report(deps, reg) + "\n```\n")
+                          "`ACCESS.json`, which is the file to edit.\n\n```\n" + report(deps, reg)
+                          + "\n\n" + leaning_report(rows) + "\n```\n")
     if "--check" in argv:
-        return 1 if loose else 0
+        return 1 if loose or banned else 0
     return 0
 
 
