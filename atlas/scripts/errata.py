@@ -80,6 +80,13 @@ def collect(root: Path = ROOT, jobs: list | None = None) -> dict:
                 unchecked.append(owner)
             continue
         reviewers = valid_reviews(relative, jobs)
+        # A reviewer may stop part way and say so, as the BSTTTZ errata review did: it
+        # recorded verdicts but withheld its report because the published text could not
+        # be collated. Those verdicts are working notes. Counting them would publish
+        # unchecked claims in the register under the reviewer's name.
+        checkpoint = data.get("reviewCheckpoint") if isinstance(data.get("reviewCheckpoint"), dict) else {}
+        if checkpoint.get("completionGate") or (checkpoint.get("status") or "complete") != "complete":
+            reviewers = set()
         for item in data.get("sourceIssues") or []:
             if not isinstance(item, dict):
                 continue

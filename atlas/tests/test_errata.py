@@ -55,6 +55,39 @@ class Register(unittest.TestCase):
         self.assertEqual(self.statuses(), {"PAPER-X/E1": "confirmed", "PAPER-X/E2": "awaiting review", "PAPER-X/E3": "confirmed",
                                            "PAPER-X/E4": "rejected", "PAPER-X/E5": "awaiting review", "PAPER-W/E1": "confirmed"})
 
+    def test_a_review_that_says_it_is_unfinished_confirms_nothing(self):
+        """A reviewer may stop and say so. Its per-finding verdicts are then working
+        notes, not confirmations, and counting them would put unchecked claims in the
+        register under a reviewer's name."""
+        errata = self.root / "research" / "blueprint" / "errata"
+        (errata / "PAPER-V.json").write_text(json.dumps({
+            "paper": "PAPER-V", "protocol": "errata-v1",
+            "reviewCheckpoint": {"job": "REV-ERRATA-PAPER-V", "status": "partial",
+                                 "completionGate": "The required final review report has deliberately not been submitted; "
+                                                   "these verdicts must not be counted as completed-review confirmations."},
+            "sourceIssues": [dict(issue(1), id="PAPER-V/E1",
+                                  review={"verdict": "confirmed", "reason": "Checked.", "by": "REV-ERRATA-PAPER-V"})]}))
+        jobs = JOBS + [{"id": "ERRATA-PAPER-V", "kind": "errata", "state": "done",
+                        "outputs": ["research/blueprint/errata/PAPER-V.json"]},
+                       {"id": "REV-ERRATA-PAPER-V", "kind": "review", "state": "done", "after": ["ERRATA-PAPER-V"],
+                        "outputs": ["research/blueprint/errata/PAPER-V.json"]}]
+        found = {item["id"]: item["status"] for item in collect(self.root, jobs)["issues"]}
+        self.assertEqual(found["PAPER-V/E1"], "awaiting review")
+
+    def test_a_finished_checkpoint_still_confirms(self):
+        errata = self.root / "research" / "blueprint" / "errata"
+        (errata / "PAPER-U.json").write_text(json.dumps({
+            "paper": "PAPER-U", "protocol": "errata-v1",
+            "reviewCheckpoint": {"job": "REV-ERRATA-PAPER-U", "status": "complete"},
+            "sourceIssues": [dict(issue(1), id="PAPER-U/E1",
+                                  review={"verdict": "confirmed", "reason": "Checked.", "by": "REV-ERRATA-PAPER-U"})]}))
+        jobs = JOBS + [{"id": "ERRATA-PAPER-U", "kind": "errata", "state": "done",
+                        "outputs": ["research/blueprint/errata/PAPER-U.json"]},
+                       {"id": "REV-ERRATA-PAPER-U", "kind": "review", "state": "done", "after": ["ERRATA-PAPER-U"],
+                        "outputs": ["research/blueprint/errata/PAPER-U.json"]}]
+        found = {item["id"]: item["status"] for item in collect(self.root, jobs)["issues"]}
+        self.assertEqual(found["PAPER-U/E1"], "confirmed")
+
     def test_a_paper_checked_by_its_errata_job_is_no_longer_unchecked(self):
         self.assertNotIn("PAPER-W", collect(self.root, JOBS)["unchecked"])
 
