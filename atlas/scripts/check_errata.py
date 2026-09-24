@@ -20,6 +20,35 @@ sys.path.insert(0, str(ROOT / "scripts"))
 from source_issues import check_issues  # noqa: E402
 
 
+KINDS = ("published", "preprint", "author copy")
+
+
+def versions_checked(data: dict, issues: list) -> list:
+    """A file that quotes a statement has to say which text it was read from.
+
+    A published paper and its preprint are different documents, and a sentence
+    quoted from one may not exist in the other: BSTTTZ's Theorem 1.3(a) gained a
+    factor between arXiv v1 and the Journal of the AMS, and a finding written
+    against the preprint accused the published theorem of being wrong. Recording
+    the reading is what makes that catchable.
+    """
+    listed = data.get("sourceVersions")
+    quotes = [item for item in issues if isinstance(item, dict) and item.get("affects") == "a stated result"]
+    if quotes and not listed:
+        return ["sourceVersions is required when a finding quotes a stated result: list what was read, "
+                "as [{\"kind\": \"published\"|\"preprint\"|\"author copy\", \"url\": ..., \"read\": <date>, "
+                "\"sha256\": ...}] (PROTOCOL.md section 18)"]
+    errors = []
+    for entry in listed or []:
+        if not isinstance(entry, dict):
+            errors.append("each sourceVersions entry is an object")
+        elif entry.get("kind") not in KINDS:
+            errors.append(f"sourceVersions kind must be one of {', '.join(KINDS)}, not {entry.get('kind')!r}")
+        elif not entry.get("url") and not entry.get("citation"):
+            errors.append("each sourceVersions entry needs a url or a citation")
+    return errors
+
+
 def check(data, name: str) -> list:
     if not isinstance(data, dict):
         return ["the file is not a JSON object"]
@@ -32,6 +61,7 @@ def check(data, name: str) -> list:
     if not isinstance(issues, list):
         errors.append("sourceIssues is a list (empty when none were found)")
         return errors
+    errors += versions_checked(data, issues)
     errors += [f"{item.get('id')} is in the older form: convert it (PROTOCOL.md section 18)"
                for item in issues if isinstance(item, dict) and "kind" not in item]
     errors += check_issues([item for item in issues if not (isinstance(item, dict) and "kind" not in item)], name)
