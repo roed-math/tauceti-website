@@ -145,6 +145,22 @@ def leaning(documents: dict, reg: dict, share: float = 0.7, least: int = 3) -> l
     return sorted(found, key=lambda row: (-row["share"], -row["hits"], row["roadmap"]))
 
 
+def only(deps: dict, reg: dict) -> dict:
+    """Roadmap -> the books to provide that nothing else cites.
+
+    Most of the list is here: a book two roadmaps need is a shared dependency worth
+    buying, while a book one roadmap alone names is that roadmap's own debt, and
+    whoever writes it can often reach the same mathematics another way.
+    """
+    grouped: dict = {}
+    for work in blocked(deps, reg, "book"):
+        names = deps[work["id"]]
+        if len(names) == 1:
+            grouped.setdefault(names[0], []).append(work["title"])
+    return {name: sorted(titles) for name, titles in sorted(grouped.items(),
+            key=lambda item: (-len(item[1]), item[0]))}
+
+
 def report(deps: dict, reg: dict) -> str:
     """The report: what must be provided, what can be swapped, and what is already free."""
     index = works(reg)
@@ -168,8 +184,15 @@ def report(deps: dict, reg: dict) -> str:
     for work, free in swaps:
         lines.append(f"  {work['title']}  ->  {free['title']}")
         lines.append(f"    {len(deps[work['id']])} roadmap(s): {', '.join(deps[work['id']])}")
-    free = [index[work] for work in deps if index[work].get("access") == "free"]
+    alone = only(deps, reg)
+    lines.append(f"Of those books, the ones a single roadmap cites "
+                 f"({sum(len(t) for t in alone.values())} across {len(alone)} roadmaps):")
+    for name, titles in alone.items():
+        lines.append(f"  {name} ({len(titles)})")
+        for title in titles:
+            lines.append(f"    {title}")
     lines.append("")
+    free = [index[work] for work in deps if index[work].get("access") == "free"]
     lines.append(f"Freely available and already cited: {len(free)} works.")
     return "\n".join(lines)
 

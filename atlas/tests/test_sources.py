@@ -7,7 +7,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
-from sources import blocked, citations, dependencies, documents, leaning, report, unlawful, unregistered  # noqa: E402
+from sources import blocked, citations, dependencies, documents, leaning, only, report, unlawful, unregistered  # noqa: E402
 
 REGISTER = {
     "checkHosts": ["doi.org", "link.springer.com", "www.jstor.org"],
@@ -117,6 +117,26 @@ class Documents(unittest.TestCase):
 
     def test_a_guide_file_stands_for_itself(self):
         self.assertEqual(citations(self.found["EXTENSION_SOURCES"], REGISTER), {"TAO-VU"})
+
+
+class Only(unittest.TestCase):
+    """Which roadmap carries a book nobody else cites."""
+
+    def setUp(self):
+        self.deps = dependencies({
+            "AdicEtaleGeometry": "Hub96 §4.",
+            "Quadratic": "Shimura, *Introduction to the Arithmetic Theory* and Tao-Vu.",
+            "Additive": "Tao-Vu again.",
+        }, REGISTER)
+
+    def test_a_book_one_roadmap_alone_cites_is_grouped_under_it(self):
+        self.assertEqual(only(self.deps, REGISTER)["AdicEtaleGeometry"],
+                         ["Huber, Étale Cohomology of Rigid Analytic Varieties"])
+
+    def test_a_book_two_roadmaps_cite_is_not_listed(self):
+        self.assertNotIn("Additive", only(self.deps, REGISTER))
+        self.assertEqual(only(self.deps, REGISTER)["Quadratic"],
+                         ["Shimura, Introduction to the Arithmetic Theory"])
 
 
 class Unlawful(unittest.TestCase):
