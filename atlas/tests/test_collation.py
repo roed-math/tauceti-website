@@ -7,7 +7,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
-from collation import exposure, provenance, published_exists, requests_page  # noqa: E402
+from collation import exposure, provenance, published_exists, readable, requests_page  # noqa: E402
 
 
 def record(**extra):
@@ -72,6 +72,28 @@ class Exposure(unittest.TestCase):
         quiet = {"paper": "PAPER-X", "sourceIssues": [{"id": "PAPER-X/E2", "kind": "misprint", "affects": "nothing"}],
                  "sourceVersions": [{"kind": "preprint", "url": "https://arxiv.org/abs/1"}]}
         self.assertEqual(exposure({"PAPER-X": quiet}, self.PAPERS), [])
+
+
+class Readable(unittest.TestCase):
+    """A 200 is not a reading: publishers answer scripts with a challenge page."""
+
+    def test_a_pdf_with_mathematics_in_it_is_readable(self):
+        self.assertTrue(readable("application/pdf", b"%PDF" + b"x" * 200000,
+                                 "Theorem 1.1 ... Lemma 2.3 ... Proposition 4"))
+
+    def test_a_tiny_pdf_is_not(self):
+        self.assertFalse(readable("application/pdf", b"%PDF", "Theorem 1.1 Lemma 2.3"))
+
+    def test_an_article_page_with_the_text_is_readable(self):
+        body = b"<html><h2>Abstract</h2><p>Theorem 1.1 holds. Theorem 1.2 too.</p></html>"
+        self.assertTrue(readable("text/html; charset=utf-8", body, ""))
+
+    def test_a_javascript_wall_is_not(self):
+        body = b"<html><title>Client Challenge</title>JavaScript is disabled in your browser.</html>"
+        self.assertFalse(readable("text/html", body, ""))
+
+    def test_a_landing_page_without_the_article_is_not(self):
+        self.assertFalse(readable("text/html", b"<html><p>Access options: buy this article.</p></html>", ""))
 
 
 class RequestsPage(unittest.TestCase):

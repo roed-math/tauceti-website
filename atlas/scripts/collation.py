@@ -24,6 +24,7 @@ import argparse
 import json
 import re
 import sys
+import time
 import urllib.request
 from pathlib import Path
 
@@ -150,23 +151,87 @@ def records() -> dict:
     return found
 
 
+def readable(content_type: str, body: bytes, pdf_text: str = "") -> bool:
+    """Whether what came back is the article, rather than a page about the article.
+
+    Springer, Duke and the Annals all answer a scripted request with HTTP 200 and a
+    challenge page, so status alone says nothing. A copy counts as readable when it
+    is a PDF of some size whose first pages contain mathematics, or a page that
+    carries the abstract and the statements.
+    """
+    if "pdf" in (content_type or ""):
+        return len(body) > 100_000 and (pdf_text.count("Theorem") + pdf_text.count("Lemma")
+                                        + pdf_text.count("Proposition")) >= 2
+    flat = re.sub(r"\s+", " ", re.sub(r"<[^>]+>", " ", body.decode("utf-8", "ignore")))
+    if "Client Challenge" in flat or "JavaScript is disabled" in flat:
+        return False
+    return "Abstract" in flat and flat.count("Theorem") >= 2
+
+
+def fetch(url: str, tries: int = 3) -> tuple:
+    """(content type, body, first pages as text) for a url, or ("", b"", "") if it fails.
+
+    Publishers rate-limit: asking Cambridge for eight articles in a minute gets some of
+    them refused, and a single refusal would send a paper to the human worklist that a
+    worker could have read. So each url is tried more than once, with a pause.
+    """
+    import subprocess
+    import tempfile
+    import time
+    agent = "Mozilla/5.0 (Macintosh) AppleWebKit/537.36 Chrome/120 Safari/537.36"
+    for attempt in range(tries):
+        path = tempfile.NamedTemporaryFile(delete=False).name
+        try:
+            kind = subprocess.run(["curl", "-sL", "--max-time", "45", "-A", agent, "-o", path,
+                                   "-w", "%{content_type}", url], capture_output=True, text=True).stdout
+            body = Path(path).read_bytes()
+            text = ""
+            if "pdf" in kind:
+                text = subprocess.run(["pdftotext", "-f", "1", "-l", "4", path, "-"],
+                                      capture_output=True, text=True).stdout
+            if readable(kind, body, text) or attempt == tries - 1:
+                return kind, body, text
+        except Exception:
+            pass
+        finally:
+            Path(path).unlink(missing_ok=True)
+        time.sleep(5 * (attempt + 1))
+    return "", b"", ""
+
+
 def resolve(paper: dict) -> dict:
     """Ask OpenAlex whether a copy exists that a worker could fetch."""
     title = re.search(r'"([^"]+)"', str(paper.get("citation") or ""))
     query = f"https://api.openalex.org/works?filter=title.search:{urllib.request.quote(title.group(1)[:80])}&per_page=1" if title else None
     if not query:
         return {}
-    try:
-        with urllib.request.urlopen(query, timeout=20) as response:
-            results = json.loads(response.read()).get("results") or []
-    except Exception as error:  # a lookup is an optimisation; never fail the report
-        return {"error": str(error)[:80]}
+    results = []
+    for attempt in range(4):
+        try:
+            with urllib.request.urlopen(query, timeout=25) as response:
+                results = json.loads(response.read()).get("results") or []
+            break
+        except Exception as error:  # OpenAlex answers a burst with 503; wait and ask again
+            if attempt == 3:
+                return {"error": str(error)[:80]}
+            time.sleep(5 * (attempt + 1))
     if not results:
         return {}
     work = results[0]
-    best = work.get("best_oa_location") or {}
+    # Only a copy of the published version settles anything. OpenAlex labels each
+    # location submittedVersion, acceptedVersion or publishedVersion, and the first of
+    # those is the preprint the worker already read -- pointing a collation job at it
+    # would prove nothing. An accepted manuscript is worth recording but is not the
+    # version of record either, so it is reported apart.
+    published = [loc for loc in (work.get("locations") or []) if loc.get("version") == "publishedVersion"]
+    accepted = [loc for loc in (work.get("locations") or []) if loc.get("version") == "acceptedVersion"]
+    def url(locations):
+        for loc in locations:
+            if loc.get("pdf_url") or loc.get("landing_page_url"):
+                return loc.get("pdf_url") or loc.get("landing_page_url")
+        return None
     return {"doi": work.get("doi"), "isOA": (work.get("open_access") or {}).get("is_oa"),
-            "copy": best.get("pdf_url") or best.get("landing_page_url")}
+            "copy": url(published), "accepted": url(accepted)}
 
 
 def main(argv: list) -> int:
@@ -186,10 +251,30 @@ def main(argv: list) -> int:
         print(f"  {row['stated']:3d} statements  {row['paper']} [{row['provenance']}]"
               + ("  publisher blocks fetching" if row["blocked"] else ""))
     if args.resolve:
+        # Keep what an earlier run learned: these lookups are slow, and asking again for
+        # what we already know is how the rate limit gets hit in the first place.
+        cached = {}
+        if DATA.exists():
+            for row in json.loads(DATA.read_text()).get("exposed", []):
+                known = row.get("openAlex") or {}
+                if known and not known.get("error"):
+                    cached[row["paper"]] = row
         for row in rows:
+            remembered = cached.get(row["paper"])
+            if remembered and "readable" in remembered:
+                row.update({k: remembered[k] for k in ("openAlex", "readable", "copyNote")})
+                continue
+            time.sleep(1)
             row["openAlex"] = resolve(papers.get(row["paper"], {}))
-        fetchable = [row for row in rows if (row.get("openAlex") or {}).get("copy")]
-        print(f"{len(fetchable)} of them have a copy a worker could fetch")
+            copy = (row["openAlex"] or {}).get("copy")
+            if copy:
+                time.sleep(2)  # be a polite visitor
+                kind, body, text = fetch(copy)
+                row["readable"] = readable(kind, body, text)
+                row["copyNote"] = "readable" if row["readable"] else "publisher serves a challenge page to scripts"
+        fetchable = [row for row in rows if row.get("readable")]
+        print(f"{len(fetchable)} of them have a published copy a worker can actually read; "
+              f"the rest need a person with a browser")
     if args.write:
         OUT.mkdir(parents=True, exist_ok=True)
         (OUT / "REQUESTS.md").write_text(requests_page(rows))
