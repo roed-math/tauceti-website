@@ -8,7 +8,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "research" / "blueprint"))
 from intake import (auto_refusals, claimants, file_problems, follow_up, issue_for, job_for, latest_checks, mark_state,  # noqa: E402
-                    own_files, review_started, reviews_of, swarm_checked)
+                    own_files, review_started, reviews_of, submitter, swarm_checked)
 
 RS = "research/blueprint/restructure/"
 JOBS = [{"id": "RS-28", "kind": "restructure", "state": "pending", "after": [],
@@ -182,6 +182,52 @@ class Claimants(unittest.TestCase):
                     {"user": {"login": "github-actions[bot]"},
                      "body": "Claimed for ChatGPT Pro — gpt-20260921-c74f2a by @someone (comment 2)."}]
         self.assertEqual(claimants(comments), {"codex-c83e7a", "gpt-20260921-c74f2a"})
+
+
+class Submitter(unittest.TestCase):
+    """Which session actually sent this pull request.
+
+    A job claimed, refused and claimed again by somebody else carries both sessions
+    in its comments forever. Judging independence on all of them fails the second,
+    independent worker for the first one's conflict.
+    """
+
+    BOT = {"login": "github-actions[bot]"}
+    COMMENTS = [
+        {"user": BOT, "body": "Claimed for Claude Code — cc-7b31c4 by @owner (comment 1)."},
+        {"user": BOT, "body": "Submitted in #2391. The job is nobody else's to claim while the pull request is open."},
+        {"user": BOT, "body": "Swarm intake: left for the maintainer, because the reviewer cc-7b31c4 also did PAPER-X."},
+        {"user": BOT, "body": "Claimed for Claude Code — cc-38267a by @owner (comment 2)."},
+        {"user": BOT, "body": "Submitted in #2790. The job is nobody else's to claim while the pull request is open."},
+    ]
+
+    def test_the_session_is_the_one_claiming_before_that_submission(self):
+        self.assertEqual(submitter(self.COMMENTS, 2790), {"cc-38267a"})
+        self.assertEqual(submitter(self.COMMENTS, 2391), {"cc-7b31c4"})
+
+    def test_an_unannounced_submission_falls_back_to_the_latest_claim(self):
+        self.assertEqual(submitter(self.COMMENTS, 9999), {"cc-38267a"})
+
+    def test_no_claim_at_all_names_nobody(self):
+        self.assertEqual(submitter([{"user": self.BOT, "body": "Released by @owner."}], 1), set())
+
+    def test_a_forged_claim_outside_the_bot_is_ignored(self):
+        comments = [{"user": {"login": "someone"}, "body": "Claimed for Codex — forged-1 by @someone"},
+                    {"user": self.BOT, "body": "Submitted in #7."}]
+        self.assertEqual(submitter(comments, 7), set())
+
+
+class IndependenceOfTheSubmitter(unittest.TestCase):
+    def test_an_earlier_conflicted_claim_does_not_fail_a_later_independent_one(self):
+        # The reviewer here is cc-38267a; cc-7b31c4 did the paper and its refused review.
+        found = auto_refusals(BY_ID["REV-RS-28"], ["research/blueprint/reviews/REV-RS-28.md"], False,
+                              {"cc-38267a"}, {"cc-7b31c4"})
+        self.assertEqual(found, [])
+
+    def test_the_submitting_session_having_done_the_work_still_fails(self):
+        found = auto_refusals(BY_ID["REV-RS-28"], ["research/blueprint/reviews/REV-RS-28.md"], False,
+                              {"cc-7b31c4"}, {"cc-7b31c4"})
+        self.assertEqual(found, ["the reviewer cc-7b31c4 also did RS-28"])
 
 
 if __name__ == "__main__":
