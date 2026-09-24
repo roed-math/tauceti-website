@@ -6,7 +6,7 @@ name: Atlas check
 on:
   push:
     branches: [main]
-    paths: ['index.html', 'src/**', 'scripts/**', 'tests/**']
+    paths: ['index.html', 'src/**', 'scripts/**', 'tests/**', 'content/**', 'research/blueprint/atlas/roadmaps/**', 'research/blueprint/sources/**']
   workflow_dispatch:
 
 permissions:
@@ -26,6 +26,11 @@ jobs:
           python-version: '3.12'
       - name: Unit tests
         run: python3 -m unittest discover -s tests -p 'test_*.py'
+      # A roadmap that cites a work nobody can read stalls whoever picks it up, so a new
+      # link to a publisher has to be registered in research/blueprint/sources/ACCESS.json
+      # with what a reader without a subscription should do instead.
+      - name: Source access
+        run: python3 scripts/sources.py --check
       - name: Browser suites
         shell: bash
         run: |
