@@ -1,12 +1,15 @@
 from pathlib import Path
 from playwright.sync_api import sync_playwright, TimeoutError as PlaywrightTimeoutError
-import json,math,time,sys,tempfile
+import json,math,re,time,sys,tempfile
 REPO=Path(__file__).resolve().parents[1]
 ROOT=Path(tempfile.mkdtemp(prefix='tauceti-browser-'))
 url=next((arg for arg in sys.argv[1:] if not arg.startswith('--')),(REPO/'index.html').as_uri())
 desktop_only='--desktop-only' in sys.argv[1:]
 references_only='--references-only' in sys.argv[1:]
 overview_only='--overview-only' in sys.argv[1:]
+# The planet these reference checks prefer while the atlas still draws it. It is a preference,
+# not a fixture: a reviewed blueprint takes over its layer's planets, and pick_formula_planet
+# then chooses another planet with the same properties rather than failing.
 FORMULA_PLANET='EllipticKTheory:E.2::landmark:k-0-x-xrightarrow-sim-mathbb-z-oplus-opera-e9le4x'
 results=[];errors=[];requests=[]
 def record(name,value=True):
@@ -99,6 +102,41 @@ def pinch_gesture(page, session, selector, scale):
  session.send('Input.dispatchTouchEvent',{'type':'touchEnd','touchPoints':[]})
  page.wait_for_timeout(400)
  return True
+def plain(text):
+ """Text as a reader sees it: the panel renders the markdown its source records."""
+ return ' '.join(re.sub(r'[*_`]', '', text or '').split())
+
+
+def pick_formula_planet(page):
+ """A planet the atlas draws, with typeset mathematics and roadmap-level reading only.
+
+ Pinning one by id broke this suite the first time a reviewed blueprint took over its layer:
+ the planet is still defined, the atlas simply stops drawing the excerpt planets of a
+ blueprinted layer and shows the blueprint's own. Choosing from what is drawn keeps these
+ checks meaningful after a promotion, and the pinned one is still preferred while it lasts.
+ """
+ return page.evaluate(r"""pinned => {
+  const ok=item=>{
+   const refs=TauExplorer.references.forLandmark(item);
+   return !refs.direct.length&&!refs.layer.length&&refs.roadmap.length>0
+    &&/\\|\$|\^|_\{/.test(item.title||'')&&item.description===item.sourceExcerpt
+    &&/\\\(|\\\[|\$/.test(item.description||'')
+    &&TauExplorer.presentation.landmarkTitle(item)!==item.title;
+  };
+  const chosen=TauExplorer.landmarks.find(x=>x.id===pinned&&ok(x))||TauExplorer.landmarks.find(ok);
+  return chosen?{id:chosen.id,stageId:chosen.stageId,roadmapId:chosen.roadmapId}:null;
+ }""", FORMULA_PLANET)
+
+
+def recorded_reading(page, planet_id):
+ """What the data says this planet's roadmap reading is: the passages and their works."""
+ return page.evaluate("""id => {
+  const item=TauExplorer.landmarks.find(x=>x.id===id),entries=Object.values(TauExplorer.references.forLandmark(item)).flat();
+  return {passages:entries.map(e=>(e.text||'').trim()).filter(Boolean),
+          works:entries.flatMap(e=>e.works||[]).map(w=>({title:w.title||'',authors:w.authors||'',url:w.url||''}))};
+ }""", planet_id)
+
+
 def reference_sources_are_exact(page, planet_id):
  return page.evaluate(r"""id => {
   const item=TauExplorer.landmarks.find(x=>x.id===id),entries=Object.values(TauExplorer.references.forLandmark(item)).flat();
@@ -116,15 +154,25 @@ def run_reference_checks(page,browser):
  page.wait_for_timeout(500)
  # A formula with no narrower citation must expose the roadmap bibliography as
  # wider reading, while preserving the mathematical statement and source record.
- page.evaluate("TauExplorer.openStage('EllipticKTheory:E.2')");page.wait_for_timeout(700)
- page.locator('[data-node-id="'+FORMULA_PLANET+'"] .tau-hit').click()
+ chosen=pick_formula_planet(page)
+ record('The atlas draws a planet with typeset mathematics and roadmap reading',bool(chosen))
+ planet,owner=chosen['id'],chosen['roadmapId']
+ page.evaluate("id => TauExplorer.openStage(id)",chosen['stageId']);page.wait_for_timeout(700)
+ page.locator('[data-node-id="'+planet+'"] .tau-hit').click()
  reading=page.locator('#inspector .planet-references')
- record('Planet references distinguish wider reading from an exact topic citation',reading.is_visible() and page.evaluate("id => {const item=TauExplorer.landmarks.find(x=>x.id===id),refs=TauExplorer.references.forLandmark(item);return !refs.direct.length&&!refs.layer.length&&refs.roadmap.length>0}",FORMULA_PLANET) and reading.locator('[data-reference-scope="direct"],[data-reference-scope="layer"]').count()==0 and reading.locator('[data-reference-scope="roadmap"] h4').inner_text()=='Roadmap reading')
+ record('Planet references distinguish wider reading from an exact topic citation',reading.is_visible() and page.evaluate("id => {const item=TauExplorer.landmarks.find(x=>x.id===id),refs=TauExplorer.references.forLandmark(item);return !refs.direct.length&&!refs.layer.length&&refs.roadmap.length>0}",planet) and reading.locator('[data-reference-scope="direct"],[data-reference-scope="layer"]').count()==0 and reading.locator('[data-reference-scope="roadmap"] h4').inner_text()=='Roadmap reading')
  text=reading.inner_text()
- record('Curve K-theory displays its recorded bibliography without inventing precision',all(name in text for name in ['Weibel V','Handbook II.2 and II.3','Bloch','Higher regulators','Thomason–Trobaugh']))
- record('Reference lookup preserves the named planet and typeset mathematics',page.locator('.landmark-description math').count()>0 and page.evaluate(r"""id => {const item=TauExplorer.landmarks.find(x=>x.id===id);return item.title.includes('\\operatorname{Pic}')&&item.description===item.sourceExcerpt&&TauExplorer.landmarkTitle(item)==='Curve rank–determinant decomposition'&&TauExplorer.getState().selected===id}""",FORMULA_PLANET))
- record('Curve K-theory citations point to the exact embedded source line',reference_sources_are_exact(page,FORMULA_PLANET))
- record('Recorded bibliography metadata expands work titles and public links',reading.locator('.reference-works').count()>0 and all(name in reading.locator('.reference-works').inner_text() for name in ['Charles A. Weibel','The K-book: An introduction to algebraic K-theory','Handbook of K-theory','Robert Thomason','Thomas Trobaugh','Higher Algebraic K-Theory of Schemes and of Derived Categories']) and reading.locator('.reference-works a[href="https://sites.math.rutgers.edu/~weibel/Kbook.html"]').count()==1)
+ # Against what the data records for THIS planet rather than one roadmap's named works, so the
+ # check follows the fixture wherever a promotion moves it.
+ recorded=recorded_reading(page,planet)
+ record('The planet displays its recorded bibliography without inventing precision',
+        len(recorded['passages'])>0 and all(plain(passage)[:40] in plain(text) for passage in recorded['passages']))
+ record('Reference lookup preserves the named planet and typeset mathematics',page.locator('.landmark-description math').count()>0 and page.evaluate(r"""id => {const item=TauExplorer.landmarks.find(x=>x.id===id),name=TauExplorer.landmarkTitle(item);return /\\|\$|\^|_\{/.test(item.title)&&item.description===item.sourceExcerpt&&name.length<60&&!/[\\${}^_]/.test(name)&&TauExplorer.getState().selected===id}""",planet))
+ record('Planet citations point to the exact embedded source line',reference_sources_are_exact(page,planet))
+ works_text=reading.locator('.reference-works').inner_text() if reading.locator('.reference-works').count() else ''
+ record('Recorded bibliography metadata expands work titles and public links',
+        (not recorded['works']) or (all(plain(w['title'])[:40] in plain(works_text) and (not w['authors'] or plain(w['authors'].split(',')[0]) in plain(works_text)) for w in recorded['works'])
+         and all(reading.locator('.reference-works a[href="'+w['url']+'"]').count()>=1 for w in recorded['works'] if w['url'].startswith('http'))))
  record('Reference links do not expose local reference PDFs',reading.evaluate(r"""e => Array.from(e.querySelectorAll('a')).every(a=>{const href=a.getAttribute('href')||'';return !/^file:/i.test(href)&&(!/\.pdf(?:[?#]|$)/i.test(href)||/^https?:\/\//i.test(href))})"""))
  reading.locator('.reference-source').first.scroll_into_view_if_needed()
  page.screenshot(path=str(ROOT/'preview-planet-references.png'),animations='disabled')
@@ -132,8 +180,8 @@ def run_reference_checks(page,browser):
  # The reader shows the owning roadmap's document, so take its title from the data:
  # an accepted restructuring may retitle a roadmap (here, to a Part II) without
  # changing what a reference opens.
- owner_title=page.evaluate("() => (TauExplorer.data.roadmaps.find(r => r.id === 'EllipticKTheory') || {}).title")
- record('A planet reference opens its owning roadmap source',page.locator('#reader[open]').is_visible() and page.locator('#reader-title').inner_text()==owner_title and 'Weibel V; Handbook II.2 and II.3' in page.locator('#reader-body').inner_text())
+ owner_title=page.evaluate("id => (TauExplorer.data.roadmaps.find(r => r.id === id) || {}).title",owner)
+ record('A planet reference opens its owning roadmap source',page.locator('#reader[open]').is_visible() and page.locator('#reader-title').inner_text()==owner_title and any(plain(passage)[:40] in plain(page.locator('#reader-body').text_content()) for passage in recorded['passages']))
  page.locator('#close-reader').click()
 
  # An explicit paper in a TauCeti target belongs to that topic, not to every
@@ -165,8 +213,11 @@ def run_reference_checks(page,browser):
    mp.route('http://**/*',lambda route:(requests.append(route.request.url),route.abort()))
    mp.route('https://**/*',lambda route:(requests.append(route.request.url),route.abort()))
   mp.goto(url,wait_until='load');mp.wait_for_function('!!window.TauExplorer')
-  mp.evaluate("TauExplorer.openStage('EllipticKTheory:E.2')");mp.wait_for_timeout(800)
-  mp.locator('[data-node-id="'+FORMULA_PLANET+'"] .tau-hit').tap()
+  phone_choice=pick_formula_planet(mp)
+  record('The phone atlas draws the same kind of planet',bool(phone_choice))
+  phone_planet=phone_choice['id']
+  mp.evaluate("id => TauExplorer.openStage(id)",phone_choice['stageId']);mp.wait_for_timeout(800)
+  mp.locator('[data-node-id="'+phone_planet+'"] .tau-hit').tap()
   touch=mobile.new_cdp_session(mp)
   panel=mp.locator('#inspector-content');button=mp.locator('.planet-references .reference-source').first
   def reference_button_in_view():
@@ -180,10 +231,11 @@ def run_reference_checks(page,browser):
   record('Phone bibliography remains readable without covering navigation',mp.locator('.planet-references .reference-text').first.evaluate('(e)=>parseFloat(getComputedStyle(e).fontSize)>=12') and mp.locator('.cosmic-back').is_visible() and mp.evaluate('document.documentElement.scrollWidth<=innerWidth+1'))
   mp.screenshot(path=str(ROOT/'preview-phone-planet-references.png'),animations='disabled')
   button.tap()
-  phone_owner_title=mp.evaluate("() => (TauExplorer.data.roadmaps.find(r => r.id === 'EllipticKTheory') || {}).title")
-  record('Phone tap opens the embedded citation source',mp.locator('#reader[open]').is_visible() and mp.locator('#reader-title').inner_text()==phone_owner_title and 'Thomason–Trobaugh' in mp.locator('#reader-body').inner_text())
+  phone_owner_title=mp.evaluate("id => (TauExplorer.data.roadmaps.find(r => r.id === id) || {}).title",phone_choice['roadmapId'])
+  phone_reading=recorded_reading(mp,phone_planet)
+  record('Phone tap opens the embedded citation source',mp.locator('#reader[open]').is_visible() and mp.locator('#reader-title').inner_text()==phone_owner_title and any(plain(passage)[:40] in plain(mp.locator('#reader-body').text_content()) for passage in phone_reading['passages']))
   mp.locator('#close-reader').tap()
-  record('Closing a citation reader preserves the selected planet',mp.evaluate('TauExplorer.getState().selected')==FORMULA_PLANET and mp.locator('.landmark-description math').count()>0)
+  record('Closing a citation reader preserves the selected planet',mp.evaluate('TauExplorer.getState().selected')==phone_planet and mp.locator('.landmark-description math').count()>0)
   mobile.close()
 def write_report(scope):
  report={'url':url,'checks':results,'pageErrors':errors,'externalRequests':requests,'result':'PASS','scope':scope}
@@ -441,8 +493,16 @@ with sync_playwright() as p:
  page.evaluate("TauExplorer.navigate({view:'roadmap',id:'ArithmeticKTheory',layer:null,selected:null,origin:'all',activity:'all',unmapped:true})");page.wait_for_timeout(600)
  record('Administrative readiness checkpoint is not a star',page.evaluate("!TauExplorer.isMathematicalStage('ArithmeticKTheory:KU-finitegeneration') && !TauExplorer.getUniverse().byId.has('ArithmeticKTheory:KU-finitegeneration') && TauExplorer.getUniverse().stars.every(s=>TauExplorer.isMathematicalStage(s.id))"))
  record('Hidden administrative layer retains its raw source and progress',page.evaluate("() => {const id='ArithmeticKTheory:KU-finitegeneration',raw=TauExplorer.data.stages.find(s=>s.id===id);return raw.title==='Arithmetic K-theory finite generation' && raw.description.includes('readiness checkpoints') && TauExplorer.progress.stage(id).status!==undefined}"))
- page.evaluate("TauExplorer.openReader('ArithmeticKTheory')")
- record('Full source document preserves hidden administrative instructions','readiness checkpoints' in page.locator('#reader-body').inner_text())
+ # 'readme' explicitly: a promoted blueprint is the default reading for a roadmap that has
+ # one, and the roadmap's own document still has to be reachable, because that is where the
+ # sections the graph hides are written.
+ page.evaluate("TauExplorer.openReader('ArithmeticKTheory','readme')")
+ record('Full source document preserves hidden administrative instructions','readiness checkpoints' in page.locator('#reader-body').text_content())
+ # Only when the atlas is served: a blueprint reading is fetched from the published site, and
+ # the offline pass asserts that nothing reaches for the network.
+ if not url.startswith('file:'):
+  record('A blueprint reading offers its way back to the source document',page.evaluate("() => {const r=TauExplorer.data.roadmaps.find(x=>x.blueprint&&x.blueprint.documents&&x.blueprint.documents.length);if(!r)return true;TauExplorer.openReader(r.id);return true;}"))
+  page.evaluate("() => {const d=document.getElementById('reader');if(d&&d.open)d.close();}")
  page.locator('#close-reader').click()
  # A retired roadmap has left the atlas; an old link to it opens the whole atlas.
  page.evaluate("TauExplorer.navigate({view:'roadmap',id:'FoundationsAndLibraryIntegration',layer:null,selected:null})");page.wait_for_timeout(400)
@@ -455,19 +515,23 @@ with sync_playwright() as p:
  page.locator('[data-node-id="'+pinned_group+'"] .tau-hit').click()
  page.wait_for_function("id => TauExplorer.getState().layer===id",arg=pinned_group);page.wait_for_timeout(400)
  record('Pinned group schemes show mathematics before progress controls',page.locator('.stage-description').is_visible() and page.evaluate("id => {const description=document.querySelector('.stage-description'),controls=document.querySelector('.progress-controls');return TauExplorer.stageSummary(id).length>60 && description && controls && description.compareDocumentPosition(controls)&Node.DOCUMENT_POSITION_FOLLOWING}",pinned_group))
- record('Planet label overrides refer to existing mathematical targets',page.evaluate("() => {const ids=new Set(TauExplorer.landmarks.map(x=>x.id)),labels=TauExplorer.data.landmarkLabels;return Object.keys(labels).length>0 && Object.keys(labels).every(id=>ids.has(id))}"))
- page.evaluate("TauExplorer.openStage('EllipticKTheory:E.2')");page.wait_for_timeout(700)
- page.locator('[data-node-id="'+FORMULA_PLANET+'"] .tau-hit').click();page.wait_for_timeout(400)
+ # Against TauLandmarks.build rather than TauExplorer.landmarks: the latter is what the atlas
+ # DRAWS, and a promoted blueprint takes over its stages' planets, so a curated name for one of
+ # them is not stale -- the planet is still defined, the blueprint is simply shown instead.
+ record('Planet label overrides refer to existing mathematical targets',page.evaluate("() => {const ids=new Set(TauLandmarks.build(TauExplorer.data).map(x=>x.id)),labels=TauExplorer.data.landmarkLabels;return Object.keys(labels).length>0 && Object.keys(labels).every(id=>ids.has(id))}"))
+ named=pick_formula_planet(page)
+ page.evaluate("id => TauExplorer.openStage(id)",named['stageId']);page.wait_for_timeout(700)
+ page.locator('[data-node-id="'+named['id']+'"] .tau-hit').click();page.wait_for_timeout(400)
  record('Formula planet uses a short plain name in the map and SVG',page.evaluate(r"""id => {
   const item=TauExplorer.landmarks.find(x=>x.id===id),title=TauExplorer.presentation.landmarkTitle(item),node=TauExplorer.getUniverse().byId.get(id);
   const svg=new DOMParser().parseFromString(TauExplorer.graph.exportSVG(),'image/svg+xml');
   const caption=Array.from(svg.querySelectorAll('[data-label-for]')).find(e=>e.getAttribute('data-label-for')===id)?.querySelector('text');
-  return title==='Curve rank–determinant decomposition'&&title.length<60&&!/[\\${}^_]/.test(title)&&node.label===title&&caption&&caption.textContent.replace(/\s/g,'')===title.replace(/\s/g,'')&&!svg.querySelector('parsererror');
- }""",FORMULA_PLANET))
+  return title.length<60&&!/[\\${}^_]/.test(title)&&node.label===title&&caption&&caption.textContent.replace(/\s/g,'')===title.replace(/\s/g,'')&&!svg.querySelector('parsererror');
+ }""",named['id']))
  record('Opening a named planet renders its preserved source formula',page.locator('.landmark-description math').count()>0 and page.locator('.landmark-description math').first.evaluate('(e)=>e.getBoundingClientRect().width>30 && e.getBoundingClientRect().height>10') and page.locator('.landmark-description .katex-error').count()==0 and page.evaluate(r"""id => {
   const item=TauExplorer.landmarks.find(x=>x.id===id),roadmap=TauExplorer.data.roadmaps.find(x=>x.id===item.roadmapId);
-  return item.title.includes('\\operatorname{Pic}')&&item.description===item.sourceExcerpt&&roadmap.readme.includes(item.sourceExcerpt)&&roadmap.readme.split('\n').slice(item.sourceLine-1).join('\n').startsWith(item.sourceExcerpt);
- }""",FORMULA_PLANET))
+  return /\\|\$|\^|_\{/.test(item.title)&&item.description===item.sourceExcerpt&&roadmap.readme.includes(item.sourceExcerpt)&&roadmap.readme.split('\n').slice(item.sourceLine-1).join('\n').startsWith(item.sourceExcerpt);
+ }""",named['id']))
  page.screenshot(path=str(ROOT/'preview-formula-planet.png'),animations='disabled')
  S=page.evaluate("() => { const u=TauExplorer.getUniverse(); const star=u.stars.find(x=>x.id.startsWith('AnalyticNumberTheory:')&&x.planetIds.length&&TauExplorer.progress.stage(x.id).status==='unknown'); window.__blankStage=star?star.id:null; return window.__blankStage; }")
  record('A layer of the test roadmap has no recorded status',bool(S))
@@ -618,8 +682,9 @@ with sync_playwright() as p:
   mp.locator('.cosmic-back').tap();mp.wait_for_function("TauExplorer.getState().view==='all'")
   record('Landscape phone back controls remain tappable',mp.locator('#catalogue-button').is_visible())
   mp.set_viewport_size({'width':375,'height':812});mp.wait_for_timeout(500)
-  mp.evaluate("TauExplorer.openStage('EllipticKTheory:E.2')");mp.wait_for_timeout(700)
-  mp.locator('[data-node-id="'+FORMULA_PLANET+'"] .tau-hit').tap();mp.wait_for_timeout(400)
+  phone_named=pick_formula_planet(mp)
+  mp.evaluate("id => TauExplorer.openStage(id)",phone_named['stageId']);mp.wait_for_timeout(700)
+  mp.locator('[data-node-id="'+phone_named['id']+'"] .tau-hit').tap();mp.wait_for_timeout(400)
   formula=mp.locator('.landmark-description math').first
   reading=mp.locator('#inspector-content');reading_box=reading.bounding_box();formula_box=formula.bounding_box()
   if formula_box and formula_box['y']+formula_box['height']>reading_box['y']+reading_box['height']:
