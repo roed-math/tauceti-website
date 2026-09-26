@@ -5,7 +5,7 @@
   --line:#222c37;--line-soft:#1a222b;
   --ink:#e2e6eb;--ink-soft:#b9c2cc;--muted:#8391a0;--faint:#5b6875;
   --accent:#dfc186;--accent-soft:#3a3324;--accent-ink:#17130a;
-  --done:#f7f3e9;--active:#e89678;--planned:#c8443a;--grey:#6f7f8c;--green:var(--done);--amber:var(--active);--red:var(--planned);
+  --done:#f7f3e9;--active:#e89678;--planned:#8f2e26;--grey:#6f7f8c;--green:var(--done);--amber:var(--active);--red:var(--planned);
   --sans:-apple-system,BlinkMacSystemFont,"Segoe UI","Helvetica Neue",Helvetica,Arial,sans-serif;
   --mono:ui-monospace,"SFMono-Regular",Menlo,Consolas,monospace;
   --header:48px;--context:40px;--footer:30px;
@@ -114,12 +114,25 @@ body.has-selection .app-layout{grid-template-columns:236px minmax(320px,1fr) 380
 #graph-empty strong,#graph-empty span{display:block;margin:6px}
 #graph-empty[hidden]{display:none}
 .graph-footer{height:var(--footer);flex:none;display:flex;align-items:center;justify-content:space-between;gap:12px;padding:0 16px;border-top:1px solid var(--line);font-size:11px;color:var(--muted);white-space:nowrap;overflow:hidden}
-.progress-legend{display:flex;align-items:center;gap:14px}
-.progress-legend span{display:inline-flex;align-items:center;gap:5px}
-.progress-legend i{width:8px;height:8px;border-radius:50%;flex:none;box-sizing:border-box}
-.progress-legend .done{background:var(--done)}
-.progress-legend .active{background:var(--active)}
-.progress-legend .planned{background:var(--planned)}
+/* The reading of the map, not a key to it: the same ramp the planets use, with the atlas's
+   own figure sitting on it. Dark is untouched, bright is done, and the bar says so without
+   anyone having to match colours against a list. */
+.atlas-progress{position:absolute;top:12px;left:12px;width:236px;padding:12px 14px 11px;border-radius:12px;
+  background:color-mix(in srgb, var(--panel) 88%, transparent);border:1px solid var(--line, #1e2732);
+  backdrop-filter:blur(6px);pointer-events:none;z-index:3}
+.atlas-figure{display:flex;align-items:baseline;gap:6px}
+.atlas-figure strong{font-size:30px;line-height:1;font-weight:600;color:var(--done);letter-spacing:-.5px}
+.atlas-figure span{font-size:12px;color:var(--ink-soft)}
+.atlas-count{margin:3px 0 10px;font-size:11px;color:var(--faint)}
+.progress-scale{display:block}
+.scale-bar{position:relative;display:block;height:8px;border-radius:999px;
+  background:linear-gradient(90deg,var(--planned) 0%,var(--active) 50%,var(--done) 100%)}
+.scale-marker{position:absolute;top:-3px;width:2px;height:14px;border-radius:1px;background:var(--ink);
+  box-shadow:0 0 0 2px color-mix(in srgb, var(--panel) 75%, transparent);transform:translateX(-1px);transition:left .3s ease}
+.scale-ends{display:flex;justify-content:space-between;margin-top:5px;font-size:10px;color:var(--faint)}
+.scale-blank{display:inline-flex;align-items:center;gap:5px;margin-top:8px;font-size:10px;color:var(--faint)}
+.progress-legend{display:block}
+.progress-legend i{width:8px;height:8px;border-radius:50%;flex:none;box-sizing:border-box;display:inline-block}
 .progress-legend .none{border:1.5px solid var(--grey)}
 .kind-legend{display:inline-flex;align-items:center;gap:12px}
 .kind-legend span{display:inline-flex;align-items:center;gap:5px}
@@ -303,6 +316,14 @@ dialog::backdrop{background:#05080cb8}
 .loading-notice{padding:40px;text-align:center;color:var(--muted)}
 
 /* Narrow desktop. */
+/* On a phone the map is the screen, so the panel states the figure and gets out of the way. */
+@media (max-width:600px){
+  .atlas-progress{width:168px;padding:9px 11px 9px;border-radius:10px}
+  .atlas-figure strong{font-size:22px}
+  .atlas-figure span{font-size:11px}
+  .atlas-count{margin:2px 0 8px;font-size:10px}
+  .scale-blank{display:none}
+}
 @media (max-width:1200px){
   body.has-selection .app-layout{grid-template-columns:216px minmax(280px,1fr) 340px}
   .app-layout{grid-template-columns:216px minmax(0,1fr)}

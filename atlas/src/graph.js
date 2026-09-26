@@ -36,7 +36,9 @@
   function progressColor(value) {
     const progress = progressValue(value);
     if (progress === null) return null;
-    const stops = [[200, 68, 58], [232, 150, 120], [247, 243, 233]];
+    // Dark to bright is the whole encoding, so the dark end is deep enough to read as
+      // untouched rather than as another accent colour.
+      const stops = [[143, 46, 38], [232, 150, 120], [247, 243, 233]];
     const index = progress <= 50 ? 0 : 1, fraction = progress <= 50 ? progress / 50 : (progress - 50) / 50;
     return '#' + stops[index].map((channel, i) => Math.round(channel + (stops[index + 1][i] - channel) * fraction).toString(16).padStart(2, '0')).join('');
   }

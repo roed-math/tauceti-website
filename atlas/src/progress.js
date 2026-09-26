@@ -40,7 +40,7 @@
       this.leafCache = new Map();
       this.roadmapLeafCache = new Map();
       this.stageCache = new Map();
-      this.roadmapCache = new Map();
+      this.roadmapCache = new Map(); this.atlasCache = null;
       this.groupCache = new Map();
       try {
         this.storage = window.localStorage;
@@ -207,6 +207,15 @@
       return summary;
     }
 
+    atlas() {
+      // Every layer of every roadmap, counted once: the figure the map's headline shows.
+      if (this.atlasCache) return this.atlasCache;
+      const leaves = new Set();
+      this.roadmaps.forEach(roadmap => this.roadmapLeaves(roadmap.id).forEach(id => leaves.add(id)));
+      this.atlasCache = this.aggregate(Array.from(leaves));
+      return this.atlasCache;
+    }
+
     group(id) {
       if (!this.groups.has(id)) throw new Error('Unknown subject group: ' + id);
       if (this.groupCache.has(id)) return this.groupCache.get(id);
@@ -277,7 +286,7 @@
 
     changed(updatedAt) {
       this.updatedAt = updatedAt;
-      this.stageCache.clear(); this.roadmapCache.clear(); this.groupCache.clear();
+      this.stageCache.clear(); this.roadmapCache.clear(); this.atlasCache = null; this.groupCache.clear();
       if (this.persistent && this.storage) {
         try { this.storage.setItem(STORAGE_KEY, JSON.stringify(this.export())); }
         catch (error) { this.persistent = false; this.storageError = error.message; }

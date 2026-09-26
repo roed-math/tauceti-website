@@ -319,6 +319,24 @@ def check_overview(page,scope,touch=False):
  record(scope+' overview shows the universe, or Mathlib at desktop scale',page.evaluate("""() => { const g=TauExplorer.graph,t=g.debugState().transform,box=document.querySelector('#graph').getBoundingClientRect(); const u=TauExplorer.getUniverse(),b=u.bounds; const x0=b.x*t.k+t.x,x1=(b.x+b.w)*t.k+t.x,y0=b.y*t.k+t.y,y1=(b.y+b.h)*t.k+t.y; const fits=x0>=-2&&x1<=box.width+2&&y0>=-2&&y1<=box.height+2; const target=g.overviewTransform(); const cx=u.core.x*t.k+t.x,cy=u.core.y*t.k+t.y; const atScale=Math.abs(t.k-target.k)<1e-6*target.k+1e-9&&cx>0&&cx<box.width&&cy>0&&cy<box.height; return fits||(!fits&&atScale&&box.width<900); }"""))
  record(scope+' no links are drawn until something is selected',page.locator('.tau-link').count()==0 and page.evaluate("Array.from(document.querySelectorAll('.tau-route')).every(e=>Number(e.getAttribute('opacity'))===0)"))
  record(scope+' legend colours match the map encoding',legend_matches_map_encoding(page))
+ # The headline figure and the scale under it are the map's own encoding, so they have to agree
+ # with the data and with the ramp the planets are drawn from.
+ record(scope+' the atlas states how much is complete, and it matches the data',page.evaluate("""() => {
+  const s=TauExplorer.progress.atlas(),shown=document.getElementById('atlas-percent').textContent.trim();
+  const want=s.total?Math.round(s.complete/s.total*100):0;
+  const caption=document.getElementById('atlas-count').textContent;
+  return shown===want+'%' && caption.includes(s.complete.toLocaleString()) && caption.includes(s.total.toLocaleString());
+ }"""))
+ record(scope+' the marker sits where the figure says on the ramp',page.evaluate("""() => {
+  const s=TauExplorer.progress.atlas(),want=s.total?Math.round(s.complete/s.total*100):0;
+  return document.getElementById('atlas-marker').style.left===want+'%';
+ }"""))
+ record(scope+' the scale runs from the ramp\'s dark end to its bright end',page.evaluate("""() => {
+  const bar=getComputedStyle(document.querySelector('.scale-bar')).backgroundImage;
+  const rgb=hex=>{const n=parseInt(hex.slice(1),16);return `rgb(${n>>16&255}, ${n>>8&255}, ${n&255})`;};
+  const dark=TauGraph.progressColor(0),bright=TauGraph.progressColor(100);
+  return bar.includes(rgb(dark)) && bar.includes(rgb(bright));
+ }"""))
  record(scope+' page has no horizontal overflow',page.evaluate('document.documentElement.scrollWidth<=innerWidth+1'))
 def check_fields(page):
  # Two tiers from the overview on: each field's name in capitals over its
