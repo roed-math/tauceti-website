@@ -163,6 +163,19 @@ class Files(unittest.TestCase):
                    for path in sorted(own_files(job)) if file_problems(path, "{}")]
         self.assertEqual(refused, [])
 
+    def test_no_pending_job_is_already_finished_by_what_is_on_main(self):
+        """A job whose deliverables already exist is finished the moment the sync looks at it.
+
+        Five collation jobs were queued with an existing paper record as their deliverable and
+        were marked done, with issues open and nothing done. A job has to ask for a file that
+        does not exist yet.
+        """
+        from issues import deliverables_complete
+        jobs = json.loads((ROOT / "research" / "blueprint" / "queue.json").read_text())["jobs"]
+        finished = [job["id"] for job in jobs
+                    if job.get("state") == "pending" and deliverables_complete(job, ROOT)]
+        self.assertEqual(finished, [])
+
     def test_errata_files_are_swarm_output(self):
         self.assertEqual(file_problems("research/blueprint/errata/PAPER-FU-24.json", '{"paper": "PAPER-FU-24"}'), [])
         self.assertEqual(file_problems("research/blueprint/errata/PAPER-FU-24.md", "What the paper says."), [])
