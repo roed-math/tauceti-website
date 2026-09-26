@@ -55,6 +55,12 @@ class Accepted(unittest.TestCase):
     def test_an_unreviewed_result_keeps_out(self):
         self.assertEqual(accepted(self.root / "results", self.root / "reviews"), [])
 
+    def test_an_attribution_result_is_taken_the_same_way(self):
+        att = self.root / "attribution"; att.mkdir()
+        (att / "ATT-PDE.json").write_text(json.dumps({"roadmap": "PDE", "citations": [], "edits": [], "register": []}))
+        (self.root / "reviews" / "REV-ATT-PDE.md").write_text("Verdict: accepted\n")
+        self.assertIn("PDE", [r["roadmap"] for r in accepted(self.root / "results", self.root / "reviews", att)])
+
     def test_a_review_that_does_not_say_is_not_an_acceptance(self):
         (self.root / "reviews" / "REV-SRC-AlgebraicCurves.md").write_text("Looks broadly fine to me.")
         self.assertEqual(accepted(self.root / "results", self.root / "reviews"), [])

@@ -28,10 +28,14 @@ REGISTER = ROOT / "research" / "blueprint" / "sources" / "ACCESS.json"
 VERDICT = re.compile(r"^\s*Verdict:\s*accepted\s*$", re.I)
 
 
-def accepted(results: Path = RESULTS, reviews: Path = REVIEWS) -> list:
-    """The results whose review accepted them."""
+ATTRIBUTION = ROOT / "research" / "blueprint" / "attribution"
+
+
+def accepted(results: Path = RESULTS, reviews: Path = REVIEWS, attribution: Path = ATTRIBUTION) -> list:
+    """The results whose review accepted them: source jobs and attribution jobs alike."""
     found = []
-    for path in sorted(Path(results).glob("SRC-*.json")):
+    paths = sorted(Path(results).glob("SRC-*.json")) + sorted(Path(attribution).glob("ATT-*.json"))
+    for path in paths:
         review = Path(reviews) / f"REV-{path.stem}.md"
         if not review.exists():
             continue
