@@ -32,12 +32,11 @@ with sync_playwright() as p:
           const d=TauExplorer.data, board=Object.keys(d.taucetiProgress.roadmaps);
           return d.variant==='tauceti' && d.roadmaps.length===board.length && d.roadmaps.every(r=>r.origin==='tauceti' && board.includes(r.id))
             && TauExplorer.getUniverse().constellations.filter(c=>!c.unmapped).length===board.length && !d.papers.length; }"""))
-        record(scope + ' the headline is the board\'s own layer count, not a percentage', page.evaluate("""() => {
-          const c=TauExplorer.data.taucetiProgress.counts;
-          return document.getElementById('atlas-percent').textContent===c.done.toLocaleString()
-            && document.getElementById('atlas-figure-label').textContent===`of ${c.total.toLocaleString()} layers done`
-            && document.getElementById('atlas-count').textContent.includes(`${c.partial.toLocaleString()} partial`)
-            && getComputedStyle(document.querySelector('.scale-marker')).display==='none'; }"""))
+        record(scope + ' the headline is the share of the board\'s layers done, with its counts beneath', page.evaluate("""() => {
+          const c=TauExplorer.data.taucetiProgress.counts, percent=Math.round(c.done/c.total*100), count=document.getElementById('atlas-count').textContent;
+          return document.getElementById('atlas-percent').textContent===percent+'%'
+            && count.includes(`${c.done.toLocaleString()} of ${c.total.toLocaleString()} layers done`) && count.includes(`${c.partial.toLocaleString()} partial`)
+            && getComputedStyle(document.querySelector('.scale-marker')).display!=='none' && document.getElementById('atlas-marker').style.left===percent+'%'; }"""))
         record(scope + ' the panel says where the data comes from and names roadmaps not yet placed', page.evaluate("""() => {
           const e=document.getElementById('atlas-source'), u=TauExplorer.data.taucetiProgress.unplaced;
           return e.textContent.startsWith("From Tau Ceti's Progress page") && e.textContent.includes(`${u.length} newer roadmap`) && u.every(x=>e.title.includes(x.id.split('/').pop())); }"""))
@@ -45,9 +44,10 @@ with sync_playwright() as p:
             roadmap = page.evaluate("() => Object.entries(TauExplorer.data.taucetiProgress.roadmaps).find(([id,b])=>b.status)[0]")
             page.evaluate("id => TauExplorer.openItem(id)", roadmap)
             page.wait_for_timeout(700)
-            record('A roadmap reads like the board: layer counts and one segment per layer', page.evaluate("""id => {
+            record('A roadmap shows its share of layers done, its counts and one segment per layer', page.evaluate("""id => {
               const segments=document.querySelectorAll('#inspector-content .layer-segments i'), leaves=TauExplorer.progress.roadmapLeaves(id);
-              return segments.length===leaves.length && !/%/.test(document.querySelector('#inspector-content .progress-caption').textContent); }""", roadmap))
+              const done=leaves.filter(l=>TauExplorer.progress.leafState(l).status==='complete').length;
+              return segments.length===leaves.length && document.querySelector('#inspector-content .progress-caption strong').textContent===Math.round(done/leaves.length*100)+'%'; }""", roadmap))
             record('A roadmap links to its live report and progress log', page.evaluate("""() => {
               const links=[...document.querySelectorAll('#inspector-content .report-links a')].map(a=>a.href);
               return [...document.querySelectorAll('#inspector-content .section-label')].some(h=>h.textContent==="Tau Ceti's latest report")

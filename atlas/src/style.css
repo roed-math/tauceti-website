@@ -140,7 +140,7 @@ body.has-selection .app-layout{grid-template-columns:236px minmax(320px,1fr) 380
 .variant-tauceti .atlas-source{display:block;margin-top:8px;font-size:10px;line-height:1.35;color:var(--faint);pointer-events:auto;cursor:help}
 .layer-segments{display:flex;gap:2px;margin:7px 0 4px}.layer-segments i{flex:1;height:8px;border-radius:2px;box-sizing:border-box}
 .segment-complete{background:var(--done)}.segment-in_progress{background:var(--active)}.segment-planned{background:var(--planned)}.segment-unknown{border:1px solid var(--grey)}
-.variant-tauceti .scale-paper,.variant-tauceti .scale-marker,.variant-tauceti .source-filter-wrap{display:none}
+.variant-tauceti .scale-paper,.variant-tauceti .source-filter-wrap{display:none}
 .report-links{display:flex;flex-wrap:wrap;gap:6px 12px;margin:6px 0 4px}
 .scale-paper{display:flex;align-items:center;gap:7px;margin-top:6px;font-size:10px;color:var(--faint)}
 .progress-legend .paper{flex:none;fill:none;stroke:var(--planned);stroke-width:1.3}
