@@ -1,0 +1,52 @@
+name: Tau Ceti progress
+
+# Once a day, take Tau Ceti's own progress from the Progress page of the Tau Ceti
+# site (static/progress.json) and rebuild both pages with it: the atlas, whose Tau
+# Ceti roadmaps take their layer states from it, and the Tau Ceti atlas
+# (tauceti/index.html), which shows only those roadmaps. Nothing is pushed unless
+# the data changed and both pages pass their checks.
+
+on:
+  schedule:
+    - cron: '20 7 * * *'
+  workflow_dispatch:
+
+# Shares the intake's group, so the two never rebuild and push the atlas at once.
+concurrency:
+  group: swarm-intake
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Fetch the Progress page's data
+        run: python3 scripts/tauceti_progress.py --fetch | tee -a "$GITHUB_STEP_SUMMARY"
+      - name: Rebuild, check and publish if it changed
+        shell: bash
+        run: |
+          if git diff --quiet -- data/tauceti-progress.json; then echo "No change on the Progress page." | tee -a "$GITHUB_STEP_SUMMARY"; exit 0; fi
+          python3 scripts/build.py > /dev/null
+          python3 scripts/build.py --tauceti > /dev/null
+          python3 -m unittest discover -s tests -p 'test_*.py'
+          python3 -m pip install -q playwright
+          python3 -m playwright install --with-deps chromium > /dev/null
+          python3 tests/validate_tauceti_browser.py > "$RUNNER_TEMP/tauceti.log" 2>&1 || { tail -40 "$RUNNER_TEMP/tauceti.log"; exit 1; }
+          python3 tests/validate_browser.py > "$RUNNER_TEMP/browser.log" 2>&1 || python3 tests/validate_browser.py > "$RUNNER_TEMP/browser.log" 2>&1 || { tail -60 "$RUNNER_TEMP/browser.log"; exit 1; }
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add data/tauceti-progress.json index.html BUILD.json tauceti
+          git commit -q -m "Atlas: Tau Ceti progress from the Progress page ($(python3 -c "import json; print(json.load(open('data/tauceti-progress.json'))['exported_at'])"))"
+          for attempt in 1 2 3 4 5; do
+            git pull --rebase -q && git push -q && exit 0
+            sleep $((attempt * 10))
+          done
+          exit 1

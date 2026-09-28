@@ -1,0 +1,113 @@
+import json
+import sys
+import unittest
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / "scripts"))
+from tauceti_progress import apply, counts  # noqa: E402
+
+
+def atlas():
+    return {
+        "roadmaps": [{"id": "tauceti:TauCetiRoadmap/Curves", "origin": "tauceti"}, {"id": "tauceti:TauCetiRoadmap/Covers", "origin": "tauceti"},
+                     {"id": "tauceti:TauCetiRoadmap/Gone", "origin": "tauceti"}, {"id": "Proposed", "origin": "campaign"}],
+        "stages": [
+            {"id": "c0", "owner": "tauceti:TauCetiRoadmap/Curves", "key": "Layer 0"},
+            {"id": "c1", "owner": "tauceti:TauCetiRoadmap/Curves", "key": "Layer 1"},
+            {"id": "c1a", "owner": "tauceti:TauCetiRoadmap/Curves", "key": "Layer 1a", "parentStageId": "c1"},
+            {"id": "c1b", "owner": "tauceti:TauCetiRoadmap/Curves", "key": "Layer 1b", "parentStageId": "c1"},
+            {"id": "c1x", "owner": "tauceti:TauCetiRoadmap/Curves", "key": "refinement", "parentStageId": "c1", "expansion": {"kind": "lemma"}},
+            {"id": "c2", "owner": "tauceti:TauCetiRoadmap/Curves", "key": "Layer 2"},
+            {"id": "v0", "owner": "tauceti:TauCetiRoadmap/Covers", "key": "Layer 0"},
+            {"id": "g0", "owner": "tauceti:TauCetiRoadmap/Gone", "key": "Layer 0"},
+        ],
+        "progress": {"stages": {"c2": {"status": "complete", "basis": "old snapshot"}, "g0": {"status": "planned"}}, "roadmaps": {}},
+    }
+
+
+PROGRESS = {
+    "exported_at": "2026-09-28T12:00:00Z",
+    "rows": [
+        {"id": "TauCetiRoadmap/Curves", "title": "curves", "completed": False, "layer_ids": json.dumps(["Layer 0", "Layer 1", "Layer 2"]),
+         "states": json.dumps(["done", "partial", "unassessed"]), "assessment": json.dumps({"source": "marker", "remaining": {"Layer 1": "the dual isogeny"}}),
+         "activity": json.dumps({"total": 12, "recent": 5, "last": "2026-09-27T10:00:00Z", "open": 1}), "readme": "TauCetiRoadmap/Curves/README.md",
+         "status": {"frontier": [{"name": "The dual isogeny.", "text": "The general construction."}, {"name": "Weil pairing.", "text": "Bilinearity."}]}},
+        {"id": "Completed/Covers", "title": "covers", "completed": True, "layer_ids": json.dumps(["Layer 0"]), "states": json.dumps(["partial"]),
+         "assessment": json.dumps({"source": "hand-read"}), "activity": json.dumps({"total": 3, "recent": 0})},
+        {"id": "TauCetiRoadmap/Fresh", "title": "fresh roadmap", "completed": False, "layer_ids": json.dumps(["Layer 0", "Layer 1"]),
+         "states": json.dumps(["untouched", "partial"]), "assessment": None, "activity": None},
+    ],
+}
+
+
+class Overlay(unittest.TestCase):
+    def setUp(self):
+        self.atlas = atlas()
+        apply(self.atlas, PROGRESS)
+        self.stages = self.atlas["progress"]["stages"]
+
+    def test_layer_states_become_statuses_of_the_layers_leaves(self):
+        self.assertEqual(self.stages["c0"]["status"], "complete")
+        # A layer with sub-layers passes its state to each of them, never to a refinement.
+        self.assertEqual((self.stages["c1a"]["status"], self.stages["c1b"]["status"]), ("in_progress", "in_progress"))
+        self.assertNotIn("c1x", self.stages)
+        self.assertIn("Tau Ceti Progress page", self.stages["c0"]["basis"])
+
+    def test_an_unassessed_layer_has_no_status_even_if_the_snapshot_had_one(self):
+        self.assertNotIn("c2", self.stages)
+
+    def test_a_roadmap_moved_to_completed_matches_its_completed_row(self):
+        # The maintainers' archiving is final, whatever the report says of a layer.
+        self.assertEqual(self.stages["v0"]["status"], "complete")
+        self.assertEqual(self.atlas["progress"]["roadmaps"]["tauceti:TauCetiRoadmap/Covers"]["status"], "complete")
+
+    def test_a_roadmap_the_page_no_longer_reports_keeps_its_snapshot(self):
+        self.assertEqual(self.stages["g0"]["status"], "planned")
+
+    def test_notes_activity_and_roadmaps_not_on_the_map_are_kept_for_the_page(self):
+        info = self.atlas["taucetiProgress"]
+        self.assertEqual(info["exportedAt"], "2026-09-28T12:00:00Z")
+        self.assertEqual(info["remaining"]["c1"], "the dual isogeny")
+        self.assertEqual(info["roadmaps"]["tauceti:TauCetiRoadmap/Curves"]["activity"]["recent"], 5)
+        self.assertEqual(info["roadmaps"]["tauceti:TauCetiRoadmap/Curves"]["status"], "https://github.com/TauCetiProject/TauCetiRoadmap/blob/main/TauCetiRoadmap/Curves/STATUS.md")
+        self.assertEqual(info["roadmaps"]["tauceti:TauCetiRoadmap/Curves"]["frontier"], ["The dual isogeny.", "Weil pairing."])
+        self.assertEqual([row["id"] for row in info["unplaced"]], ["TauCetiRoadmap/Fresh"])
+
+    def test_counts_are_the_boards_own_layer_counts(self):
+        self.assertEqual(counts(PROGRESS), {"done": 1, "partial": 3, "untouched": 1, "unassessed": 1, "total": 6})
+
+
+
+class TauCetiOnly(unittest.TestCase):
+    def test_the_tau_ceti_build_keeps_only_the_roadmaps_the_board_reports(self):
+        from tauceti_progress import tauceti_only
+        data = atlas()
+        data["stages"].append({"id": "p0", "owner": "Proposed", "key": "P0"})
+        data.update({
+            "stageEdges": [{"source": "c0", "target": "c1"}, {"source": "p0", "target": "c0"}],
+            "edges": [{"source": "tauceti:TauCetiRoadmap/Curves", "target": "tauceti:TauCetiRoadmap/Covers"}, {"source": "Proposed", "target": "tauceti:TauCetiRoadmap/Curves"}],
+            "roadmapLinks": [], "decompositions": [], "papers": [{"id": "paper:X"}], "restructurings": [{"id": "RS-1"}], "blueprintLayers": ["Proposed:P0"],
+            "opportunities": {"areas": [{"id": "gap"}], "groups": [{"id": "g"}], "notes": []}, "deferredLinks": [], "unresolvedRepositoryLinks": [],
+            "stagePresentation": {"c0": {"summary": "x"}, "p0": {"summary": "y"}}, "mappedStageStatuses": {}, "libraryStatuses": {"p0": {"status": "complete"}},
+            "landmarkHidden": {"p0::landmark:1": "why"}, "landmarkLabels": {"c0::landmark:1": "Name"}, "roadmapSummaries": {"Proposed": "s", "tauceti:TauCetiRoadmap/Curves": "t"},
+            "roadmapClassification": {"roadmaps": {"Proposed": {}, "tauceti:TauCetiRoadmap/Curves": {}}}, "roadmapDistances": {"roadmaps": {"Proposed": {}}},
+            "libraryCoverage": {"reviews": {}, "pendingReview": [], "layers": {"p0": {}}},
+        })
+        apply(data, PROGRESS)
+        cut = tauceti_only(data)
+        self.assertEqual(cut["variant"], "tauceti")
+        self.assertEqual([r["id"] for r in cut["roadmaps"]], ["tauceti:TauCetiRoadmap/Curves", "tauceti:TauCetiRoadmap/Covers"])
+        self.assertEqual({s["owner"] for s in cut["stages"]}, {"tauceti:TauCetiRoadmap/Curves", "tauceti:TauCetiRoadmap/Covers"})
+        self.assertEqual(cut["stageEdges"], [{"source": "c0", "target": "c1"}])
+        self.assertEqual(len(cut["edges"]), 1)
+        self.assertEqual((cut["papers"], cut["restructurings"], cut["blueprintLayers"], cut["opportunities"]["areas"]), ([], [], [], []))
+        self.assertEqual(list(cut["stagePresentation"]), ["c0"])
+        self.assertEqual((cut["libraryStatuses"], cut["landmarkHidden"], cut["libraryCoverage"]["layers"]), ({}, {}, {}))
+        self.assertEqual(list(cut["roadmapSummaries"]), ["tauceti:TauCetiRoadmap/Curves"])
+        self.assertEqual(list(cut["roadmapClassification"]["roadmaps"]), ["tauceti:TauCetiRoadmap/Curves"])
+        self.assertNotIn("g0", cut["progress"]["stages"])
+
+
+if __name__ == "__main__":
+    unittest.main()

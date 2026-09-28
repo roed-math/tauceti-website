@@ -18,6 +18,7 @@ from restructure import apply_restructurings, load_accepted  # noqa: E402
 from retirements import apply_retirements, load_retirements  # noqa: E402
 from library_coverage import already_available, coverage_statuses, load_coverage  # noqa: E402
 from artefacts import paper_artefacts  # noqa: E402
+from tauceti_progress import apply as apply_tauceti_progress, load as load_tauceti_progress, tauceti_only  # noqa: E402
 
 
 def load_decompositions() -> list:
@@ -91,6 +92,11 @@ def assemble(require_distances: bool = True, blueprints: Path | None = None) -> 
         if entry.get("status") not in ("planned", "in_progress", "complete") or not entry.get("evidence"):
             raise ValueError("Mapped stage status needs a known status and evidence: " + stage_id)
     atlas["progress"]["stages"].update(atlas["mappedStageStatuses"])
+    # Tau Ceti's own roadmaps take each layer's state from the Tau Ceti site's Progress page
+    # (data/tauceti-progress.json, refreshed daily by scripts/tauceti_progress.py --fetch).
+    board = load_tauceti_progress()
+    if board:
+        apply_tauceti_progress(atlas, board)
     # The reviewed library audit marks layers that Mathlib or Tau Ceti already contain.
     coverage = load_coverage(ROOT)
     tauceti_roadmaps = {roadmap["id"] for roadmap in atlas["roadmaps"] if roadmap.get("origin") == "tauceti"}
@@ -185,8 +191,11 @@ def assemble(require_distances: bool = True, blueprints: Path | None = None) -> 
     return atlas, {"retired": retired, "linkPackets": link_packets, "originalStageCount": original_stage_count, "blueprints": packets}
 
 
-def build(output: Path, blueprints: Path | None = None) -> dict:
+def build(output: Path, blueprints: Path | None = None, variant: str | None = None) -> dict:
     atlas, context = assemble(blueprints=blueprints)
+    if variant == "tauceti":
+        # The Tau Ceti build: only the roadmaps Tau Ceti's Progress page reports.
+        atlas = tauceti_only(atlas)
     retired, link_packets, original_stage_count = context["retired"], context["linkPackets"], context["originalStageCount"]
     assets = {
         "D3": "vendor/d3.v5.15.0.min.js",
@@ -236,7 +245,7 @@ def build(output: Path, blueprints: Path | None = None) -> dict:
     # progress targets, so the parent stays terminal for progress accounting.
     refinements = [stage for stage in atlas["stages"] if stage.get("expansion")]
     parent_ids = {stage.get("parentStageId") for stage in atlas["stages"] if stage.get("parentStageId") and not stage.get("expansion")}
-    source_paths = ["src/shell.html", *style_paths, *assets.values(), "data/atlas.json", "data/status.json", "data/galaxies.json", "data/roadmap-retirements.json", "data/library-coverage.json", "data/opportunities.json", "data/stage-presentation.json", "data/landmark-labels.json", "data/landmark-hidden.json", "data/roadmap-summaries.json", "data/roadmap-classification.json", "data/classification-estimates.json", "data/roadmap-distances.json", "data/galaxy-layout.json", "data/bibliography.json", "NOTICE", "LICENSE", "vendor/D3-LICENSE.txt", "vendor/KaTeX-LICENSE.txt"]
+    source_paths = ["src/shell.html", *style_paths, *assets.values(), "data/atlas.json", "data/status.json", "data/tauceti-progress.json", "data/galaxies.json", "data/roadmap-retirements.json", "data/library-coverage.json", "data/opportunities.json", "data/stage-presentation.json", "data/landmark-labels.json", "data/landmark-hidden.json", "data/roadmap-summaries.json", "data/roadmap-classification.json", "data/classification-estimates.json", "data/roadmap-distances.json", "data/galaxy-layout.json", "data/bibliography.json", "NOTICE", "LICENSE", "vendor/D3-LICENSE.txt", "vendor/KaTeX-LICENSE.txt"]
     for folder in ("data/decompositions", "data/blueprints", "data/blueprints/roadmaps", "data/links", "data/restructure"):
         source_paths += [str(path.relative_to(ROOT)) for path in sorted((ROOT / folder).glob("*.*"))] if (ROOT / folder).is_dir() else []
     report = {
@@ -279,7 +288,11 @@ def build(output: Path, blueprints: Path | None = None) -> dict:
         "localProgressOverridesIncluded": False,
         "assets": {path: hashlib.sha256((ROOT / path).read_bytes()).hexdigest() for path in source_paths},
     }
-    (ROOT / "BUILD.json").write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
+    if atlas.get("taucetiProgress"):
+        report["taucetiProgress"] = {"exportedAt": atlas["taucetiProgress"]["exportedAt"], "roadmaps": len(atlas["taucetiProgress"]["roadmaps"]),
+                                     "unplaced": len(atlas["taucetiProgress"]["unplaced"]), "layers": atlas["taucetiProgress"]["counts"]}
+    report["variant"] = variant or "atlas"
+    (output.parent / "BUILD.json" if variant else ROOT / "BUILD.json").write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
     return report
 
 
@@ -287,8 +300,10 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--output", type=Path, default=ROOT / "index.html", help="HTML output path; defaults to the repository's index.html")
     parser.add_argument("--blueprints", type=Path, help="read promoted blueprints from this folder instead of data/blueprints (tests)")
+    parser.add_argument("--tauceti", action="store_true", help="build the Tau Ceti atlas (tauceti/index.html): only the roadmaps Tau Ceti's Progress page reports")
     arguments = parser.parse_args()
-    print(json.dumps(build(arguments.output.resolve(), arguments.blueprints), indent=2))
+    output = arguments.output if arguments.output != ROOT / "index.html" or not arguments.tauceti else ROOT / "tauceti" / "index.html"
+    print(json.dumps(build(output.resolve(), arguments.blueprints, "tauceti" if arguments.tauceti else None), indent=2))
 
 
 if __name__ == "__main__":
