@@ -18,7 +18,8 @@ from restructure import apply_restructurings, load_accepted  # noqa: E402
 from retirements import apply_retirements, load_retirements  # noqa: E402
 from library_coverage import already_available, coverage_statuses, load_coverage  # noqa: E402
 from artefacts import paper_artefacts  # noqa: E402
-from tauceti_progress import apply as apply_tauceti_progress, load as load_tauceti_progress, tauceti_only  # noqa: E402
+from tauceti_progress import add_new_roadmaps as add_new_tauceti_roadmaps, apply as apply_tauceti_progress  # noqa: E402
+from tauceti_progress import load as load_tauceti_progress, load_readmes as load_tauceti_readmes, tauceti_only  # noqa: E402
 
 
 def load_decompositions() -> list:
@@ -193,10 +194,20 @@ def assemble(require_distances: bool = True, blueprints: Path | None = None) -> 
 
 def build(output: Path, blueprints: Path | None = None, variant: str | None = None) -> dict:
     atlas, context = assemble(blueprints=blueprints)
+    # Roadmaps Tau Ceti has accepted since the snapshot join the map from their READMEs, so each
+    # one counts in the layers (and lowers the share complete) from the day the Progress page lists it.
+    board, added = load_tauceti_progress(), []
+    if board:
+        added = add_new_tauceti_roadmaps(atlas, board, load_tauceti_readmes())
+        if added:
+            apply_tauceti_progress(atlas, board)
     if variant == "tauceti":
         # The Tau Ceti build: only the roadmaps Tau Ceti's Progress page reports.
         atlas = tauceti_only(atlas)
-    retired, link_packets, original_stage_count = context["retired"], context["linkPackets"], context["originalStageCount"]
+    retired, link_packets = context["retired"], context["linkPackets"]
+    # Layers that are not source refinements: the snapshot's, and those of any roadmap added above.
+    original_stage_count = sum(1 for stage in atlas["stages"] if not stage.get("expansion"))
+    atlas["meta"]["originalStageCount"] = original_stage_count
     assets = {
         "D3": "vendor/d3.v5.15.0.min.js",
         "KATEX": "vendor/katex.v0.16.28.min.js",
@@ -245,7 +256,7 @@ def build(output: Path, blueprints: Path | None = None, variant: str | None = No
     # progress targets, so the parent stays terminal for progress accounting.
     refinements = [stage for stage in atlas["stages"] if stage.get("expansion")]
     parent_ids = {stage.get("parentStageId") for stage in atlas["stages"] if stage.get("parentStageId") and not stage.get("expansion")}
-    source_paths = ["src/shell.html", *style_paths, *assets.values(), "data/atlas.json", "data/status.json", "data/tauceti-progress.json", "data/galaxies.json", "data/roadmap-retirements.json", "data/library-coverage.json", "data/opportunities.json", "data/stage-presentation.json", "data/landmark-labels.json", "data/landmark-hidden.json", "data/roadmap-summaries.json", "data/roadmap-classification.json", "data/classification-estimates.json", "data/roadmap-distances.json", "data/galaxy-layout.json", "data/bibliography.json", "NOTICE", "LICENSE", "vendor/D3-LICENSE.txt", "vendor/KaTeX-LICENSE.txt"]
+    source_paths = ["src/shell.html", *style_paths, *assets.values(), "data/atlas.json", "data/status.json", "data/tauceti-progress.json", "data/tauceti-new-roadmaps.json", "data/galaxies.json", "data/roadmap-retirements.json", "data/library-coverage.json", "data/opportunities.json", "data/stage-presentation.json", "data/landmark-labels.json", "data/landmark-hidden.json", "data/roadmap-summaries.json", "data/roadmap-classification.json", "data/classification-estimates.json", "data/roadmap-distances.json", "data/galaxy-layout.json", "data/bibliography.json", "NOTICE", "LICENSE", "vendor/D3-LICENSE.txt", "vendor/KaTeX-LICENSE.txt"]
     for folder in ("data/decompositions", "data/blueprints", "data/blueprints/roadmaps", "data/links", "data/restructure"):
         source_paths += [str(path.relative_to(ROOT)) for path in sorted((ROOT / folder).glob("*.*"))] if (ROOT / folder).is_dir() else []
     report = {
@@ -290,7 +301,7 @@ def build(output: Path, blueprints: Path | None = None, variant: str | None = No
     }
     if atlas.get("taucetiProgress"):
         report["taucetiProgress"] = {"exportedAt": atlas["taucetiProgress"]["exportedAt"], "roadmaps": len(atlas["taucetiProgress"]["roadmaps"]),
-                                     "unplaced": len(atlas["taucetiProgress"]["unplaced"]), "layers": atlas["taucetiProgress"]["counts"]}
+                                     "unplaced": len(atlas["taucetiProgress"]["unplaced"]), "layers": atlas["taucetiProgress"]["counts"], "added": added}
     report["variant"] = variant or "atlas"
     (output.parent / "BUILD.json" if variant else ROOT / "BUILD.json").write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
     return report

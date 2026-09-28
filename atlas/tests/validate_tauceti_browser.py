@@ -37,9 +37,13 @@ with sync_playwright() as p:
           return document.getElementById('atlas-percent').textContent===percent+'%'
             && count.includes(`${c.done.toLocaleString()} of ${c.total.toLocaleString()} layers done`) && count.includes(`${c.partial.toLocaleString()} partial`)
             && getComputedStyle(document.querySelector('.scale-marker')).display!=='none' && document.getElementById('atlas-marker').style.left===percent+'%'; }"""))
-        record(scope + ' the panel says where the data comes from and names roadmaps not yet placed', page.evaluate("""() => {
+        record(scope + ' the panel says where the data comes from, and names any roadmap not yet placed', page.evaluate("""() => {
           const e=document.getElementById('atlas-source'), u=TauExplorer.data.taucetiProgress.unplaced;
-          return e.textContent.startsWith("From Tau Ceti's Progress page") && e.textContent.includes(`${u.length} newer roadmap`) && u.every(x=>e.title.includes(x.id.split('/').pop())); }"""))
+          return e.textContent.startsWith("From Tau Ceti's Progress page") && (u.length ? e.textContent.includes(`${u.length} newer roadmap`) : !/newer roadmap/.test(e.textContent))
+            && u.every(x=>e.title.includes(x.id.split('/').pop())); }"""))
+        record(scope + ' a roadmap Tau Ceti accepted since the snapshot is on the map, counted in the layers', page.evaluate("""() => {
+          const d=TauExplorer.data, added=d.roadmaps.filter(r=>(d.roadmapClassification.roadmaps[r.id]||{}).basis==='provisional'), u=TauExplorer.getUniverse();
+          return added.every(r=>u.byId.has(r.id) && r.stages.every(s=>u.byId.has(s)) && TauExplorer.progress.roadmapLeaves(r.id).length===r.stages.length); }"""))
         if scope == 'Desktop':
             roadmap = page.evaluate("() => Object.entries(TauExplorer.data.taucetiProgress.roadmaps).find(([id,b])=>b.status)[0]")
             page.evaluate("id => TauExplorer.openItem(id)", roadmap)

@@ -109,5 +109,66 @@ class TauCetiOnly(unittest.TestCase):
         self.assertNotIn("g0", cut["progress"]["stages"])
 
 
+
+class NewRoadmaps(unittest.TestCase):
+    """A roadmap Tau Ceti accepts appears on the Tau Ceti atlas at the next refresh."""
+    README = """# Roadmap: restricted products and adelic diagonals
+
+The generic infrastructure for restricted products, used by [global number fields](../GlobalFields/README.md).
+
+## Layer 0: reference families and the integral subgroup
+
+Families of open subgroups.
+
+## Layer 1: functoriality and reindexing
+
+Change of family.
+"""
+
+    def board(self, *rows):
+        return {"exported_at": "2026-09-28T12:00:00Z", "rows": list(rows)}
+
+    def row(self, name, layers, states, readme=True):
+        return {"id": "TauCetiRoadmap/" + name, "title": name.lower(), "completed": False, "readme": f"TauCetiRoadmap/{name}/README.md" if readme else None,
+                "layer_ids": json.dumps([layer.split(":")[0] for layer in layers]), "layers": json.dumps(layers), "states": json.dumps(states)}
+
+    def atlas(self):
+        return {"roadmaps": [{"id": "tauceti:TauCetiRoadmap/GlobalFields", "origin": "tauceti", "group": "classical", "stages": []},
+                             {"id": "tauceti:TauCetiRoadmap/Schemes", "origin": "tauceti", "group": "schemes", "stages": []}],
+                "stages": [], "roadmapLinks": [], "progress": {"stages": {}, "roadmaps": {}},
+                "groups": [{"id": "classical", "label": "Number fields and class field theory"}, {"id": "schemes", "label": "Schemes, curves and moduli"},
+                           {"id": "etale", "label": "Etale cohomology"}],
+                "fields": [{"id": "algebraic-geometry", "label": "Algebraic geometry", "groupIds": ["schemes", "etale"]}]}
+
+    def test_a_new_roadmap_is_built_from_its_readme_and_placed_by_its_links(self):
+        from tauceti_progress import add_new_roadmaps
+        data = self.atlas()
+        board = self.board(self.row("RestrictedProducts", ["Layer 0: reference families and the integral subgroup", "Layer 1: functoriality and reindexing"], ["partial", "untouched"]))
+        added = add_new_roadmaps(data, board, {"TauCetiRoadmap/RestrictedProducts": self.README})
+        self.assertEqual(added, ["tauceti:TauCetiRoadmap/RestrictedProducts"])
+        roadmap = data["roadmaps"][-1]
+        self.assertEqual((roadmap["title"], roadmap["group"], roadmap["origin"]), ("Restricted products and adelic diagonals", "classical", "tauceti"))
+        stages = [s for s in data["stages"] if s["owner"] == roadmap["id"]]
+        self.assertEqual([(s["key"], s["title"]) for s in stages], [("Layer 0", "reference families and the integral subgroup"), ("Layer 1", "functoriality and reindexing")])
+        self.assertEqual(stages[1]["requires"], [stages[0]["id"]])
+        self.assertIn("Families of open subgroups.", stages[0]["description"])
+        self.assertEqual(data["roadmapLinks"][-1]["target"], "tauceti:TauCetiRoadmap/GlobalFields")
+        apply(data, board)
+        self.assertEqual(data["progress"]["stages"][stages[0]["id"]]["status"], "in_progress")
+        self.assertEqual(data["taucetiProgress"]["unplaced"], [])
+
+    def test_a_roadmap_with_no_links_is_placed_by_its_title_and_one_with_no_signal_waits(self):
+        from tauceti_progress import add_new_roadmaps
+        data = self.atlas()
+        board = self.board(self.row("RealAlgebraicGeometry", ["Layer 1: univariate real algebra"], ["done"]),
+                           self.row("Mystery", ["Layer 0: things"], ["untouched"]))
+        added = add_new_roadmaps(data, board, {"TauCetiRoadmap/RealAlgebraicGeometry": "# Real algebraic geometry: sign determination\n\n## Layer 1: univariate real algebra\n\nSturm sequences.\n",
+                                                "TauCetiRoadmap/Mystery": "# Roadmap: things\n\n## Layer 0: things\n\nStuff.\n"})
+        self.assertEqual(added, ["tauceti:TauCetiRoadmap/RealAlgebraicGeometry"])
+        self.assertEqual(data["roadmaps"][-1]["group"], "schemes")
+        apply(data, board)
+        self.assertEqual([row["id"] for row in data["taucetiProgress"]["unplaced"]], ["TauCetiRoadmap/Mystery"])
+
+
 if __name__ == "__main__":
     unittest.main()

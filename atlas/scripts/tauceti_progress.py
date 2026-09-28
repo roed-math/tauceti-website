@@ -10,15 +10,22 @@ since moved to Completed/ matches its Completed/ row) and layers by key. An
 unassessed layer has no status at all, and a roadmap the board no longer
 reports keeps its snapshot.
 
-Usage: tauceti_progress.py --fetch   download the board's data into data/
+A roadmap Tau Ceti accepts appears on the board before it appears in the
+atlas's snapshot. Its README is kept too (data/tauceti-new-roadmaps.json), and
+the build adds it to the map from that README and the board's list of its
+layers: in the area of the Tau Ceti roadmaps its README names, or of the field
+its title names, and not at all until one of those says where it belongs.
+
+Usage: tauceti_progress.py --fetch   download the board's data and new roadmaps' READMEs into data/
 """
 from __future__ import annotations
 
 import argparse
 import json
+import re
 import sys
 import urllib.request
-from collections import defaultdict
+from collections import Counter, defaultdict
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -26,6 +33,8 @@ URL = "https://taucetiproject.github.io/TauCeti/static/progress.json"
 PAGE = "https://taucetiproject.github.io/TauCeti/progress/"
 REPOSITORY = "https://github.com/TauCetiProject/TauCetiRoadmap/blob/main/"
 COPY = ROOT / "data" / "tauceti-progress.json"
+READMES = ROOT / "data" / "tauceti-new-roadmaps.json"
+RAW = "https://raw.githubusercontent.com/TauCetiProject/TauCetiRoadmap/main/"
 STATUS = {"done": "complete", "partial": "in_progress", "untouched": "planned"}
 
 
@@ -130,6 +139,121 @@ def apply(atlas: dict, progress: dict) -> dict:
     return atlas
 
 
+def unplaced(atlas: dict, progress: dict) -> list:
+    """The rows of the board that no roadmap of the atlas matches."""
+    placed = {id(row) for row in matches(atlas, progress).values()}
+    return [row for row in progress.get("rows", []) if id(row) not in placed and not row.get("retired")]
+
+
+def slug(text: str) -> str:
+    return re.sub(r"[^a-z0-9]+", "-", text.lower()).strip("-")
+
+
+def short_name(roadmap_id: str) -> str:
+    return name(roadmap_id).split("/")[-1]
+
+
+def area_for(text: str, title: str, atlas: dict, own: str) -> tuple:
+    """(area, Tau Ceti roadmaps the README names): the area most of those roadmaps are in;
+    failing that, the largest area of the field the title names; failing that, None."""
+    known = {}
+    for roadmap in atlas["roadmaps"]:
+        if roadmap.get("origin") == "tauceti" and short_name(roadmap["id"]) != own and roadmap.get("group"):
+            known.setdefault(short_name(roadmap["id"]), roadmap)
+    linked = re.findall(r"\]\((?:\.\./|/?TauCetiRoadmap/|https://github\.com/TauCetiProject/TauCetiRoadmap/(?:blob|tree)/main/TauCetiRoadmap/)([A-Za-z0-9]+)", text)
+    names = sorted({n for n in linked if n in known}) or sorted(n for n in known if re.search(r"\b" + re.escape(n) + r"\b", text))
+    if names:
+        groups = Counter(known[n]["group"] for n in names)
+        return max(sorted(groups), key=groups.get), [known[n]["id"] for n in names]
+    words, groups = title.lower(), {group["id"] for group in atlas.get("groups", [])}
+    size = Counter(roadmap.get("group") for roadmap in atlas["roadmaps"])
+    for field_ in atlas.get("fields", []):
+        members = [g for g in field_.get("groupIds", []) if g in groups]
+        if members and field_["label"].lower() in words:
+            return max(sorted(members), key=lambda g: size[g]), []
+    for group in atlas.get("groups", []):
+        if group["label"].lower() in words:
+            return group["id"], []
+    return None, []
+
+
+def add_new_roadmaps(atlas: dict, progress: dict, readmes: dict) -> list:
+    """Add the roadmaps the board reports and the atlas lacks, built from their READMEs; the ids added."""
+    added = []
+    for row in unplaced(atlas, progress):
+        text = readmes.get(row["id"])
+        if not text:
+            continue
+        roadmap_id = "tauceti:" + row["id"]
+        heading = re.search(r"^#\s+(.+)$", text, re.M)
+        title = re.sub(r"^Roadmap:\s*", "", heading.group(1).strip()) if heading else (row.get("title") or short_name(roadmap_id))
+        title = title[:1].upper() + title[1:]
+        group, named = area_for(text, title, atlas, short_name(roadmap_id))
+        if not group:
+            continue
+        lines = text.splitlines()
+
+        def section(label):
+            for number, line in enumerate(lines):
+                found = re.match(r"^(#{1,6})\s+(.*)$", line)
+                if found and found.group(2).strip().lower().startswith(label.lower()):
+                    body = []
+                    for later in lines[number + 1:]:
+                        deeper = re.match(r"^(#{1,6})\s", later)
+                        if deeper and len(deeper.group(1)) <= len(found.group(1)):
+                            break
+                        body.append(later)
+                    return number + 1, "\n".join(body).strip()
+            return 1, ""
+
+        paragraphs = [p.strip() for p in "\n".join(lines[(heading and text[:heading.end()].count("\n") + 1) or 0:]).split("\n\n")]
+        summary = next((p for p in paragraphs if p and not p.startswith(("#", "|", "-", "*", ">"))), "")
+        headings = field(row, "layers", [])
+        stages, edges = [], []
+        # Layers in the order the README lists them, each after the one before it.
+        for index, layer in enumerate(field(row, "layer_ids", [])):
+            label = headings[index] if index < len(headings) else layer
+            short = label[len(layer):].lstrip(" :.—–-").strip() if label.startswith(layer) else label
+            line, body = section(label)
+            stage = {"id": f"{roadmap_id}#{slug(label)}", "owner": roadmap_id, "key": layer, "title": short or layer, "description": body[:4000],
+                     "requires": [stages[-1]["id"]] if stages else [], "consumers": [], "sourcePath": row.get("readme"), "repositoryPath": row.get("readme"),
+                     "sourceLine": line, "contextStartLine": line, "contextEndLine": line, "depth": index, "firstAction": "", "status": "unknown",
+                     "origin": "tauceti", "parentStageId": None, "isLeaf": True, "headingLevel": 2, "sectionKind": "layer", "anchor": slug(label)}
+            if stages:
+                stages[-1]["consumers"].append(stage["id"])
+                edges.append({"source": stages[-1]["id"], "target": stage["id"], "origin": "tauceti", "evidence": {"sourcePath": row.get("readme"), "basis": "README order"}})
+            stages.append(stage)
+        if not stages:
+            continue
+        atlas["roadmaps"].append({"id": roadmap_id, "title": title, "summary": summary[:600], "readme": text, "origin": "tauceti", "lifecycle": "active",
+                                  "group": group, "parentRoadmapId": ("tauceti:" + row["parent_id"]) if row.get("parent_id") else None,
+                                  "sourcePath": row.get("readme"), "repositoryPath": row.get("readme"), "stages": [stage["id"] for stage in stages],
+                                  "prerequisites": [], "consumers": [], "sections": []})
+        atlas["stages"] += stages
+        atlas.setdefault("stageEdges", []).extend(edges)
+        atlas.setdefault("roadmapLinks", []).extend({"source": roadmap_id, "target": other, "kind": "reference", "label": short_name(other), "anchor": ""} for other in named)
+        reason = (f"Placed provisionally with the Tau Ceti roadmaps its README names ({', '.join(short_name(n) for n in named)})." if named
+                  else "Placed provisionally in the field its title names.")
+        atlas.setdefault("roadmapClassification", {}).setdefault("roadmaps", {})[roadmap_id] = {"basis": "provisional", "rationale": reason}
+        added.append(roadmap_id)
+    return added
+
+
+def fetch_readmes(progress: dict, snapshot: Path = ROOT / "data" / "atlas.json", copy: Path = READMES) -> dict:
+    """The READMEs of the roadmaps the board reports and the atlas's snapshot lacks."""
+    readmes = {}
+    for row in unplaced(json.loads(snapshot.read_text(encoding="utf-8")), progress):
+        if isinstance(row.get("readme"), str):
+            with urllib.request.urlopen(RAW + row["readme"], timeout=60) as response:
+                readmes[row["id"]] = response.read().decode("utf-8")
+    copy.write_text(json.dumps(readmes, ensure_ascii=False, indent=1, sort_keys=True) + "\n", encoding="utf-8")
+    return readmes
+
+
+def load_readmes(copy: Path = READMES) -> dict:
+    return json.loads(copy.read_text(encoding="utf-8")) if copy.exists() else {}
+
+
 def tauceti_only(atlas: dict) -> dict:
     """The atlas cut down to the Tau Ceti roadmaps the Progress page reports: the Tau Ceti build.
 
@@ -182,6 +306,8 @@ def main() -> int:
     if args.fetch:
         progress = fetch()
         print(f"{len(progress['rows'])} roadmaps, exported {progress.get('exported_at')}: {counts(progress)}")
+        readmes = fetch_readmes(progress)
+        print(f"{len(readmes)} roadmap(s) newer than the atlas's snapshot: {', '.join(sorted(readmes)) or 'none'}")
     return 0
 
 
