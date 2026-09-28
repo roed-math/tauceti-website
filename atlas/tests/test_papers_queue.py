@@ -69,6 +69,15 @@ class PaperDesigns(unittest.TestCase):
         self.assertEqual((job, rid, title), ("DESIGN-ReductivePartIII", "ReductivePartIII", "Reductive groups, Part III"))
         self.assertIn("ReductivePartII is already in the atlas", brief)
 
+    def test_a_long_brief_is_quoted_briefly_and_pointed_to(self):
+        route = self.call({"route": "new", "roadmap": "Fresh", "title": "Fresh theory", "area": "langlands", "items": [f"PAPER-X/{n}" for n in range(300)],
+                           "brief": "First sentence of the plan. " + "More detail here. " * 3000})
+        [(job, rid, area, brief, title)] = make_queue.paper_designs([route], self.ROADMAPS)
+        self.assertLess(len(brief), 1500)
+        self.assertIn("First sentence of the plan.", brief)
+        self.assertIn("(300 items)", brief)
+        self.assertIn("research/blueprint/papers/PAPER-X.result.json, the route to Fresh", brief)
+
     def test_a_new_roadmap_several_papers_call_for_is_one_design(self):
         route = {"route": "new", "roadmap": "Fresh", "title": "Fresh theory", "area": "langlands", "brief": "Fresh.", "items": ["PAPER-X/4"]}
         designs = make_queue.paper_designs([self.call(route), self.call(dict(route, brief="Also fresh.", items=["PAPER-Y/1"]), "PAPER-Y")], self.ROADMAPS)
