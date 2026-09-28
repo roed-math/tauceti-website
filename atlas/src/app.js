@@ -75,7 +75,8 @@ function renderStats(){let rs=DATA.roadmaps.filter(inCollection),scope=collectio
 function color(value){return TauGraph.progressColor(value)||'#899ba4';}
 function stageProgress(p){return p.status==='unknown'?null:p.percent||0;}
 function hasProgressData(p){return (p.complete||0)+(p.active||0)+(p.planned||0)>0;}
-function aggregateProgress(p){return hasProgressData(p)?p.percent||0:null;}
+// Work under way with nothing yet complete has started: it is red, never the grey of not started.
+function aggregateProgress(p){return hasProgressData(p)?(p.percent||(p.active?1:0)):null;}
 function aggregateProgressLabel(p,suffix='layers'){return hasProgressData(p)?Math.round(p.percent||0)+'% '+suffix:'';}
 function statString(p){return `${p.complete||0} / ${p.total||0} layers complete`;}
 // Mathlib sits at the centre by default; #layout=areas opens the older area map, and the choice is kept in every link.

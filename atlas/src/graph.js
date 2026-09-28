@@ -7,7 +7,7 @@
   'use strict';
   let instanceCount = 0;
   const SVG_NS = 'http://www.w3.org/2000/svg';
-  const BACKGROUND = '#0b1016', ACCENT = '#dfc186', NO_PROGRESS = '#6f7f8c', CREAM = '#e8e4da', DUST = '#8ea1b6';
+  const BACKGROUND = '#0b1016', ACCENT = '#dfc186', NO_PROGRESS = '#6f7f8c', NOT_STARTED = '#6e747b', CREAM = '#e8e4da', DUST = '#8ea1b6';
   // Planets carry no progress. They are all round and flat, and what they
   // look like says what they are: a definition or construction is an Earth
   // (a blue disc with green land), and a result is a Saturn (a sand disc with
@@ -30,15 +30,16 @@
   function progressValue(value) {
     return typeof value === 'number' && Number.isFinite(value) ? Math.max(0, Math.min(100, value)) : null;
   }
-  // Colour means recorded progress and nothing else: an object brightens
-  // from grey to bright white as its roadmap fills in. An object without
-  // recorded status has no colour at all.
+  // Colour means recorded progress and nothing else. Not started is grey;
+  // once work is recorded an object is red, and it brightens through salmon
+  // to white as its roadmap fills in. An object without recorded status has
+  // no colour at all.
   function progressColor(value) {
     const progress = progressValue(value);
     if (progress === null) return null;
-    // Dark to bright is the whole encoding, so the dark end is deep enough to read as
-      // untouched rather than as another accent colour.
-      const stops = [[95, 101, 109], [180, 184, 189], [255, 255, 255]];
+    if (progress === 0) return NOT_STARTED;
+    // Once started, dark to bright is the whole encoding.
+    const stops = [[143, 46, 38], [232, 150, 120], [247, 243, 233]];
     const index = progress <= 50 ? 0 : 1, fraction = progress <= 50 ? progress / 50 : (progress - 50) / 50;
     return '#' + stops[index].map((channel, i) => Math.round(channel + (stops[index + 1][i] - channel) * fraction).toString(16).padStart(2, '0')).join('');
   }

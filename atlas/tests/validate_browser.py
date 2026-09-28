@@ -277,7 +277,7 @@ def legend_matches_map_encoding(page):
   if(!blankNode||!doneNode)return false;
   const blank=beacon(blankNode.id),done=beacon(doneNode.id);
   const keys=Array.from(document.querySelectorAll('.progress-legend span')).map(e=>e.textContent.trim()),groupColours=TauExplorer.data.groups.map(g=>g.color.toLowerCase());
-  return !!blank&&!!done&&blankNode.hasProgress===false&&doneNode.progress===100&&blank.getAttribute('fill')==='#0b1016'&&blank.getAttribute('stroke')==='#6f7f8c'&&done.getAttribute('fill')===doneNode.accent&&doneNode.accent==='#ffffff'
+  return !!blank&&!!done&&blankNode.hasProgress===false&&doneNode.progress===100&&blank.getAttribute('fill')==='#0b1016'&&blank.getAttribute('stroke')==='#6f7f8c'&&done.getAttribute('fill')===doneNode.accent&&doneNode.accent==='#f7f3e9'
    &&keys.includes('No progress data')&&keys.includes('Not started')&&keys.includes('Complete')&&!!document.querySelector('.progress-legend .none')&&d.constellations.filter(n=>!n.hasProgress).every(n=>!groupColours.includes(n.accent.toLowerCase()));
  }""")
 def center_on(page,node_id):
@@ -331,11 +331,14 @@ def check_overview(page,scope,touch=False):
   const s=TauExplorer.progress.atlas(),want=s.total?Math.round(s.complete/s.total*100):0;
   return document.getElementById('atlas-marker').style.left===want+'%';
  }"""))
- record(scope+' the scale runs from the ramp\'s dark end to its bright end',page.evaluate("""() => {
-  const bar=getComputedStyle(document.querySelector('.scale-bar')).backgroundImage;
+ record(scope+' the scale starts grey at not started, then runs from red to bright white',page.evaluate("""() => {
+  const bar=getComputedStyle(document.querySelector('.scale-bar')).backgroundImage,start=getComputedStyle(document.querySelector('.scale-start')).backgroundColor;
   const rgb=hex=>{const n=parseInt(hex.slice(1),16);return `rgb(${n>>16&255}, ${n>>8&255}, ${n&255})`;};
-  const dark=TauGraph.progressColor(0),bright=TauGraph.progressColor(100);
-  return bar.includes(rgb(dark)) && bar.includes(rgb(bright));
+  const grey=TauGraph.progressColor(0),red=TauGraph.progressColor(1e-9),bright=TauGraph.progressColor(100);
+  const channels=hex=>[1,3,5].map(i=>parseInt(hex.slice(i,i+2),16));
+  const [gr,gg,gb]=channels(grey),[rr,rg]=channels(red);
+  return start===rgb(grey) && bar.includes(rgb(red)) && bar.includes(rgb(bright)) && Math.max(gr,gg,gb)-Math.min(gr,gg,gb)<20 && rr-rg>60
+   && document.querySelector('.scale-ends .planned-end').textContent.trim()==='Not started';
  }"""))
  record(scope+' page has no horizontal overflow',page.evaluate('document.documentElement.scrollWidth<=innerWidth+1'))
 def check_fields(page):
