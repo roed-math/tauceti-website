@@ -216,6 +216,19 @@
       return this.atlasCache;
     }
 
+    paper(artefact) {
+      // A paper unlocks once every layer it needs is formalised and every
+      // roadmap it calls for is in the atlas: the layers its routes name, and
+      // all of a roadmap it extends as a Part II.
+      const leaves = new Set();
+      (artefact.needs || []).forEach(id => this.leaves(id).forEach(leaf => leaves.add(leaf)));
+      (artefact.roadmaps || []).forEach(id => this.roadmapLeaves(id).forEach(leaf => leaves.add(leaf)));
+      const summary = this.aggregate(Array.from(leaves));
+      summary.pending = (artefact.pending || []).length;
+      summary.unlocked = summary.total > 0 && summary.complete === summary.total && !summary.pending;
+      return summary;
+    }
+
     group(id) {
       if (!this.groups.has(id)) throw new Error('Unknown subject group: ' + id);
       if (this.groupCache.has(id)) return this.groupCache.get(id);

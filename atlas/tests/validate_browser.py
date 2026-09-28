@@ -277,7 +277,7 @@ def legend_matches_map_encoding(page):
   if(!blankNode||!doneNode)return false;
   const blank=beacon(blankNode.id),done=beacon(doneNode.id);
   const keys=Array.from(document.querySelectorAll('.progress-legend span')).map(e=>e.textContent.trim()),groupColours=TauExplorer.data.groups.map(g=>g.color.toLowerCase());
-  return !!blank&&!!done&&blankNode.hasProgress===false&&doneNode.progress===100&&blank.getAttribute('fill')==='#0b1016'&&blank.getAttribute('stroke')==='#6f7f8c'&&done.getAttribute('fill')===doneNode.accent&&doneNode.accent==='#f7f3e9'
+  return !!blank&&!!done&&blankNode.hasProgress===false&&doneNode.progress===100&&blank.getAttribute('fill')==='#0b1016'&&blank.getAttribute('stroke')==='#6f7f8c'&&done.getAttribute('fill')===doneNode.accent&&doneNode.accent==='#ffffff'
    &&keys.includes('No progress data')&&keys.includes('Not started')&&keys.includes('Complete')&&!!document.querySelector('.progress-legend .none')&&d.constellations.filter(n=>!n.hasProgress).every(n=>!groupColours.includes(n.accent.toLowerCase()));
  }""")
 def center_on(page,node_id):
@@ -389,6 +389,23 @@ def check_zoom_journey(page,scope):
  page.screenshot(path=str(ROOT/('preview-'+scope.lower().replace(' ','-')+'-star-system.png')),animations='disabled')
  record(scope+' wheel zoom out returns to the roadmap',wheel_until(page,'#graph',300,"TauExplorer.getState().view==='roadmap' && !TauExplorer.getState().layer",attempts=14))
  record(scope+' wheel zoom out returns to the universe',wheel_until(page,'#graph',300,"TauExplorer.getState().view==='all'",attempts=20))
+def check_paper_artefacts(page,scope):
+ # Papers are artefacts on the rim of the roadmap they build on most: none at the
+ # overview, all of a roadmap's papers once it is open, and each says whether it
+ # is unlocked, which it is only once every layer it needs is formalised.
+ page.evaluate("TauExplorer.navigate({view:'all',id:null,layer:null,selected:null})");page.wait_for_timeout(600)
+ record(scope+' no paper artefacts are drawn at the overview',page.locator('[data-level="artefact"]').count()==0)
+ home=page.evaluate("() => { const counts=new Map(); for (const p of TauExplorer.data.papers) counts.set(p.home,(counts.get(p.home)||0)+1); return [...counts.entries()].sort((a,b)=>b[1]-a[1]||(a[0]<b[0]?-1:1))[0][0]; }")
+ page.evaluate("id => TauExplorer.navigate({view:'roadmap',id,layer:null,selected:id})",home);page.wait_for_timeout(900)
+ want=page.evaluate("id => TauExplorer.data.papers.filter(p=>p.home===id).map(p=>p.id).sort()",home)
+ drawn=page.evaluate("() => Array.from(document.querySelectorAll('[data-level=\"artefact\"]')).map(n=>n.getAttribute('data-node-id')).sort()")
+ on_rim=page.evaluate("""id => { const d=TauExplorer.graph.debugState(),c=d.constellations.find(c=>c.id===id); return d.artefacts.filter(a=>a.constellationId===id).every(a=>Math.abs(Math.hypot(a.x-c.x,a.y-c.y)/c.r-1.16)<1e-6); }""",home)
+ record(scope+' a roadmap shows the papers built on it as artefacts on its rim',bool(want) and set(want)<=set(drawn) and on_rim)
+ paper=want[0]
+ page.locator('[data-node-id='+json.dumps(paper)+'] .tau-hit').click();page.wait_for_timeout(500)
+ state=page.evaluate("id => { const p=TauExplorer.data.papers.find(p=>p.id===id); return {unlocked:TauExplorer.progress.paper(p).unlocked,drawn:document.querySelector('[data-node-id=\"'+CSS.escape(id)+'\"]').getAttribute('data-unlocked')}; }",paper)
+ record(scope+' selecting a paper shows it, with whether it is unlocked',page.locator('#selection-kind').inner_text()=='Paper' and page.locator('#inspector-content .status-chip').first.inner_text()==('Unlocked' if state['unlocked'] else 'Locked') and state['drawn']==('true' if state['unlocked'] else 'false'))
+ record(scope+' the panel counts the papers unlocked',page.evaluate("() => { const all=TauExplorer.data.papers,open=all.filter(p=>TauExplorer.progress.paper(p).unlocked).length; return document.getElementById('atlas-papers').textContent===`${open} of ${all.length} papers unlocked`; }"))
 def check_click_journey(page,scope):
  page.evaluate("TauExplorer.navigate({view:'all',id:null,layer:null,selected:null})");page.wait_for_timeout(600)
  page.locator('[data-node-id="AnalyticNumberTheory"] .tau-hit').click()
@@ -504,7 +521,7 @@ with sync_playwright() as p:
  record('No placeholder areas are drawn',page.evaluate("TauExplorer.data.opportunities.areas.length===0") and page.locator('.tau-unmapped-node').count()==0 and page.locator('#show-unmapped').count()==0)
  # Recorded and audited statuses change as the data grows, so the blank cases are chosen from the data.
  record('A roadmap without status data has a blank progress indicator',page.evaluate("() => {const r=TauExplorer.data.roadmaps.find(r=>{const s=TauExplorer.progress.roadmap(r.id);return s.total>0&&s.unknown===s.total;});if(!r)return false;const node=TauExplorer.getGraph().nodes.find(n=>n.id===r.id);return node.progress===null && node.progressLabel===''}"))
- check_zoom_journey(page,'Desktop');check_click_journey(page,'Desktop');check_catalogue_selection(page,'Desktop');check_refinements(page)
+ check_zoom_journey(page,'Desktop');check_click_journey(page,'Desktop');check_paper_artefacts(page,'Desktop');check_catalogue_selection(page,'Desktop');check_refinements(page)
  page.evaluate("TauExplorer.navigate({view:'all',id:null,layer:null,selected:null})");page.wait_for_timeout(500)
  record('Mathematical planets exclude procedural labels',page.evaluate("TauExplorer.landmarks.every(x=>!/^(Dependency|Canonical owner|API to develop|the|Tests|Suggested home)$/i.test(x.title))"))
  record('All roadmap summaries use mathematical prose',page.evaluate("TauExplorer.data.roadmaps.every(r=>r.summary.split(/\\s+/).length>=40 && !/portfolio audit|component implements|silently attributed/.test(r.summary))"))

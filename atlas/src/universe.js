@@ -373,6 +373,18 @@
       });
       stars.push(...members);
     });
+    // Papers are artefacts on the rim of the roadmap they build on most, in an
+    // arc along its bottom edge, clear of the roadmap's name above it.
+    const artefacts = [], homed = new Map();
+    (input.artefacts || []).forEach(item => { if (!constellationById.has(item.home)) return; if (!homed.has(item.home)) homed.set(item.home, []); homed.get(item.home).push(item); });
+    homed.forEach((items, home) => {
+      const c = constellationById.get(home), ring = c.r * 1.16, step = Math.min(Math.PI / 9, Math.PI * .8 / items.length);
+      c.artefactIds = items.map((item, index) => {
+        const angle = Math.PI / 2 + (index - (items.length - 1) / 2) * step;
+        artefacts.push({ ...item, level: 'artefact', constellationId: home, x: c.x + Math.cos(angle) * ring, y: c.y + Math.sin(angle) * ring });
+        return item.id;
+      });
+    });
     // A galaxy's name sits just above what is drawn of it: its dust and its roadmaps.
     populated.forEach(galaxy => {
       galaxy.dust = galaxyDust(galaxy);
@@ -404,7 +416,7 @@
       field.w = field.right - field.left; field.h = field.bottom - field.top;
     });
     const byId = new Map();
-    [...fields, ...populated, ...constellations, ...stars, ...planets].forEach(node => byId.set(node.id, node));
+    [...fields, ...populated, ...constellations, ...stars, ...planets, ...artefacts].forEach(node => byId.set(node.id, node));
     const core = radial ? { id: 'core:mathlib', level: 'core', x: 0, y: 0, r: CORE_RADIUS, label: 'Mathlib' } : null;
     const extents = populated.map(galaxy => ({ x0: galaxy.x - galaxy.rx, y0: galaxy.y - galaxy.ry, x1: galaxy.x + galaxy.rx, y1: galaxy.y + galaxy.ry }));
     if (core) extents.push({ x0: -core.r * 3.4, y0: -core.r * 1.7, x1: core.r * 3.4, y1: core.r * 1.7 });
@@ -413,7 +425,7 @@
     const bounds = populated.length ? { x: left, y: top, w: right - left, h: bottom - top } : { x: -100, y: -100, w: 200, h: 200 };
     const starIds = new Set(stars.map(star => star.id));
     return {
-      fields, galaxies: populated, constellations, stars, planets, byId, bounds, aspect, core, layout: radial ? 'radial' : 'areas',
+      fields, galaxies: populated, constellations, stars, planets, artefacts, byId, bounds, aspect, core, layout: radial ? 'radial' : 'areas',
       routes: routesBetween(populated, constellations, input.constellationEdges),
       constellationEdges: input.constellationEdges.filter(edge => constellationById.has(edge.source) && constellationById.has(edge.target)),
       starEdges: input.starEdges.filter(edge => starIds.has(edge.source) && starIds.has(edge.target)),

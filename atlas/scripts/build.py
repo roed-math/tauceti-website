@@ -17,6 +17,7 @@ from galaxies import apply_galaxies  # noqa: E402
 from restructure import apply_restructurings, load_accepted  # noqa: E402
 from retirements import apply_retirements, load_retirements  # noqa: E402
 from library_coverage import already_available, coverage_statuses, load_coverage  # noqa: E402
+from artefacts import paper_artefacts  # noqa: E402
 
 
 def load_decompositions() -> list:
@@ -173,6 +174,14 @@ def assemble(require_distances: bool = True, blueprints: Path | None = None) -> 
             raise ValueError("Bibliographic records need a title and aliases.")
         if work.get("url") and not re.match(r"^https?://", work["url"]):
             raise ValueError("Bibliographic links must be public web addresses.")
+    # Papers as artefacts beside the roadmaps they build on, locked until what they need is formalised.
+    atlas["papers"] = paper_artefacts(atlas, ROOT / "research" / "blueprint" / "papers")
+    roadmap_ids = {roadmap["id"] for roadmap in atlas["roadmaps"]}
+    for paper in atlas["papers"]:
+        if paper["home"] not in roadmap_ids or set(paper["roadmaps"]) - roadmap_ids or set(paper["needs"]) - stage_ids:
+            raise ValueError("A paper artefact refers to something not in the atlas: " + paper["id"])
+        if paper["link"] and not re.match(r"^https?://", paper["link"]):
+            raise ValueError("Paper links must be public web addresses: " + paper["id"])
     return atlas, {"retired": retired, "linkPackets": link_packets, "originalStageCount": original_stage_count, "blueprints": packets}
 
 

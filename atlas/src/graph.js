@@ -31,14 +31,14 @@
     return typeof value === 'number' && Number.isFinite(value) ? Math.max(0, Math.min(100, value)) : null;
   }
   // Colour means recorded progress and nothing else: an object brightens
-  // from red, through salmon, to white as its roadmap fills in. An object
-  // without recorded status has no colour at all.
+  // from grey to bright white as its roadmap fills in. An object without
+  // recorded status has no colour at all.
   function progressColor(value) {
     const progress = progressValue(value);
     if (progress === null) return null;
     // Dark to bright is the whole encoding, so the dark end is deep enough to read as
       // untouched rather than as another accent colour.
-      const stops = [[143, 46, 38], [232, 150, 120], [247, 243, 233]];
+      const stops = [[95, 101, 109], [180, 184, 189], [255, 255, 255]];
     const index = progress <= 50 ? 0 : 1, fraction = progress <= 50 ? progress / 50 : (progress - 50) / 50;
     return '#' + stops[index].map((channel, i) => Math.round(channel + (stops[index + 1][i] - channel) * fraction).toString(16).padStart(2, '0')).join('');
   }
@@ -89,6 +89,7 @@
         .tau-graph .tau-label-constellation text { fill: #c9d2da; font-weight: 400; stroke-width: 2.5px; }
         .tau-graph .tau-label-star text { fill: #dbe1e7; font-weight: 500; stroke-width: 3px; }
         .tau-graph .tau-label-planet text { fill: #c9d2da; font-weight: 500; stroke-width: 2.5px; }
+        .tau-graph .tau-label-artefact text { fill: #aeb8c2; font-weight: 500; font-style: italic; stroke-width: 2.5px; }
         .tau-graph .tau-label-card text { fill: #8fa0b0; font-weight: 400; stroke-width: 2.5px; }
         .tau-graph .tau-label-card text tspan:first-child { fill: #dfc186; font-size: 8px; letter-spacing: .3px; text-transform: uppercase; }
         .tau-graph .tau-label-moon text { fill: #9fabb8; font-weight: 400; stroke-width: 2px; }
@@ -128,7 +129,7 @@
         .forEach(([offset, colour, opacity]) => corona.append('stop').attr('offset', offset).attr('stop-color', colour).attr('stop-opacity', opacity));
       this.viewport = this.svg.append('g').attr('class', 'tau-viewport');
       this.layers = {};
-      ['field', 'core', 'galaxy', 'route', 'constellation', 'figure', 'link', 'star', 'planet', 'label'].forEach(name => { this.layers[name] = this.viewport.append('g').attr('class', 'tau-layer-' + name); });
+      ['field', 'core', 'galaxy', 'route', 'constellation', 'figure', 'link', 'star', 'planet', 'artefact', 'label'].forEach(name => { this.layers[name] = this.viewport.append('g').attr('class', 'tau-layer-' + name); });
       // Drawn in screen space, above everything: the card of a selected link.
       this.overlay = this.svg.append('g').attr('class', 'tau-overlay');
       this.selectedLinkId = null; this.hoveredLinkId = null;
@@ -182,7 +183,7 @@
       this.showReferences = !!settings.showReferences;
       this.layers.field.selectAll('*').remove(); this.layers.core.selectAll('*').remove(); this.layers.galaxy.selectAll('*').remove(); this.layers.route.selectAll('*').remove();
       this.layers.constellation.selectAll('*').remove(); this.layers.figure.selectAll('*').remove(); this.layers.link.selectAll('*').remove();
-      this.layers.star.selectAll('*').remove(); this.layers.planet.selectAll('*').remove(); this.layers.label.selectAll('*').remove();
+      this.layers.star.selectAll('*').remove(); this.layers.planet.selectAll('*').remove(); this.layers.artefact.selectAll('*').remove(); this.layers.label.selectAll('*').remove();
       this.drawField(); this.drawCore(); this.drawGalaxies();
       if (settings.camera) this.restoreCamera(settings.camera);
       else if (settings.keepCamera && this.transform !== d3.zoomIdentity) this.scheduleRender();
@@ -197,9 +198,9 @@
       progress.forEach((value, id) => {
         const node = this.universe.byId.get(id);
         if (!node) return;
-        if (value && typeof value === 'object') { node.progress = value.progress; node.progressLabel = value.progressLabel; } else node.progress = value;
+        if (value && typeof value === 'object') { node.progress = value.progress; node.progressLabel = value.progressLabel; if ('unlocked' in value) node.unlocked = value.unlocked; } else node.progress = value;
       });
-      this.layers.constellation.selectAll('*').remove(); this.layers.star.selectAll('*').remove();
+      this.layers.constellation.selectAll('*').remove(); this.layers.star.selectAll('*').remove(); this.layers.artefact.selectAll('*').remove();
       this.paintDust();
       this.scheduleRender();
       return this;
@@ -301,7 +302,7 @@
       const small = this.width < 600 || this.height < 300;
       // Fields with several areas open (their areas are named instead of them)
       // once the camera is this many times closer than the overview.
-      return { resolve: 22, constellationName: small ? 40 : 44, starName: small ? 46 : 54, system: 26, planetName: small ? 96 : 120, small };
+      return { resolve: 22, constellationName: small ? 40 : 44, starName: small ? 46 : 54, system: 26, planetName: small ? 96 : 120, artefactName: small ? 150 : 180, small };
     }
 
     render() {
@@ -317,7 +318,7 @@
       // A galaxy is considered whenever any of its roadmaps could be: the
       // roadmap test below allows its own radius plus a screen margin.
       const galaxies = universe.galaxies.filter(g => intersects(g.x, g.y, Math.max(g.rx, g.ry) * 1.2 + 64 + 40 / k));
-      const constellations = [], stars = [], planets = [], labels = [];
+      const constellations = [], stars = [], planets = [], artefacts = [], labels = [];
       // A very short chart leaves the centre unnamed so the nearest subjects keep theirs.
       if (universe.core && this.height >= 330 && intersects(universe.core.x, universe.core.y, universe.core.r * 3)) {
         const core = universe.core;
@@ -371,6 +372,14 @@
           if (c.nameVisible) { const top = c.y - (c.resolved ? c.r * 1.05 : Math.max(c.r, 4 / k)) - 5 / k, bottom = c.y + (c.resolved ? c.r * 1.05 : Math.max(c.r, 4 / k)) + 6 / k;
             labels.push({ id: 'constellation:' + c.id, nodeId: c.id, kind: 'constellation', x: c.x, y: top, lines: wrapText(c.label, 20, 2), font: 11, anchor: 'middle', above: true, priority: 60 + (active === c.id ? 40 : 0), active: active === c.id, alternatives: [{ x: c.x, y: bottom, above: false }] }); }
           if (!c.resolved) return;
+          // The papers built on this roadmap, named once it is large on screen.
+          (c.artefactIds || []).forEach(artefactId => {
+            const a = universe.byId.get(artefactId);
+            if (!intersects(a.x, a.y, 20 / k)) return;
+            artefacts.push(a);
+            if ((c.r * k >= T.artefactName || active === a.id) && centred(a.x, a.y)) labels.push({ id: 'artefact:' + a.id, nodeId: a.id, kind: 'artefact', x: a.x, y: a.y + 16 / k, lines: [a.label], font: 10, anchor: 'middle', above: false,
+              priority: 15 + (active === a.id ? 60 : 0), active: active === a.id, alternatives: [{ x: a.x, y: a.y - 10 / k, above: true }, { x: a.x + 10 / k, y: a.y + 3.5 / k, above: false, anchor: 'start' }, { x: a.x - 10 / k, y: a.y + 3.5 / k, above: false, anchor: 'end' }] });
+          });
           c.starIds.forEach(starId => {
             const s = universe.byId.get(starId);
             if (!intersects(s.x, s.y, s.room + 30 / k)) return;
@@ -413,10 +422,11 @@
           });
         });
       });
-      this.visible = { galaxies, constellations, stars, planets, labels };
+      this.visible = { galaxies, constellations, stars, planets, artefacts, labels };
       this.renderConstellations(constellations, k, active);
       this.renderStars(stars, k, active);
       this.renderPlanets(planets, k, active);
+      this.renderArtefacts(artefacts, k, active);
       this.renderLabels(labels, k);
       this.renderLinks(activeNode, k);
       const galaxySelection = this.layers.galaxy.selectAll('g.tau-galaxy');
@@ -535,6 +545,33 @@
       linkJoin.exit().remove();
       linkJoin.enter().append('path').attr('class', 'tau-system-link').attr('vector-effect', 'non-scaling-stroke').attr('stroke-width', .9).attr('opacity', .5).attr('marker-end', 'url(#' + this.id + '-arrow-quiet)').merge(linkJoin)
         .attr('d', d => { const dx = d.b.x - d.a.x, dy = d.b.y - d.a.y, len = Math.max(.001, Math.hypot(dx, dy)), ax = d.a.x + dx / len * d.a.r * 1.3, ay = d.a.y + dy / len * d.a.r * 1.3, bx = d.b.x - dx / len * d.b.r * 1.5, by = d.b.y - dy / len * d.b.r * 1.5; return `M${ax},${ay}L${bx},${by}`; });
+    }
+
+    renderArtefacts(items, k, active) {
+      // A paper is a small diamond, the same size on screen at any zoom. It
+      // fills from the centre, in the progress colour, as the layers it needs
+      // are formalised; once it is unlocked it is solid white with a halo.
+      const diamond = s => `M0,${-s}L${s * .72},0L0,${s}L${-s * .72},0Z`, filled = d => Math.max(0, Math.min(100, progressValue(d.progress) || 0));
+      const join = this.layers.artefact.selectAll('g.tau-artefact').data(items, d => d.id);
+      join.exit().remove();
+      const enter = join.enter().append('g').attr('class', 'tau-node tau-artefact').attr('data-node-id', d => d.id).attr('data-level', 'artefact')
+        .attr('tabindex', 0).attr('role', 'button').attr('aria-label', d => normalizeText(d.label) + '. Paper' + (d.progressLabel ? ', ' + d.progressLabel : ''));
+      enter.append('circle').attr('class', 'tau-hit').attr('r', this.isCoarse ? 14 : 10);
+      enter.append('path').attr('class', 'tau-artefact-halo').attr('d', diamond(9.5)).attr('fill', 'none').attr('stroke', '#ffffff').attr('stroke-width', 1).attr('opacity', .45);
+      enter.append('path').attr('class', 'tau-artefact-body').attr('d', diamond(6)).attr('stroke-width', 1.3);
+      enter.append('path').attr('class', 'tau-artefact-fill');
+      enter.append('circle').attr('class', 'tau-ring tau-select-ring').attr('r', 11).attr('fill', 'none').attr('stroke', ACCENT).attr('stroke-width', 1.5);
+      enter.append('title');
+      this.bindInteractions(enter);
+      const all = enter.merge(join);
+      all.attr('transform', d => `translate(${d.x},${d.y}) scale(${1 / k})`).classed('is-selected', d => d.id === this.selectedId).classed('is-hovered', d => d.id === this.hoveredId)
+        .attr('data-progress', d => progressValue(d.progress)).attr('data-unlocked', d => d.unlocked ? 'true' : 'false');
+      all.select('title').text(d => normalizeText(d.label) + (d.progressLabel ? '\n' + d.progressLabel : '') + '\nClick to read about the paper');
+      all.select('.tau-artefact-halo').attr('display', d => d.unlocked ? null : 'none');
+      all.select('.tau-artefact-body').attr('fill', d => d.unlocked ? '#ffffff' : BACKGROUND).attr('stroke', d => d.unlocked ? '#ffffff' : progressColor(filled(d)));
+      all.select('.tau-artefact-fill').attr('d', d => diamond(6 * Math.sqrt(filled(d) / 100))).attr('fill', d => progressColor(filled(d)))
+        .attr('display', d => d.unlocked || !filled(d) ? 'none' : null);
+      all.select('.tau-select-ring').attr('opacity', d => active === d.id ? 1 : 0);
     }
 
     renderLabels(labels, k) {
@@ -764,6 +801,7 @@
       if (node.level === 'constellation') { const r = Math.max(node.r * 1.45, 26); return { x: node.x - r, y: node.y - r * 1.15, w: r * 2, h: r * 2.15 }; }
       if (node.level === 'star') { const r = Math.max(node.room * 1.35, node.r * 9); return { x: node.x - r, y: node.y - r, w: r * 2, h: r * 2 }; }
       if (node.level === 'planet') return this.footprint(node.starId);
+      if (node.level === 'artefact') return this.footprint(node.constellationId);
       return null;
     }
 
@@ -910,7 +948,8 @@
         layout: 'universe', width: this.width, height: this.height, transform: { x: this.transform.x, y: this.transform.y, k: this.transform.k },
         selectedId: this.selectedId, hoveredId: this.hoveredId, focus: this.focus(), lastFocus: this.lastFocus, busy: this.busy, clicksSuppressed: Date.now() < this.suppressClicksUntil,
         counts: { galaxies: universe.galaxies.length, constellations: universe.constellations.length, stars: universe.stars.length, planets: universe.planets.length, routes: universe.routes.length, strongRoutes: universe.routes.filter(r => r.strong).length },
-        visible: { galaxies: visible.galaxies.length, constellations: visible.constellations.length, resolved: visible.constellations.filter(c => c.resolved).length, stars: visible.stars.length, planets: visible.planets.length, labels: visible.labels.filter(l => l.shown).length },
+        visible: { galaxies: visible.galaxies.length, constellations: visible.constellations.length, resolved: visible.constellations.filter(c => c.resolved).length, stars: visible.stars.length, planets: visible.planets.length, artefacts: (visible.artefacts || []).length, labels: visible.labels.filter(l => l.shown).length },
+        artefacts: (universe.artefacts || []).map(a => ({ id: a.id, constellationId: a.constellationId, x: a.x, y: a.y, progress: progressValue(a.progress), unlocked: !!a.unlocked })),
         rendered: this.container.querySelectorAll('.tau-layer-constellation g, .tau-layer-star g, .tau-layer-planet g, .tau-layer-label g').length,
         fields: (universe.fields || []).map(f => ({ id: f.id, label: f.label, galaxyIds: f.galaxyIds, labelVisible: !!f.labelVisible })),
         galaxies: universe.galaxies.map(g => ({ id: g.id, label: g.label, fieldId: g.fieldId || null, x: g.x, y: g.y, rx: g.rx, ry: g.ry, count: g.count, headingVisible: !!g.headingVisible })),
