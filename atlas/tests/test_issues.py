@@ -88,7 +88,7 @@ class Deliverables(unittest.TestCase):
     def setUp(self):
         self.folder = tempfile.TemporaryDirectory()
         self.root = Path(self.folder.name)
-        for name in ("packets", "readmes", "restructure"):
+        for name in ("packets", "readmes", "restructure", "reviews", "redteam"):
             (self.root / name).mkdir()
 
     def tearDown(self):
@@ -143,6 +143,35 @@ class Deliverables(unittest.TestCase):
         self.write("packets/RT-AUDIT-01.result.json", {"status": "complete"})
         self.assertTrue(deliverables_complete(attack, self.root))
 
+
+    def test_a_blueprint_review_is_finished_only_when_the_packet_records_its_verdict(self):
+        # A partial review checkpoint writes its report but records no verdict.
+        review = {"id": "REV-R", "kind": "review", "after": ["BP-R"], "outputs": ["reviews/REV-R.md", "packets/R.json"]}
+        self.write("reviews/REV-R.md", "Partial review; not accepted, and not a completed review job.")
+        self.write("packets/R.json", {"status": "closed"})
+        self.assertFalse(deliverables_complete(review, self.root))
+        self.write("packets/R.json", {"status": "closed", "review": {"status": "accepted", "reviewer": "independent-review-REV-OTHER"}})
+        self.assertFalse(deliverables_complete(review, self.root))
+        self.write("packets/R.json", {"status": "closed", "review": {"status": "pending", "reviewer": "independent-review-REV-R"}})
+        self.assertFalse(deliverables_complete(review, self.root))
+        self.write("packets/R.json", {"status": "closed", "review": {"status": "needs_changes", "reviewer": "independent-review-REV-R"}})
+        self.assertTrue(deliverables_complete(review, self.root))
+
+    def test_a_red_team_verification_is_finished_when_every_finding_has_a_verdict(self):
+        verify = {"id": "REV-RT-X", "kind": "review", "after": ["RT-X"], "outputs": ["redteam/RT-X.review.json", "reviews/REV-RT-X.md"]}
+        self.write("reviews/REV-RT-X.md", "Report.")
+        self.write("redteam/RT-X.result.json", {"status": "complete", "findings": [{"id": "RT-X/1"}, {"id": "RT-X/2"}]})
+        self.write("redteam/RT-X.review.json", {"redteam": "RT-X", "findings": [{"finding": "RT-X/1", "verdict": "confirmed"}]})
+        self.assertFalse(deliverables_complete(verify, self.root))
+        self.write("redteam/RT-X.review.json", {"redteam": "RT-X", "findings": [
+            {"finding": "RT-X/1", "verdict": "confirmed"}, {"finding": "RT-X/2", "verdict": "rejected"}]})
+        self.assertTrue(deliverables_complete(verify, self.root))
+
+    def test_other_reviews_still_finish_when_their_outputs_exist(self):
+        review = {"id": "REV-SRC-R", "kind": "review", "after": ["SRC-R"], "outputs": ["reviews/REV-SRC-R.md", "packets/R.json"]}
+        self.write("reviews/REV-SRC-R.md", "Verdict: accepted")
+        self.write("packets/R.json", {"status": "partial"})
+        self.assertTrue(deliverables_complete(review, self.root))
 
 class RedTeamText(unittest.TestCase):
     def test_an_area_red_team_looks_for_what_is_missing_and_a_job_red_team_attacks_accepted_work(self):
