@@ -157,6 +157,25 @@ Change of family.
         self.assertEqual(data["progress"]["stages"][stages[0]["id"]]["status"], "in_progress")
         self.assertEqual(data["taucetiProgress"]["unplaced"], [])
 
+    def test_a_new_roadmap_is_summarised_by_its_opening_prose(self):
+        from tauceti_progress import summary
+        text = ("# Roadmap: x\n\n| a | b |\n|---|---|\n\nShort opening, see [the ring roadmap](../Rings/README.md).\n\n## Scope\n\n- a list item\n\n```lean\nexample : 1 = 1 := rfl\n```\n\n"
+                "**Bold opening.** It still counts as prose.\n\n"
+                + " ".join(["Every layer is planned against Mathlib and the sources."] * 8) + "\n")
+        words = summary(text).split()
+        self.assertTrue(40 <= len(words) <= 160)
+        self.assertTrue(summary(text).startswith("Short opening, see the ring roadmap."))
+        self.assertNotIn("|", summary(text))
+        self.assertIn("Bold opening", summary(text))
+        self.assertNotIn("rfl", summary(text))
+
+    def test_a_summary_starts_where_the_readme_says_what_the_roadmap_does(self):
+        from tauceti_progress import summary
+        text = ("# Roadmap: y\n\nMathlib has the algebra and nothing for it to act on. It has " + "a great many things, " * 90 + "and more.\n\n"
+                "This roadmap develops " + "the arithmetic of the groups, " * 12 + "and their local theory.\n")
+        self.assertTrue(summary(text).startswith("This roadmap develops"))
+        self.assertGreaterEqual(len(summary("# Roadmap: z\n\nShort first sentence. It has " + "a great many things, " * 90 + "and more.\n").split()), 40)
+
     def test_a_roadmap_with_no_links_is_placed_by_its_title_and_one_with_no_signal_waits(self):
         from tauceti_progress import add_new_roadmaps
         data = self.atlas()

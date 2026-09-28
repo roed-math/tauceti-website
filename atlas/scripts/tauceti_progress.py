@@ -177,6 +177,37 @@ def area_for(text: str, title: str, atlas: dict, own: str) -> tuple:
     return None, []
 
 
+def summary(text: str, least: int = 40, most: int = 150) -> str:
+    """A README's opening prose, as the atlas summarises a roadmap: from the first paragraph
+    saying what "this roadmap" does (Tau Ceti's READMEs often open with what Mathlib already
+    has), whole paragraphs until there are at least `least` words, cut at a sentence by `most`
+    words; no headings, tables, lists, quotations or code, and links reduced to their text."""
+    blocks, fenced = [], False
+    for block in re.split(r"\n\s*\n", text):
+        block = block.strip()
+        if "```" in block:
+            # An odd number of fences opens or closes a code block; a whole one inside the paragraph changes nothing.
+            if block.count("```") % 2:
+                fenced = not fenced
+            continue
+        if fenced or not block or block.startswith(("#", "|", ">", "<!--")) or re.match(r"^([-*+]|\d+\.)\s", block):
+            continue
+        blocks.append(re.sub(r"\[([^\]]+)\]\([^)]*\)", r"\1", " ".join(block.split())))
+    start = next((i for i, block in enumerate(blocks[:6]) if block.startswith("This roadmap")), 0)
+    kept, words = [], 0
+    for block in blocks[start:]:
+        kept.append(block)
+        words += len(block.split())
+        if words >= least:
+            break
+    joined = " ".join(kept).split()
+    if len(joined) <= most:
+        return " ".join(joined)
+    cut = " ".join(joined[:most])
+    end = cut.rfind(". ")
+    return cut[:end + 1] if end >= 0 and len(cut[:end + 1].split()) >= least else cut + " …"
+
+
 def add_new_roadmaps(atlas: dict, progress: dict, readmes: dict) -> list:
     """Add the roadmaps the board reports and the atlas lacks, built from their READMEs; the ids added."""
     added = []
@@ -206,8 +237,6 @@ def add_new_roadmaps(atlas: dict, progress: dict, readmes: dict) -> list:
                     return number + 1, "\n".join(body).strip()
             return 1, ""
 
-        paragraphs = [p.strip() for p in "\n".join(lines[(heading and text[:heading.end()].count("\n") + 1) or 0:]).split("\n\n")]
-        summary = next((p for p in paragraphs if p and not p.startswith(("#", "|", "-", "*", ">"))), "")
         headings = field(row, "layers", [])
         stages, edges = [], []
         # Layers in the order the README lists them, each after the one before it.
@@ -225,7 +254,7 @@ def add_new_roadmaps(atlas: dict, progress: dict, readmes: dict) -> list:
             stages.append(stage)
         if not stages:
             continue
-        atlas["roadmaps"].append({"id": roadmap_id, "title": title, "summary": summary[:600], "readme": text, "origin": "tauceti", "lifecycle": "active",
+        atlas["roadmaps"].append({"id": roadmap_id, "title": title, "summary": summary(text), "readme": text, "origin": "tauceti", "lifecycle": "active",
                                   "group": group, "parentRoadmapId": ("tauceti:" + row["parent_id"]) if row.get("parent_id") else None,
                                   "sourcePath": row.get("readme"), "repositoryPath": row.get("readme"), "stages": [stage["id"] for stage in stages],
                                   "prerequisites": [], "consumers": [], "sections": []})
