@@ -428,6 +428,7 @@
       fields, galaxies: populated, constellations, stars, planets, artefacts, byId, bounds, aspect, core, layout: radial ? 'radial' : 'areas',
       routes: routesBetween(populated, constellations, input.constellationEdges),
       constellationEdges: input.constellationEdges.filter(edge => constellationById.has(edge.source) && constellationById.has(edge.target)),
+      artefactEdges: (input.artefactEdges || []).filter(edge => constellationById.has(edge.source) && byId.has(edge.target)),
       starEdges: input.starEdges.filter(edge => starIds.has(edge.source) && starIds.has(edge.target)),
       relatedEdges: (input.relatedEdges || []).filter(edge => constellationById.has(edge.source) && constellationById.has(edge.target))
     };

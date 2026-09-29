@@ -550,17 +550,26 @@
 
     renderArtefacts(items, k, active) {
       // A paper is a small diamond, the same size on screen at any zoom. It
-      // fills from the centre, in the progress colour, as the layers it needs
-      // are formalised; once it is unlocked it is solid white with a halo.
+      // fills from the bottom, in the progress colour, as the layers it needs
+      // are formalised, and is full once they all are; once it is unlocked it
+      // is solid white with a halo.
       const diamond = s => `M0,${-s}L${s * .72},0L0,${s}L${-s * .72},0Z`, filled = d => Math.max(0, Math.min(100, progressValue(d.progress) || 0));
+      // The part of the diamond below a level that rises from its bottom corner (fraction 0) to its top (1).
+      const level = (s, f) => {
+        if (f <= 0) return null;
+        if (f >= 1) return diamond(s);
+        const w = s * .72, y = s - 2 * s * f, half = w * (1 - Math.abs(y) / s);
+        return y >= 0 ? `M0,${s}L${half},${y}L${-half},${y}Z` : `M0,${s}L${w},0L${half},${y}L${-half},${y}L${-w},0Z`;
+      };
       const join = this.layers.artefact.selectAll('g.tau-artefact').data(items, d => d.id);
       join.exit().remove();
       const enter = join.enter().append('g').attr('class', 'tau-node tau-artefact').attr('data-node-id', d => d.id).attr('data-level', 'artefact')
         .attr('tabindex', 0).attr('role', 'button').attr('aria-label', d => normalizeText(d.label) + '. Paper' + (d.progressLabel ? ', ' + d.progressLabel : ''));
       enter.append('circle').attr('class', 'tau-hit').attr('r', this.isCoarse ? 14 : 10);
       enter.append('path').attr('class', 'tau-artefact-halo').attr('d', diamond(9.5)).attr('fill', 'none').attr('stroke', '#ffffff').attr('stroke-width', 1).attr('opacity', .45);
-      enter.append('path').attr('class', 'tau-artefact-body').attr('d', diamond(6)).attr('stroke-width', 1.3);
+      enter.append('path').attr('class', 'tau-artefact-body').attr('d', diamond(6)).attr('stroke', 'none');
       enter.append('path').attr('class', 'tau-artefact-fill');
+      enter.append('path').attr('class', 'tau-artefact-outline').attr('d', diamond(6)).attr('fill', 'none').attr('stroke-width', 1.3);
       enter.append('circle').attr('class', 'tau-ring tau-select-ring').attr('r', 11).attr('fill', 'none').attr('stroke', ACCENT).attr('stroke-width', 1.5);
       enter.append('title');
       this.bindInteractions(enter);
@@ -569,9 +578,10 @@
         .attr('data-progress', d => progressValue(d.progress)).attr('data-unlocked', d => d.unlocked ? 'true' : 'false');
       all.select('title').text(d => normalizeText(d.label) + (d.progressLabel ? '\n' + d.progressLabel : '') + '\nClick to read about the paper');
       all.select('.tau-artefact-halo').attr('display', d => d.unlocked ? null : 'none');
-      all.select('.tau-artefact-body').attr('fill', d => d.unlocked ? '#ffffff' : BACKGROUND).attr('stroke', d => d.unlocked ? '#ffffff' : progressColor(filled(d)));
-      all.select('.tau-artefact-fill').attr('d', d => diamond(6 * Math.sqrt(filled(d) / 100))).attr('fill', d => progressColor(filled(d)))
+      all.select('.tau-artefact-body').attr('fill', d => d.unlocked ? '#ffffff' : BACKGROUND);
+      all.select('.tau-artefact-fill').attr('d', d => level(6, filled(d) / 100)).attr('fill', d => progressColor(filled(d)))
         .attr('display', d => d.unlocked || !filled(d) ? 'none' : null);
+      all.select('.tau-artefact-outline').attr('stroke', d => d.unlocked ? '#ffffff' : progressColor(filled(d)));
       all.select('.tau-select-ring').attr('opacity', d => active === d.id ? 1 : 0);
     }
 
@@ -707,6 +717,16 @@
             links.push({ id: 'related:' + index, ...curve(a, b, 0), arrow: false, reference: true, level: 'constellation', source: edge.source, target: edge.target });
           });
         }
+        // A paper draws a line from each roadmap it builds on, like the lines between roadmaps,
+        // ending at the rim of its diamond (which keeps its size on screen) rather than under it.
+        if (activeNode.level === 'artefact') (universe.artefactEdges || []).forEach((edge, index) => {
+          if (edge.target !== activeNode.id) return;
+          const a = universe.byId.get(edge.source), b = universe.byId.get(edge.target);
+          if (!a || !b) return;
+          const dx = b.x - a.x, dy = b.y - a.y, length = Math.max(1e-6, Math.hypot(dx, dy)), gap = Math.min(length / 2, 11 / k);
+          links.push({ id: 'paper:' + index, ...curve(a, { x: b.x - dx / length * gap, y: b.y - dy / length * gap }, Math.min(40, length * .1)), arrow: true,
+            reference: false, level: 'artefact', source: edge.source, target: edge.target, count: edge.count, whole: edge.whole });
+        });
         if (activeNode.level === 'galaxy') this.layers.route.selectAll('path.tau-route').attr('opacity', d => d.source === activeNode.id || d.target === activeNode.id ? .6 : 0);
       }
       if (!activeNode || activeNode.level !== 'galaxy') this.layers.route.selectAll('path.tau-route').attr('opacity', 0);
@@ -730,7 +750,7 @@
         .on('mouseenter', d => { if (!graph.isCoarse && !graph.pointerResting(d3.event)) { graph.hoveredLinkId = d.id; graph.scheduleRender(); } })
         .on('mouseleave', () => { if (!graph.isCoarse) { graph.hoveredLinkId = null; graph.scheduleRender(); } })
         .merge(hits).attr('d', d => d.path).attr('data-source', d => d.source).attr('data-target', d => d.target)
-        .attr('aria-label', d => `${d.reference ? 'Related plans' : 'Prerequisite'}: ${name(d.source)} to ${name(d.target)}`);
+        .attr('aria-label', d => `${d.reference ? 'Related plans' : d.level === 'artefact' ? 'Needed by the paper' : 'Prerequisite'}: ${name(d.source)} to ${name(d.target)}`);
       this.renderLinkCard(links.find(link => link.id === chosen), name, k);
     }
 
@@ -743,8 +763,9 @@
       const g = card.enter().append('g').attr('class', 'tau-link-card').merge(card);
       g.selectAll('*').remove();
       const font = this.isCoarse ? 13 : 12, pad = 8, line = font + 7;
-      const caption = link.reference ? 'Related plans' : `${link.level === 'star' ? 'Layer' : 'Roadmap'} prerequisite` +
-        (link.count ? ` · ${link.count} layer link${link.count === 1 ? '' : 's'}` : '');
+      const caption = link.reference ? 'Related plans' : link.level === 'artefact'
+        ? 'Needed by the paper · ' + (link.whole ? 'the whole roadmap' : link.count ? `${link.count} layer${link.count === 1 ? '' : 's'}` : 'the roadmap it builds on most')
+        : `${link.level === 'star' ? 'Layer' : 'Roadmap'} prerequisite` + (link.count ? ` · ${link.count} layer link${link.count === 1 ? '' : 's'}` : '');
       const ends = [[link.source, link.reference ? '' : ''], [link.target, link.reference ? '↔ ' : '→ ']];
       const box = g.append('rect').attr('class', 'tau-link-card-box').attr('rx', 4);
       g.append('text').attr('class', 'tau-link-card-caption').attr('x', pad).attr('y', pad + 9).attr('font-size', 9).text(caption);

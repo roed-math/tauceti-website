@@ -160,7 +160,10 @@ function universeInput(){
  const present=id=>ids.has(id)||gaps.some(a=>a.id===id);
  const groupsWithProgress=allGroups.map(g=>{const p=summarize(roadmaps.filter(r=>r.group===g.id));return {...g,progress:aggregateProgress(p),progressLabel:aggregateProgressLabel(p,'layers complete')};});
  const artefacts=(DATA.papers||[]).filter(p=>ids.has(p.home)).map(p=>({id:p.id,label:p.label,home:p.home,...paperProgress(p)}));
- return {layout:LAYOUT,groups:groupsWithProgress,fields:DATA.fields||[],artefacts,constellations,stars:starMap,planets:planetMap,starEdges,planetEdges,constellationEdges,relatedEdges:[...relatedEdges,...contextEdges].filter(e=>present(e.source)&&present(e.target))};
+ // A paper's lines come from the roadmaps its panel lists under "Builds on": the one it sits beside, any it needs
+ // whole, and the owners of the layers it needs, each with the number of its layers the paper needs.
+ const artefactEdges=[];for(const a of artefacts){const p=papers.get(a.id),count=new Map();for(const sid of p.needs||[]){const o=stages.get(sid)?.owner;if(o)count.set(o,(count.get(o)||0)+1);}for(const r of new Set([p.home,...(p.roadmaps||[]),...count.keys()]))if(ids.has(r))artefactEdges.push({source:r,target:a.id,count:count.get(r)||0,whole:(p.roadmaps||[]).includes(r)});}
+ return {layout:LAYOUT,groups:groupsWithProgress,fields:DATA.fields||[],artefacts,artefactEdges,constellations,stars:starMap,planets:planetMap,starEdges,planetEdges,constellationEdges,relatedEdges:[...relatedEdges,...contextEdges].filter(e=>present(e.source)&&present(e.target))};
 }
 function buildUniverse(force){
  const key=[state.origin,state.activity,state.unmapped,[...pins].join(',')].join('|');

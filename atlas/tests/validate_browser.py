@@ -409,6 +409,18 @@ def check_paper_artefacts(page,scope):
  state=page.evaluate("id => { const p=TauExplorer.data.papers.find(p=>p.id===id); return {unlocked:TauExplorer.progress.paper(p).unlocked,drawn:document.querySelector('[data-node-id=\"'+CSS.escape(id)+'\"]').getAttribute('data-unlocked')}; }",paper)
  record(scope+' selecting a paper shows it, with whether it is unlocked',page.locator('#selection-kind').inner_text()=='Paper' and page.locator('#inspector-content .status-chip').first.inner_text()==('Unlocked' if state['unlocked'] else 'Locked') and state['drawn']==('true' if state['unlocked'] else 'false'))
  record(scope+' the panel counts the papers unlocked',page.evaluate("() => { const all=TauExplorer.data.papers,open=all.filter(p=>TauExplorer.progress.paper(p).unlocked).length; return document.getElementById('atlas-papers').textContent===`${open} of ${all.length} papers unlocked`; }"))
+ # A selected paper draws a line from each roadmap it builds on (as its panel lists them), ending at it.
+ lines=page.evaluate("""id => { const hits=Array.from(document.querySelectorAll('.tau-link-hit')).map(h=>({s:h.dataset.source,t:h.dataset.target}));
+   const want=new Set(TauExplorer.getUniverse().artefactEdges.filter(e=>e.target===id).map(e=>e.source));
+   return {want:[...want].sort(), drawn:hits.filter(h=>h.t===id).map(h=>h.s).sort(), all:hits.length}; }""",paper)
+ record(scope+' a selected paper draws a line from each roadmap it builds on',bool(lines['want']) and lines['drawn']==lines['want'] and lines['all']==len(lines['want']))
+ # A paper fills from the bottom: the filled part's height is its share of needed layers done.
+ partial=page.evaluate("() => TauExplorer.data.papers.find(p => { const s=TauExplorer.progress.paper(p); return s.total && s.complete && s.complete<s.total; })")
+ if partial:
+   page.evaluate("id => TauExplorer.navigate({view:'roadmap',id,layer:null,selected:id})",partial['home']);page.wait_for_timeout(900)
+   fill=page.evaluate("""id => { const g=document.querySelector('[data-node-id="'+CSS.escape(id)+'"]'), f=g.querySelector('.tau-artefact-fill'), o=g.querySelector('.tau-artefact-outline');
+     return {share:f.getBBox().height/o.getBBox().height, progress:Number(g.dataset.progress)}; }""",partial['id'])
+   record(scope+' a paper fills from the bottom by the share of its layers done',abs(fill['share']-fill['progress']/100)<.03)
 def check_click_journey(page,scope):
  page.evaluate("TauExplorer.navigate({view:'all',id:null,layer:null,selected:null})");page.wait_for_timeout(600)
  page.locator('[data-node-id="AnalyticNumberTheory"] .tau-hit').click()
