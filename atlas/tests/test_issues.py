@@ -65,9 +65,15 @@ class Sync(unittest.TestCase):
     def test_deliverables_on_main_finish_the_job_whoever_held_the_claim(self):
         # A worker may release the claim once the pull request is open.
         self.assertEqual(transition(job("RS-01", kind="restructure"), ["state:available"], True, True),
-                         ("done", "state:submitted"))
+                         ("done", "state:done"))
         self.assertEqual(transition(job("REV-RS-01", state="external"), ["state:claimed"], True, True),
                          ("done", "state:done"))
+
+    def test_a_finished_blueprint_waits_for_promotion_before_it_closes(self):
+        self.assertEqual(transition(job("BP-X", state="external", kind="blueprint"), ["state:submitted"], True, True),
+                         ("done", "state:submitted"))
+        integrated = dict(job("BP-X", state="external", kind="blueprint"), integrated=True)
+        self.assertEqual(transition(integrated, ["state:submitted"], True, True), ("done", "state:done"))
 
     def test_a_released_claim_makes_the_job_available_again(self):
         self.assertEqual(transition(job("BP-X", state="external", kind="blueprint"), ["state:available"], False, True),
