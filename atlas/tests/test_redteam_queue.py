@@ -97,6 +97,16 @@ class Queue(unittest.TestCase):
             checked += 1
         self.assertTrue(checked)
 
+    def test_a_fix_prompt_fits_in_an_issue_however_many_findings_it_has(self):
+        findings = [{"id": f"F{n}", "severity": "major", "kind": "missing", "where": f"research/blueprint/audit/AUDIT-01.result.json, target T{n}",
+                     "claim": "x" * 1500, "fix": "y" * 500} for n in range(98)]
+        text = make_queue.findings_text("RT-AREA-topology", findings)
+        self.assertLess(len(text), make_queue.FINDINGS_BUDGET)
+        self.assertIn("F97", text)
+        self.assertIn("research/blueprint/redteam/RT-AREA-topology.result.json", text)
+        few = findings[:2]
+        self.assertIn("x" * 1500, make_queue.findings_text("RT-X", few))
+
     def test_a_fix_job_is_given_the_paths_its_findings_name_not_their_descriptions(self):
         editable, elsewhere = make_queue.finding_files([
             {"where": "research/blueprint/papers/PAPER-X.result.json, item PAPER-X/cm-newform (planned)"},
