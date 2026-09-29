@@ -1,6 +1,6 @@
 name: Tau Ceti progress
 
-# Once a day, take Tau Ceti's own progress from the Progress page of the Tau Ceti
+# Four times a day, take Tau Ceti's own progress from the Progress page of the Tau Ceti
 # site (static/progress.json) and rebuild both pages with it: the atlas, whose Tau
 # Ceti roadmaps take their layer states from it, and the Tau Ceti atlas
 # (tauceti/index.html), which shows only those roadmaps. A roadmap Tau Ceti has
@@ -8,8 +8,11 @@ name: Tau Ceti progress
 # the data changed and both pages pass their checks.
 
 on:
+  # GitHub starts scheduled runs on a best-effort basis and drops some (the 07:20 run on
+  # 2026-09-29 never started), and a run waiting behind the intake is cancelled when another
+  # intake run queues. Four chances a day keep the page within hours of Tau Ceti's own.
   schedule:
-    - cron: '20 7 * * *'
+    - cron: '20 1,7,13,19 * * *'
   workflow_dispatch:
 
 # Shares the intake's group, so the two never rebuild and push the atlas at once.
