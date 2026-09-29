@@ -604,6 +604,11 @@ with sync_playwright() as p:
  page.locator('#close-reader').click()
  page.locator('#search').fill('Perron')
  record('Search reaches mathematical roadmap text',page.locator('.search-hit').count()>0)
+ # Words match in any order, and hyphens, dashes and accents do not matter.
+ hits=lambda q: (page.locator('#search').fill(q), page.wait_for_timeout(300), page.evaluate("Array.from(document.querySelectorAll('.search-hit')).map(e=>e.innerText)"))[2]
+ spellings=[hits(q) for q in ('Fargues–Scholze','Fargues-Scholze','Fargues Scholze','Scholze Fargues')]
+ record('Search finds the same results however the words are joined or ordered',bool(spellings[0]) and all(x==spellings[0] for x in spellings))
+ record('Search ignores accents',hits('etale cohomology')==hits('étale cohomology') and bool(hits('etale cohomology')))
  page.locator('#search').fill('')
  page.locator('#source-filter').select_option('tauceti');page.wait_for_timeout(400)
  record('Tau Ceti collection filter',page.evaluate("TauExplorer.getState().origin==='tauceti' && TauExplorer.graph.debugState().counts.constellations===TauExplorer.data.roadmaps.filter(r=>r.origin==='tauceti').length"))
