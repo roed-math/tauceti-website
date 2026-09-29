@@ -73,17 +73,37 @@ class Restructuring(unittest.TestCase):
 class Queue(unittest.TestCase):
     def test_a_proposal_its_review_sent_back_is_revised_before_its_family_is_blueprinted(self):
         jobs = {j["id"]: j for j in json.loads((ROOT / "research" / "blueprint" / "queue.json").read_text())["jobs"]}
-        for rs in ("RS-12", "RS-20"):
+        families = sorted(jid for jid, j in jobs.items() if j["kind"] == "restructure" and "~" not in jid)
+        checked = 0
+        for rs in families:
             path = ROOT / "research" / "blueprint" / "restructure" / f"{rs}.result.json"
             if make_queue.review_status(str(path.relative_to(ROOT))) != "needs_changes" or jobs.get("REV-" + rs, {}).get("state") != "done":
                 continue
-            self.assertEqual(jobs[rs + "~2"]["after"], ["REV-" + rs])
-            self.assertEqual(jobs["REV-" + rs + "~2"]["after"], [rs + "~2"])
+            # Each round waits for the review of the one before; a round's own deliverable is its
+            # handoff note, since the proposal is revised in place.
+            rounds = sorted(int(jid.partition("~")[2]) for jid in jobs if jid.startswith(rs + "~"))
+            self.assertTrue(rounds, rs)
+            previous = rs
+            for n in rounds:
+                revision = f"{rs}~{n}"
+                self.assertEqual(jobs[revision]["after"], ["REV-" + previous])
+                self.assertEqual(jobs["REV-" + revision]["after"], [revision])
+                self.assertIn(f"research/blueprint/handoff/{revision}.md", jobs[revision]["outputs"])
+                previous = revision
             members = jobs[rs]["roadmapIds"]
             waiting = [j for j in jobs.values() if j["kind"] == "blueprint" and j["roadmapIds"][0] in members and j.get("state") == "pending"]
-            self.assertTrue(waiting)
-            self.assertTrue(all("REV-" + rs + "~2" in j["after"] for j in waiting))
+            self.assertTrue(all("REV-" + previous in j["after"] for j in waiting), rs)
             self.assertNotIn("RT-" + rs, jobs)
+            checked += 1
+        self.assertTrue(checked)
+
+    def test_a_fix_job_is_given_the_paths_its_findings_name_not_their_descriptions(self):
+        editable, elsewhere = make_queue.finding_files([
+            {"where": "research/blueprint/papers/PAPER-X.result.json, item PAPER-X/cm-newform (planned)"},
+            {"where": "items in research/blueprint/audit/AUDIT-01.result.json and research/blueprint/atlas/roadmaps/R.json"},
+            {"where": "the report"}])
+        self.assertEqual(editable, ["research/blueprint/audit/AUDIT-01.result.json", "research/blueprint/papers/PAPER-X.result.json"])
+        self.assertEqual(elsewhere, ["research/blueprint/atlas/roadmaps/R.json"])
 
     def test_a_verifier_is_independent_of_the_red_team_and_of_the_work_it_attacked(self):
         jobs = {j["id"]: j for j in json.loads((ROOT / "research" / "blueprint" / "queue.json").read_text())["jobs"]}
