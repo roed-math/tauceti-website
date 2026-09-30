@@ -4,7 +4,7 @@ import unittest
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
-from radial_layout import crossings, layout, with_fields  # noqa: E402
+from radial_layout import REPAIR_TURNS, crossings, layout, repair_starts, with_fields, wrap  # noqa: E402
 
 
 def symmetric(pairs):
@@ -52,6 +52,39 @@ class Crossings(unittest.TestCase):
     def test_an_area_beside_the_line_or_beyond_its_ends_does_not(self):
         self.assertEqual(self.at(a=0, b=20, x=40), [])
         self.assertEqual(crossings({"a": 0.0, "b": 0.35, "x": 0.17}, {"a": 1000, "b": 1000, "x": 1400}, self.SIZE, self.FIELDS), [])
+
+
+class Search(unittest.TestCase):
+    """An area the best fit leaves between two areas of another field is turned off their line;
+    more random starts follow only if that fails."""
+    AREAS = {key: {"distance": 5, "count": 4, "lean": 0} for key in "abcd"}
+    SIMILARITY = symmetric({(a, b): .5 for a in "abcd" for b in "abcd" if a < b})
+
+    def test_a_repair_turns_only_the_area_between(self):
+        import math
+        angles = {"a": 0.0, "b": 1.0, "x": 2.0}
+        starts = repair_starts(angles, [("x", "a", "b"), ("x", "a", "c")])
+        self.assertEqual(len(starts), len(REPAIR_TURNS))
+        for start, turn in zip(starts, REPAIR_TURNS):
+            self.assertEqual((start["a"], start["b"]), (0.0, 1.0))
+            self.assertAlmostEqual(start["x"], wrap(2.0 + math.radians(turn)))
+
+    def fits(self, found, **options):
+        """How many fits a layout makes when every fit leaves found (as crossings gives it)."""
+        from unittest import mock
+        import radial_layout
+        with mock.patch("radial_layout.crossings", return_value=found), \
+                mock.patch("radial_layout.REPAIR_ROUNDS", 1), \
+                mock.patch("radial_layout.solve", wraps=radial_layout.solve) as solve:
+            layout(self.AREAS, self.SIMILARITY, **options)
+        return solve.call_count
+
+    def test_a_fit_without_crossings_needs_nothing_more(self):
+        self.assertEqual(self.fits([], starts=4, max_starts=40), 5)
+
+    def test_random_starts_follow_a_failed_repair_up_to_max_starts(self):
+        # The spectral start and four random ones, a round of repairs, then six random starts.
+        self.assertEqual(self.fits([("a", "c", "d")], starts=4, max_starts=10), 5 + len(REPAIR_TURNS) + 6)
 
 
 class TheAtlas(unittest.TestCase):

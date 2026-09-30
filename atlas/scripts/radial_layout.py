@@ -15,7 +15,11 @@ The areas of one field are ranked as more related than any two areas of
 different fields (with_fields), and their misfit weighs FIELD_PULL times
 more, so a field's areas lie side by side, each at its own distance. Among the
 starts, the fit with the fewest areas lying between two areas of another
-field (crossings) is kept, then the one with the least energy.
+field (crossings) is kept, then the one with the least energy. An area the
+best fit leaves between two areas of another field is turned off their line
+and the fit resumed from there, which keeps the rest of the map where it was;
+only if that fails are more random starts tried, up to MAX_STARTS. A fit that
+needs neither is unchanged by them.
 
 The result is turned so that the roadmaps' weighted mean direction points to
 the right, and mirrored so that algebraic geometry (subject classes 14) lies above that
@@ -40,6 +44,11 @@ GALAXY_GAP = 70
 OVERLAP_PENALTY = 4.0
 # How much more the misfit of two areas of one field weighs than any other pair's.
 FIELD_PULL = 6.0
+# Turns, in degrees, that take an area off the line between two areas of another field.
+REPAIR_TURNS = (10, -10, 20, -20, 30, -30, 45, -45, 60, -60, 90, -90)
+REPAIR_ROUNDS = 3
+# The most random starts tried while the best fit still leaves such an area.
+MAX_STARTS = 96
 
 
 def wrap(angle: float) -> float:
@@ -197,7 +206,15 @@ def orient(angles, counts, lean_share):
     return turned
 
 
-def layout(galaxies: dict, similarity: dict, fields: dict | None = None, starts: int = 12, seed: int = 20260916):
+def repair_starts(angles: dict, found: list) -> list:
+    """Starts that resume a fit whose areas lie between two areas of another
+    field (found, as crossings gives them): the fit with one such area turned
+    by each of REPAIR_TURNS, every other area where it was."""
+    return [{**angles, x: wrap(angles[x] + math.radians(turn))} for x in sorted({x for x, _, _ in found}) for turn in REPAIR_TURNS]
+
+
+def layout(galaxies: dict, similarity: dict, fields: dict | None = None, starts: int = 12, seed: int = 20260916,
+           max_starts: int = MAX_STARTS):
     """galaxies: id -> {"distance", "count", "lean"}; returns (id -> degrees, energy).
 
     lean is the share of a galaxy's roadmaps in algebraic geometry minus its
@@ -218,11 +235,30 @@ def layout(galaxies: dict, similarity: dict, fields: dict | None = None, starts:
     # The best fit among the starts whose fields read as regions: fewest
     # areas lying between two areas of another field, then the least energy.
     best, best_energy, best_rank = None, math.inf, None
-    for start in candidates:
+
+    def fit(start):
+        nonlocal best, best_energy, best_rank
         angles = solve(keys, radius, size, target, weight, start)
         value = energy(angles, keys, radius, size, target, weight)
         rank = (len(crossings(angles, radius, size, fields)), value)
         if best_rank is None or rank < (best_rank[0], best_rank[1] - 1e-9):
             best, best_energy, best_rank = angles, value, rank
+
+    for start in candidates:
+        fit(start)
+    for _ in range(REPAIR_ROUNDS):
+        if not best_rank[0]:
+            break
+        before = best
+        for start in repair_starts(best, crossings(best, radius, size, fields)):
+            fit(start)
+        if best is before:
+            break
+    tried = starts
+    while best_rank[0] and tried < max_starts:
+        batch = min(max(starts, 1), max_starts - tried)
+        for _ in range(batch):
+            fit({k: rng.uniform(-math.pi, math.pi) for k in keys})
+        tried += batch
     oriented = orient(best, {k: galaxies[k]["count"] for k in keys}, {k: galaxies[k].get("lean", 0.0) for k in keys})
     return {k: round(math.degrees(a), 1) for k, a in oriented.items()}, best_energy
