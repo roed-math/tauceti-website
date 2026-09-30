@@ -115,7 +115,7 @@ jobs:
             python3 tests/validate_browser.py > "$RUNNER_TEMP/browser.log" 2>&1 || python3 tests/validate_browser.py > "$RUNNER_TEMP/browser.log" 2>&1 || { tail -60 "$RUNNER_TEMP/browser.log"; exit 1; }
             python3 tests/validate_blueprints_browser.py
           fi
-          git add -A -- data index.html BUILD.json
+          git add -A -- data index.html definitions.html BUILD.json
           git commit -q -m "Atlas: promote accepted work" -m "$(cat "$RUNNER_TEMP/promoted.txt")"
           for attempt in 1 2 3 4 5; do
             git pull --rebase -q && git push -q && exit 0
