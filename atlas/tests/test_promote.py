@@ -52,6 +52,16 @@ class Decide(unittest.TestCase):
         self.assertEqual(decide(PACKET, packet(), JOBS, refused)[0], "skip")
 
 
+class Reworded(unittest.TestCase):
+    def test_rewording_an_accepted_review_is_not_a_new_review(self):
+        # A fix that edits the notes of the review that accepted the file has not been reviewed itself.
+        from promote import signature
+        record = {"promoted": {PACKET: {"review": signature(ACCEPTED), "reviewer": ACCEPTED["reviewer"], "reviewDate": ACCEPTED["date"]}}}
+        reworded = dict(ACCEPTED, notes=ACCEPTED["notes"] + " This review is historical: the revised file needs renewed acceptance.")
+        self.assertEqual(decide(PACKET, packet(reworded), JOBS, record), ("skip", "this review was acted on already"))
+        self.assertEqual(decide(PACKET, packet(dict(reworded, date="2026-09-30")), JOBS, record)[0], "promote")
+
+
 class Promote(unittest.TestCase):
     def setUp(self):
         self.folder = tempfile.TemporaryDirectory()

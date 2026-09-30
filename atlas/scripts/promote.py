@@ -51,6 +51,13 @@ def decide(path: str, data: dict, jobs: list, record: dict) -> tuple:
     mark = signature(review)
     if any((record.get(kind) or {}).get(path, {}).get("review") == mark for kind in ("promoted", "refused")):
         return "skip", "this review was acted on already"
+    # A review keeps its reviewer and date: an edit that keeps both (a fixer rewording the
+    # notes of the review that accepted the file, say) is not a new review, and the file
+    # goes live again only after one.
+    for kind in ("promoted", "refused"):
+        earlier = (record.get(kind) or {}).get(path) or {}
+        if earlier.get("reviewer") and (earlier.get("reviewer"), earlier.get("reviewDate")) == (review.get("reviewer"), review.get("date")):
+            return "skip", "this review was acted on already"
     job_id = review_job(review)
     if not job_id:
         return "refuse", "the review names no review job: reviewer must be independent-review-<job>"
@@ -124,7 +131,8 @@ def promote(root: Path = ROOT, validate=None, now=None, dry_run=False) -> dict:
         if problem:
             summary["refused"].append((path, problem))
             if not dry_run:
-                record["refused"][path] = {"review": review, "reason": problem, "at": now}
+                record["refused"][path] = {"review": review, "reviewer": data["review"].get("reviewer"),
+                                           "reviewDate": data["review"].get("date"), "reason": problem, "at": now}
             continue
         summary["promoted"].append(path)
         if not dry_run:

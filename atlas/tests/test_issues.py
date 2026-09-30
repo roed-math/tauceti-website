@@ -259,6 +259,15 @@ class StaleClaims(unittest.TestCase):
         self.assertFalse(names_issue({"title": "Checkpoint", "body": "Refs #7030"}, 703))
 
 
+class ReviewTitles(unittest.TestCase):
+    def test_a_review_of_a_fix_is_titled_as_one_not_as_a_blueprint_review(self):
+        job = {"id": "REV-FIX-RT-LINK-tauceti_TauCetiRoadmap_Chebotarev", "kind": "review", "after": ["FIX-RT-LINK-tauceti_TauCetiRoadmap_Chebotarev"],
+               "name": "link map LINK-tauceti_TauCetiRoadmap_Chebotarev: The Chebotarev density theorem",
+               "roadmapIds": ["tauceti:TauCetiRoadmap/Chebotarev"]}
+        self.assertEqual(title(job, {"tauceti:TauCetiRoadmap/Chebotarev": {"title": "The Chebotarev density theorem"}}),
+                         "[Review] Fixes for the link map LINK-tauceti_TauCetiRoadmap_Chebotarev: The Chebotarev density theorem")
+
+
 class IssueSize(unittest.TestCase):
     def test_instructions_too_long_for_an_issue_shorten_their_longest_list_entries(self):
         from issues import fit_instructions
