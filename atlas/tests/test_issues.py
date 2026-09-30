@@ -237,6 +237,28 @@ class PublicText(unittest.TestCase):
         self.assertIn("a clone of https://github.com/CBirkbeck/tauceti-explorer", public)
 
 
+class StaleClaims(unittest.TestCase):
+    def comment(self, login, body, when):
+        return {"user": {"login": login}, "body": body, "created_at": when}
+
+    def test_progress_is_a_worker_s_comment_a_claim_or_a_pull_request_not_the_orchestrator_s_notes(self):
+        from issues import BOT, worker_activity
+        claimed = [self.comment("CBirkbeck", "/claim Codex — codex-1a2b3c", "2026-09-26T16:07:00Z"),
+                   self.comment(BOT, "Claimed for Codex — codex-1a2b3c by @CBirkbeck", "2026-09-26T16:07:10Z")]
+        self.assertEqual(worker_activity(claimed, []), "2026-09-26T16:07:10Z")
+        later = claimed + [self.comment("CBirkbeck", "Orchestrator: the queue now lists the packets.", "2026-09-30T16:00:00Z"),
+                           self.comment(BOT, "Swarm intake: the submission check failed on 1234567.", "2026-09-30T16:05:00Z")]
+        self.assertEqual(worker_activity(later, []), "2026-09-26T16:07:10Z")
+        self.assertEqual(worker_activity(later + [self.comment("CBirkbeck", "Progress: C3 done.", "2026-09-28T09:00:00Z")], []), "2026-09-28T09:00:00Z")
+        self.assertEqual(worker_activity(claimed, [{"updated_at": "2026-09-29T10:00:00Z"}]), "2026-09-29T10:00:00Z")
+        self.assertIsNone(worker_activity([], []))
+
+    def test_a_pull_request_names_an_issue_by_its_number(self):
+        from issues import names_issue
+        self.assertTrue(names_issue({"title": "Checkpoint", "body": "Refs #703"}, 703))
+        self.assertFalse(names_issue({"title": "Checkpoint", "body": "Refs #7030"}, 703))
+
+
 class IssueSize(unittest.TestCase):
     def test_instructions_too_long_for_an_issue_shorten_their_longest_list_entries(self):
         from issues import fit_instructions

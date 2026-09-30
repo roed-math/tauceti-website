@@ -61,6 +61,12 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           python3 research/blueprint/intake.py sweep --yes
+      # A claim or submission whose worker has shown nothing for a day (no comment,
+      # pull request or checkpoint) is released, so another worker can take the job;
+      # the sync below records it in the queue (research/blueprint/issues.py stale).
+      - name: Release stale claims
+        if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+        run: python3 research/blueprint/issues.py stale --hours 24 --release
       - name: Record the jobs in the queue
         run: |
           python3 research/blueprint/issues.py sync
