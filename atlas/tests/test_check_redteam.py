@@ -1,11 +1,15 @@
 """Red-team results and their verification (PROTOCOL.md section 17)."""
+import contextlib
+import io
+import json
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
-from check_redteam import check, check_review  # noqa: E402
+from check_redteam import check, check_review, main  # noqa: E402
 
 
 def result():
@@ -54,6 +58,21 @@ class Verification(unittest.TestCase):
         found = check_review(review, "RT-AUDIT-07", result())
         self.assertIn("RT-AUDIT-07/1: verdict is confirmed or rejected", found)
         self.assertIn("RT-AUDIT-07/1: needs a reason", found)
+
+
+class Files(unittest.TestCase):
+    def test_a_job_id_may_contain_dots(self):
+        # A blueprint's stage key can have a dot (N.7), so the id is the file name without its suffix.
+        name = "RT-BP-ArithmeticKTheory--N.7"
+        data = result()
+        data["redteam"], data["findings"][0]["id"] = name, name + "/1"
+        review = {"redteam": name, "findings": [{"finding": name + "/1", "verdict": "confirmed", "reason": "Read at the pinned commit."}]}
+        with tempfile.TemporaryDirectory() as folder:
+            paths = [Path(folder) / f"{name}.result.json", Path(folder) / f"{name}.review.json"]
+            paths[0].write_text(json.dumps(data))
+            paths[1].write_text(json.dumps(review))
+            with contextlib.redirect_stdout(io.StringIO()) as out:
+                self.assertEqual(main(map(str, paths)), 0, out.getvalue())
 
 
 if __name__ == "__main__":

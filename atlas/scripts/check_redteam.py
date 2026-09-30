@@ -80,7 +80,9 @@ def check_review(data, name: str, result: dict) -> list:
 def main(paths) -> int:
     failed = False
     for path in map(Path, paths):
-        name = path.name.split(".")[0]
+        # Job ids may contain dots (RT-BP-ArithmeticKTheory--N.7), so strip the suffix
+        # rather than cutting at the first dot.
+        name = path.name.removesuffix(".review.json").removesuffix(".result.json")
         try:
             data = json.loads(path.read_text(encoding="utf-8"))
             if path.name.endswith(".review.json"):
