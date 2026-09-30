@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import re
+import subprocess
 import sys
 from collections import defaultdict
 from pathlib import Path
@@ -57,7 +58,24 @@ def reaches(edges, start, goal):
     return False
 
 
-def check(path, world, others):
+def recorded_links(path):
+    """The links of this packet as main records them. Links between two Tau Ceti roadmaps are Tau
+    Ceti's own and are no longer mapped; those recorded before stay as they are (PROTOCOL.md section 10)."""
+    try:
+        relative = Path(path).resolve().relative_to(ROOT)
+    except ValueError:
+        return set()
+    for ref in ("origin/main", "HEAD^1"):
+        shown = subprocess.run(["git", "show", f"{ref}:{relative}"], cwd=ROOT, capture_output=True, text=True)
+        if shown.returncode == 0:
+            try:
+                return {(link.get("source"), link.get("target")) for link in json.loads(shown.stdout).get("links", [])}
+            except (ValueError, AttributeError):
+                return set()
+    return set()
+
+
+def check(path, world, others, recorded=frozenset()):
     stages, readmes, base_edges = world
     errors, warnings = [], []
     raw = Path(path).read_text(encoding="utf-8")
@@ -91,6 +109,9 @@ def check(path, world, others):
             warnings.append(f"{label}: both stages belong to {stages[s]['owner']}")
         if rid not in (stages[s]["owner"], stages[t]["owner"]):
             errors.append(f"{label}: neither endpoint belongs to {rid}")
+        if str(stages[s]["owner"]).startswith("tauceti:") and str(stages[t]["owner"]).startswith("tauceti:") and (s, t) not in recorded:
+            errors.append(f"{label}: both stages belong to Tau Ceti roadmaps, whose links are Tau Ceti's own and not mapped here "
+                          "(PROTOCOL.md section 10); put a problem you noticed in upstreamNotes instead")
         if (s, t) in seen:
             errors.append(f"{label}: duplicate")
         seen.add((s, t))
@@ -123,6 +144,9 @@ def check(path, world, others):
             errors.append(f"overlap {ids}: recommendation must be merge, rescope or keep")
         if not (overlap.get("detail") or "").strip():
             errors.append(f"overlap {ids}: missing detail")
+    for note in packet.get("upstreamNotes") or []:
+        if not isinstance(note, dict) or not str(note.get("note") or "").strip() or not isinstance(note.get("roadmaps", []), list):
+            errors.append('upstreamNotes: each entry is {"roadmaps": [...], "note": "..."} with a note')
     if not packet.get("examined"):
         errors.append("examined list is empty")
     summary = {"packet": str(path), "roadmap": rid, "status": packet.get("status", "partial"), "links": len(packet.get("links", [])),
@@ -143,7 +167,7 @@ def main():
                     others.append(json.loads(other.read_text(encoding="utf-8")))
                 except (OSError, json.JSONDecodeError):
                     pass
-        errors, warnings, summary = check(path, world, others)
+        errors, warnings, summary = check(path, world, others, recorded_links(path))
         failed |= bool(errors)
         print(f"== {path}\n{json.dumps(summary)}")
         for e in errors[:200]:

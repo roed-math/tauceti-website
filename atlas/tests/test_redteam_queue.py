@@ -115,6 +115,22 @@ class FixRouting(unittest.TestCase):
             self.assertIn(f"{base[4:]}.fixes-{number}.md", job["outputs"][0], jid)
 
 
+class TauCetiScope(unittest.TestCase):
+    """The atlas plans, fixes and reviews only its planned roadmaps; Tau Ceti's own go to the maintainer."""
+
+    def test_a_finding_about_what_the_atlas_plans_names_a_planned_roadmap(self):
+        planned = {"ArithmeticGaloisDuality", "KTheoryLowDegrees"}
+        self.assertTrue(make_queue.concerns_planned({"where": "links", "fix": "Add NFA Layer 1 -> ArithmeticGaloisDuality:R02.3."}, planned))
+        self.assertTrue(make_queue.concerns_planned({"where": "content/campaign/KTheoryLowDegrees/README.md, U.4"}, planned))
+        self.assertFalse(make_queue.concerns_planned({"where": "links[11] (PC10 -> PPG6)", "claim": "tauceti:TauCetiRoadmap/ProfiniteCohomology Layer 10 asks for an impossible isomorphism."}, planned))
+
+    def test_the_maintainer_s_notes_list_findings_and_workers_notes(self):
+        finding = {"id": "RT-LINK-x/3", "severity": "high", "kind": "error", "where": "PC10", "claim": "Impossible.", "fix": "Use a quasi-isomorphism."}
+        text = make_queue.upstream_notes_text([("RT-LINK-x", finding)], [("research/blueprint/links/x.json", {"roadmaps": ["tauceti:T"], "note": "Check T."})])
+        for part in ("## Confirmed by an independent verifier (1)", "RT-LINK-x/3", "Use a quasi-isomorphism.", "## Noted by workers, not verified (1)", "Check T."):
+            self.assertIn(part, text)
+
+
 class Restructuring(unittest.TestCase):
     def test_a_family_blueprint_follows_its_accepted_restructuring(self):
         note = make_queue.restructuring_note("RS-07")
