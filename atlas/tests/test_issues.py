@@ -163,6 +163,18 @@ class Deliverables(unittest.TestCase):
         self.write("packets/R.json", {"status": "closed", "review": {"status": "needs_changes", "reviewer": "independent-review-REV-R"}})
         self.assertTrue(deliverables_complete(review, self.root))
 
+    def test_a_fix_review_is_finished_only_when_every_file_it_reviews_records_its_verdict(self):
+        (self.root / "links").mkdir()
+        review = {"id": "REV-FIX-RT-AREA-x", "kind": "review", "after": ["FIX-RT-AREA-x"],
+                  "outputs": ["reviews/REV-FIX-RT-AREA-x.md", "packets/R.json", "links/L.json"]}
+        self.write("reviews/REV-FIX-RT-AREA-x.md", "Report.")
+        mine = {"status": "accepted", "reviewer": "independent-review-REV-FIX-RT-AREA-x"}
+        self.write("packets/R.json", {"review": mine})
+        self.write("links/L.json", {"review": {"status": "accepted", "reviewer": "independent-review-REV-LINK-L"}})
+        self.assertFalse(deliverables_complete(review, self.root))
+        self.write("links/L.json", {"review": dict(mine, status="needs_changes")})
+        self.assertTrue(deliverables_complete(review, self.root))
+
     def test_a_red_team_verification_is_finished_when_every_finding_has_a_verdict(self):
         verify = {"id": "REV-RT-X", "kind": "review", "after": ["RT-X"], "outputs": ["redteam/RT-X.review.json", "reviews/REV-RT-X.md"]}
         self.write("reviews/REV-RT-X.md", "Report.")
@@ -223,6 +235,18 @@ class PublicText(unittest.TestCase):
         self.assertIsNotNone(public)
         self.assertNotIn("/home/", public)
         self.assertIn("a clone of https://github.com/CBirkbeck/tauceti-explorer", public)
+
+
+class IssueSize(unittest.TestCase):
+    def test_instructions_too_long_for_an_issue_shorten_their_longest_list_entries(self):
+        from issues import fit_instructions
+        text = "JOB: write the blueprint.\n" + "\n".join(f"- source {n}: " + "brief " * 400 for n in range(30)) + "\nMETHOD\n1. Read.\nRULES\n- Edit only the packet."
+        fitted = fit_instructions(text, 20_000)
+        self.assertLessEqual(len(fitted), 20_000)
+        for kept in ("JOB: write the blueprint.", "METHOD", "1. Read.", "RULES", "- Edit only the packet.", "- source 29: brief"):
+            self.assertIn(kept, fitted)
+        self.assertIn("shortened to fit a GitHub issue", fitted)
+        self.assertEqual(fit_instructions("short", 100), "short")
 
 
 if __name__ == "__main__":

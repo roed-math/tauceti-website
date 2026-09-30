@@ -63,6 +63,58 @@ class Verdicts(unittest.TestCase):
         self.assertTrue(make_queue.accepted_work(job))
 
 
+class FixRouting(unittest.TestCase):
+    """A fix to a roadmap's plan goes to its blueprint (PROTOCOL.md section 17)."""
+    KNOWN = {"KTheoryLowDegrees", "PeriodsAndSpecialValues", "MotivesAndAlgebraicCycles"}
+
+    def test_a_finding_names_its_roadmap_by_a_layer_or_by_the_roadmap_s_files(self):
+        self.assertEqual(make_queue.finding_layers({"where": "KTheoryLowDegrees:U.4"}, self.KNOWN),
+                         ({"KTheoryLowDegrees"}, {"KTheoryLowDegrees:U.4"}))
+        roadmaps, _ = make_queue.finding_layers({"where": "content/campaign/PeriodsAndSpecialValues/README.md, PS.2 (see MotivesAndAlgebraicCycles)"}, self.KNOWN)
+        self.assertEqual(roadmaps, {"PeriodsAndSpecialValues"})
+        self.assertEqual(make_queue.finding_layers({"where": "tauceti:TauCetiRoadmap/LocalFieldsRamification"}, self.KNOWN), (set(), set()))
+
+    def test_a_finding_goes_to_the_part_that_owns_its_layer(self):
+        parts = [{"id": "BP-R--A.1", "scope": ["R:A.1", "R:A.2"]}, {"id": "BP-R--B.1", "scope": ["R:B.1"]}]
+        self.assertEqual([j["id"] for j in make_queue.owning_parts("R", {"R:B.1"}, parts)], ["BP-R--B.1"])
+        self.assertEqual([j["id"] for j in make_queue.owning_parts("R", set(), parts)], ["BP-R--A.1", "BP-R--B.1"])
+
+    def test_the_findings_a_blueprint_is_handed_fit_its_prompt(self):
+        items = [("RT-AREA-x", {"id": f"RT-AREA-x/{n}", "severity": "medium", "kind": "missing", "where": f"R:A.{n}",
+                                "claim": "c" * 900, "fix": "f" * 400}) for n in range(40)]
+        text = make_queue.handed_text(items)
+        self.assertLess(len(text), make_queue.HANDED_BUDGET)
+        self.assertIn("RT-AREA-x/39", text)
+        self.assertIn("research/blueprint/redteam/RT-AREA-x.result.json", text)
+        self.assertIn("c" * 900, make_queue.handed_text(items[:2]))
+
+    def test_a_fix_that_goes_live_is_reviewed_first(self):
+        jobs = {j["id"]: j for j in json.loads((ROOT / "research" / "blueprint" / "queue.json").read_text())["jobs"]}
+        checked = 0
+        for jid, job in jobs.items():
+            live = [o for o in job["outputs"] if make_queue.PROMOTABLE.match(o)] if job["kind"] == "fix" else []
+            if not live:
+                continue
+            review = jobs.get("REV-" + jid)
+            self.assertIsNotNone(review, jid)
+            self.assertEqual(review["after"], [jid])
+            self.assertIn(jid, review["independentOf"])
+            self.assertTrue(set(live) <= set(review["outputs"]), jid)
+            checked += 1
+        self.assertTrue(checked)
+
+    def test_a_later_round_of_a_fix_follows_a_finished_one(self):
+        jobs = {j["id"]: j for j in json.loads((ROOT / "research" / "blueprint" / "queue.json").read_text())["jobs"]}
+        for jid, job in jobs.items():
+            if job["kind"] != "fix" or "~" not in jid:
+                continue
+            base, _, number = jid.partition("~")
+            earlier = base if number == "2" else f"{base}~{int(number) - 1}"
+            self.assertEqual(jobs[earlier].get("state"), "done", jid)
+            self.assertIn(job["after"], ([earlier], ["REV-" + earlier]), jid)
+            self.assertIn(f"{base[4:]}.fixes-{number}.md", job["outputs"][0], jid)
+
+
 class Restructuring(unittest.TestCase):
     def test_a_family_blueprint_follows_its_accepted_restructuring(self):
         note = make_queue.restructuring_note("RS-07")
