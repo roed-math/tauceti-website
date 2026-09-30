@@ -78,6 +78,8 @@ def destinations(root: Path, path: str, data: dict, atlas_roadmaps: set) -> tupl
     name = Path(path).name
     if path.startswith("research/blueprint/links/"):
         return [(path, f"data/links/{name}")], None
+    if path.startswith("research/blueprint/keydefs/"):
+        return [(path, f"data/keydefs/{name}")], None
     if path.startswith("research/blueprint/restructure/"):
         report = path.replace(".result.json", ".md")
         return [(path, f"data/restructure/{name}")] + ([(report, f"data/restructure/{Path(report).name}")] if (root / report).exists() else []), None
@@ -97,6 +99,7 @@ def destinations(root: Path, path: str, data: dict, atlas_roadmaps: set) -> tupl
 def candidates(root: Path) -> list:
     bp = root / "research" / "blueprint"
     found = [str(p.relative_to(root)) for folder in ("packets", "links") for p in sorted((bp / folder).glob("*.json"))]
+    found += [str(p.relative_to(root)) for p in sorted((bp / "keydefs").glob("KEYDEF-*.json"))]
     return found + [str(p.relative_to(root)) for p in sorted((bp / "restructure").glob("RS-*.result.json"))]
 
 
@@ -161,8 +164,9 @@ def notices(root: Path, summary: dict, jobs: list) -> list:
         for job in jobs:
             if path in (job.get("outputs") or []) and job["id"] in mapping:
                 if problem is None:
+                    where = f"{SITE}definitions.html" if path.startswith("research/blueprint/keydefs/") else f"{SITE}#view=roadmap&id={roadmap}"
                     body = (f"`{path}` is now in the atlas, as its independent review accepted it: "
-                            f"{SITE}#view=roadmap&id={roadmap}. Later changes go live after their own accepted review.")
+                            f"{where}. Later changes go live after their own accepted review.")
                 else:
                     body = (f"The atlas could not take in `{path}` after its accepted review: {problem}. "
                             "Fix the file in a new pull request; it goes live after its next accepted review.")
@@ -194,7 +198,10 @@ def stage(root: Path, files: list, validate) -> str | None:
 def build_check():
     sys.path.insert(0, str(ROOT / "scripts"))
     from build import assemble
+    from definitions_page import load_surveys
     assemble(require_distances=False)
+    # A key-definition survey the definitions page cannot read is refused like a file that breaks the atlas.
+    load_surveys(ROOT)
 
 
 def main() -> int:

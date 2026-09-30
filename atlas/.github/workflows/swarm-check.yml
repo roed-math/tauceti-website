@@ -38,7 +38,7 @@ jobs:
           git diff --name-only --no-renames --diff-filter=AM HEAD^1 HEAD > "$RUNNER_TEMP/changed.txt"
           git diff --name-only --no-renames --diff-filter=D HEAD^1 HEAD > "$RUNNER_TEMP/deleted.txt"
           cat "$RUNNER_TEMP/changed.txt"
-          if grep -qE '^research/blueprint/(packets|links)/[^/]+\.json$' "$RUNNER_TEMP/changed.txt"; then
+          if grep -qE '^research/blueprint/(packets|links|keydefs)/[^/]+\.json$' "$RUNNER_TEMP/changed.txt"; then
             echo "baseline=true" >> "$GITHUB_OUTPUT"
           fi
       - name: Fetch the pinned library sources
@@ -74,6 +74,7 @@ jobs:
           papers=$(changed '^research/blueprint/papers/PAPER-[^/]+\.result\.json$')
           redteam=$(changed '^research/blueprint/redteam/RT-[^/]+\.(result|review)\.json$')
           errata=$(changed '^research/blueprint/errata/[^/]+\.json$')
+          keydefs=$(changed '^research/blueprint/keydefs/KEYDEF-[^/]+\.json$')
           if [ -n "$packets" ]; then python3 scripts/check_blueprint.py $packets | tee -a "$GITHUB_STEP_SUMMARY" || status=1; fi
           if [ -n "$links" ]; then python3 scripts/check_links.py $links | tee -a "$GITHUB_STEP_SUMMARY" || status=1; fi
           if [ -n "$proposals" ]; then python3 scripts/check_restructure.py $proposals | tee -a "$GITHUB_STEP_SUMMARY" || status=1; fi
@@ -81,4 +82,5 @@ jobs:
           if [ -n "$papers" ]; then python3 scripts/check_paper.py $papers | tee -a "$GITHUB_STEP_SUMMARY" || status=1; fi
           if [ -n "$redteam" ]; then python3 scripts/check_redteam.py $redteam | tee -a "$GITHUB_STEP_SUMMARY" || status=1; fi
           if [ -n "$errata" ]; then python3 scripts/check_errata.py $errata | tee -a "$GITHUB_STEP_SUMMARY" || status=1; fi
+          if [ -n "$keydefs" ]; then python3 scripts/check_keydefs.py $keydefs | tee -a "$GITHUB_STEP_SUMMARY" || status=1; fi
           exit $status
