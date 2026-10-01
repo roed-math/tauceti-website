@@ -1,5 +1,6 @@
 """Red-team jobs in the queue (research/blueprint/make_queue.py, PROTOCOL.md section 17)."""
 import json
+import re
 import sys
 import unittest
 from pathlib import Path
@@ -106,9 +107,14 @@ class FixRouting(unittest.TestCase):
     def test_a_later_round_of_a_fix_follows_a_finished_one(self):
         jobs = {j["id"]: j for j in json.loads((ROOT / "research" / "blueprint" / "queue.json").read_text())["jobs"]}
         for jid, job in jobs.items():
-            if job["kind"] != "fix" or "~" not in jid:
+            # A round's report is <red team>.fixes-<n>.md. An id with "~" may be a first fix: the red
+            # team of a revision round (RT-RS-12~3) has the first fix FIX-RT-RS-12~3.
+            found = re.search(r"\.fixes-(\d+)\.md$", job["outputs"][0]) if job["kind"] == "fix" else None
+            if not found:
                 continue
-            base, _, number = jid.partition("~")
+            number = found.group(1)
+            self.assertTrue(jid.endswith(f"~{number}"), jid)
+            base = jid[:-len(f"~{number}")]
             earlier = base if number == "2" else f"{base}~{int(number) - 1}"
             self.assertEqual(jobs[earlier].get("state"), "done", jid)
             self.assertIn(job["after"], ([earlier], ["REV-" + earlier]), jid)

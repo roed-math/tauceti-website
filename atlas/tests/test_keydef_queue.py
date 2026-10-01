@@ -105,5 +105,29 @@ class Promotion(unittest.TestCase):
             self.assertEqual(files, [("research/blueprint/keydefs/KEYDEF-algebraicgeometry.json", "data/keydefs/KEYDEF-algebraicgeometry.json")])
 
 
+class Rounds(unittest.TestCase):
+    def test_a_survey_its_review_did_not_accept_is_revised_and_reviewed_again(self):
+        jobs = {j["id"]: j for j in json.loads((ROOT / "research" / "blueprint" / "queue.json").read_text())["jobs"]}
+        checked = 0
+        for jid, job in jobs.items():
+            if job["kind"] != "keydef" or "~" in jid:
+                continue
+            survey = ROOT / job["outputs"][0]
+            review = (json.loads(survey.read_text()).get("review") or {}) if survey.exists() else {}
+            if jobs.get("REV-" + jid, {}).get("state") != "done" or review.get("reviewer") != f"independent-review-REV-{jid}" \
+                    or review.get("status") not in ("needs_changes", "rejected"):
+                continue
+            revision = jobs.get(jid + "~2")
+            self.assertIsNotNone(revision, jid)
+            self.assertEqual(revision["after"], ["REV-" + jid])
+            self.assertIn(f"research/blueprint/handoff/{jid}~2.md", revision["outputs"])
+            again = jobs["REV-" + jid + "~2"]
+            self.assertEqual(again["after"], [jid + "~2"])
+            self.assertTrue({jid, "REV-" + jid, jid + "~2"} <= set(again["independentOf"]))
+            checked += 1
+        if not checked:
+            self.skipTest("no key-definition survey is waiting for a revision")
+
+
 if __name__ == "__main__":
     unittest.main()
