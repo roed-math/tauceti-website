@@ -141,6 +141,10 @@ def check(path: Path, root: Path = ROOT, index=None) -> tuple:
 
     items = catalogue(root)
     owners_known = layers(root)
+    roadmaps_known = set(owners_known.values()) | {roadmap["id"] for roadmap in load_json(root / "data" / "atlas.json").get("roadmaps", [])}
+    queue_path = root / "research" / "blueprint" / "queue.json"
+    if queue_path.exists():
+        roadmaps_known |= {rid for job in load_json(queue_path).get("jobs", []) if job.get("kind") == "design" for rid in job.get("roadmapIds") or []}
     others = surveys(root, job)
     other_ids, other_claims, graph = {}, {}, {}
     for where, survey in others:
@@ -252,6 +256,12 @@ def check(path: Path, root: Path = ROOT, index=None) -> tuple:
                     errors.append(f"{where}: {ref!r} must be tauceti:TauCetiRoadmap/<roadmap>#<layer>")
             elif ref == eid:
                 errors.append(f"{where}: it depends on itself")
+        planned_by = entry.get("plannedBy")
+        if planned_by is not None:
+            if owners:
+                errors.append(f"{where}: plannedBy is for a key definition no layer plans; this one has owners")
+            elif planned_by not in roadmaps_known:
+                errors.append(f"{where}: plannedBy {planned_by!r} is not a roadmap of the atlas, a new roadmap or a queued design")
         if entry.get("size") not in SIZES:
             errors.append(f"{where}: size must be M, L or XL")
         api = entry.get("api")

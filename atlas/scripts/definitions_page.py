@@ -79,32 +79,37 @@ def ordered(surveys: list, galaxies: dict) -> list:
     return found
 
 
-def depths(entries: list) -> dict:
-    """{id: dependency layer}: 0 for a key definition that needs no other, else one more than its deepest need."""
-    needs = {entry["id"]: [ref for ref in entry.get("dependsOn") or [] if isinstance(ref, str)] for entry in entries}
-    known, found = set(needs), {}
-
-    def depth(eid, seen=()):
-        if eid in found:
-            return found[eid]
-        inner = [depth(ref, seen + (eid,)) for ref in needs.get(eid, []) if ref in known and ref not in seen]
-        found[eid] = 1 + max(inner) if inner else 0
-        return found[eid]
-
-    for eid in needs:
-        depth(eid)
-    return found
+def title_of(rid: str, roadmaps: dict) -> str:
+    return re.sub(r"^Roadmap:\s*", "", (roadmaps.get(rid) or {}).get("title", rid), flags=re.I)
 
 
-def owner_html(owner: str, stages: dict, roadmaps: dict) -> str:
-    stage = stages.get(owner)
+def layer_link(layer: str, stages: dict, roadmaps: dict) -> str:
+    """The layer as a link into the atlas map: "<roadmap> · <key> <title>"."""
+    stage = stages.get(layer)
     if not stage:
-        return f"<code>{html.escape(owner)}</code>"
+        return f"<code>{html.escape(layer)}</code>"
     rid = stage.get("owner", "")
-    title = re.sub(r"^Roadmap:\s*", "", (roadmaps.get(rid) or {}).get("title", rid), flags=re.I)
-    href = "index.html#" + urlencode({"view": "roadmap", "id": rid, "layer": owner, "selected": owner})
-    label = f"{stage.get('key') or ''} {stage.get('title') or owner}".strip()
-    return f'<a href="{html.escape(href)}">{html.escape(title)} · {html.escape(label)}</a>'
+    href = "index.html#" + urlencode({"view": "roadmap", "id": rid, "layer": layer, "selected": layer})
+    label = f"{stage.get('key') or ''} {stage.get('title') or layer}".strip()
+    return f'<a href="{html.escape(href)}">{html.escape(title_of(rid, roadmaps))} · {html.escape(label)}</a>'
+
+
+def roadmap_status(entry: dict, stages: dict, roadmaps: dict, assigned: dict, planned: dict) -> tuple:
+    """(index cell, entry text, in a roadmap?) for one key definition. assigned: research/blueprint/keydefs/owners.json;
+    planned: {node id: layer} of the promoted blueprints, where an owner's reserved node shows that it is planned."""
+    layers = list(entry.get("owners") or [])
+    owner = assigned.get(entry["id"]) or {}
+    if not layers and owner.get("reserved") in planned:
+        layers = [planned[owner["reserved"]]]
+    if layers:
+        names = sorted({title_of(stages[layer]["owner"], roadmaps) for layer in layers if layer in stages} or set(layers))
+        return (html.escape(", ".join(names)), "Yes: " + "<br>".join(layer_link(layer, stages, roadmaps) for layer in layers), True)
+    if owner.get("owner"):
+        title = owner.get("title") or owner.get("roadmap")
+        return (f'<span class="gap">Not yet</span> · going to {html.escape(title)}',
+                f'<span class="gap">Not yet.</span> It has been given to {html.escape(title)}, whose queued job '
+                f'<code>{html.escape(owner["owner"])}</code> plans it as <code>{html.escape(owner.get("reserved") or "")}</code>.', False)
+    return ('<span class="gap">Not yet</span>', '<span class="gap">Not yet</span>, and no queued job receives its items: it needs a roadmap.', False)
 
 
 def dependency_html(ref: str, names: dict) -> str:
@@ -131,10 +136,7 @@ def papers_html(entry: dict, papers: dict) -> str:
     return "<ul class=\"papers\">" + "".join(out) + "</ul>"
 
 
-def entry_html(number: int, entry: dict, depth: int, names: dict, stages: dict, roadmaps: dict, papers: dict) -> str:
-    owners = entry.get("owners") or []
-    owner = ("<br>".join(owner_html(o, stages, roadmaps) for o in owners) if owners
-             else '<span class="gap">Nothing in the atlas plans it yet</span>')
+def entry_html(number: int, entry: dict, status: str, names: dict, papers: dict) -> str:
     depends = ", ".join(dependency_html(ref, names) for ref in entry.get("dependsOn") or []) or "none of the other key definitions"
     library = entry.get("library") or {}
     has = library.get("has") or []
@@ -146,10 +148,8 @@ def entry_html(number: int, entry: dict, depth: int, names: dict, stages: dict, 
 <dl class="facts">
 <dt>Area</dt><dd>{html.escape(entry['areaLabel'])}</dd>
 <dt>Papers needing it</dt><dd><b>{paper_count(entry)}</b>{papers_html(entry, papers)}</dd>
-<dt>Owner in the atlas</dt><dd>{owner}</dd>
-<dt>Size</dt><dd><b>{entry['size']}</b>: {SIZES[entry['size']]}</dd>
+<dt>In a roadmap</dt><dd>{status}</dd>
 <dt>Depends on</dt><dd>{depends}</dd>
-<dt>Dependency layer</dt><dd>{depth}</dd>
 </dl>
 <h4>What to define</h4>
 <p class="prose">{rich(entry.get('define'))}</p>
@@ -162,35 +162,45 @@ def entry_html(number: int, entry: dict, depth: int, names: dict, stages: dict, 
 </article>"""
 
 
-def page(atlas: dict, surveys: list, galaxies: dict, papers: dict, enabled: list) -> str:
+def planned_nodes(atlas: dict) -> dict:
+    """{node id: layer} for every declaration of the promoted blueprints (scripts/blueprints.py lists them by layer)."""
+    found = {}
+    for roadmap in atlas.get("roadmaps", []):
+        for layer, rows in ((roadmap.get("blueprint") or {}).get("layers") or {}).items():
+            for row in rows:
+                found[row[0] if ":" in str(row[0]).split("/")[0] else f"{roadmap['id']}:{row[0]}"] = layer
+    return found
+
+
+def page(atlas: dict, surveys: list, galaxies: dict, papers: dict, enabled: list, assigned: dict | None = None) -> str:
     stages = {stage["id"]: stage for stage in atlas.get("stages", [])}
     roadmaps = {roadmap["id"]: roadmap for roadmap in atlas.get("roadmaps", [])}
     labels = {galaxy["id"]: galaxy.get("label", galaxy["id"]) for galaxy in galaxies.get("galaxies", [])}
     entries = ordered(surveys, galaxies)
-    layer = depths(entries)
+    planned = planned_nodes(atlas)
+    status = {entry["id"]: roadmap_status(entry, stages, roadmaps, assigned or {}, planned) for entry in entries}
     names = {entry["id"]: entry["name"] for entry in entries}
     published = {survey.get("area") for _, survey in surveys}
     waiting = [labels.get(area, area) for area in enabled if area not in published]
     cited = {paper.get("paper") for entry in entries for paper in entry["papers"] if isinstance(paper, dict)}
-    unplanned = sum(1 for entry in entries if not entry.get("owners"))
+    in_roadmap = sum(1 for entry in entries if status[entry["id"]][2])
     lede = ("The definitions that at least two of the atlas's papers need and that Mathlib and Tau Ceti do not have yet. "
-            "Each entry says what to define, which papers need it, which layer of the atlas owns it, what the libraries "
-            "already have, what it depends on and how big it is, and gives a sample API that tells a right formalisation "
-            "from a wrong one. The atlas's workers write each area's list from the paper catalogue, and an independent "
-            "review checks it before it appears here.")
+            "Each entry says what to define, which papers need it, whether a roadmap plans it yet and which, what the "
+            "libraries already have and what it depends on, and gives a sample API that tells a right formalisation from a "
+            "wrong one. The atlas's workers write each area's list from the paper catalogue, and an independent review "
+            "checks it before it appears here.")
     if entries:
         meta = (f"{plural(len(entries), 'key definition', 'key definitions')} from {plural(len(published), 'area', 'areas')}, "
-                f"needed by {plural(len(cited), 'paper', 'papers')}; {plural(unplanned, 'is', 'are')} not yet planned by any layer")
+                f"needed by {plural(len(cited), 'paper', 'papers')}; {in_roadmap:,} of them in a roadmap so far")
     else:
         meta = "No area's list has passed its review yet"
     rows = "".join(f'<tr><td class="n">{n}</td><td><a href="#{anchor(entry["id"])}">{rich(entry["name"])}</a></td>'
-                   f'<td>{html.escape(entry["areaLabel"])}</td><td class="n">{paper_count(entry)}</td><td class="n">{layer[entry["id"]]}</td>'
-                   f'<td>{entry["size"]}</td><td>{"planned" if entry.get("owners") else "<span class=gap>not planned</span>"}</td></tr>'
+                   f'<td>{html.escape(entry["areaLabel"])}</td><td class="n">{paper_count(entry)}</td><td>{status[entry["id"]][0]}</td></tr>'
                    for n, entry in enumerate(entries, 1))
     index = (f"""<section id="index"><h2>Index</h2>
-<div class="table"><table><thead><tr><th class="n">#</th><th>Definition</th><th>Area</th><th class="n">Papers</th><th class="n">Layer</th><th>Size</th><th>In the atlas</th></tr></thead>
+<div class="table"><table><thead><tr><th class="n">#</th><th>Definition</th><th>Area</th><th class="n">Papers</th><th>In a roadmap</th></tr></thead>
 <tbody>{rows}</tbody></table></div>
-<p class="note">Papers: how many of the atlas's papers need it, counted from their catalogue items. Layer: its depth in the dependency graph of these key definitions, 0 for one that needs none of the others. Size: M is one library file, L a small project, XL several files and probably more than one roadmap.</p></section>"""
+<p class="note">Papers: how many of the atlas's papers need it, counted from their catalogue items. In a roadmap: the roadmap whose plan includes it, or, for one not planned yet, the roadmap it has been given to.</p></section>"""
              if entries else "")
     body, area = [], None
     for n, entry in enumerate(entries, 1):
@@ -200,7 +210,7 @@ def page(atlas: dict, surveys: list, galaxies: dict, papers: dict, enabled: list
             near = "".join(f"<li><b>{rich(item.get('name'))}</b>: {rich(item.get('reason'))}</li>" for item in reserve if isinstance(item, dict))
             body.append(f'<h2 class="area">{html.escape(entry["areaLabel"])}</h2>'
                         + (f'<details class="reserve"><summary>{plural(len(reserve), "near miss", "near misses")}, with why each was left out</summary><ul>{near}</ul></details>' if near else ""))
-        body.append(entry_html(n, entry, layer[entry["id"]], names, stages, roadmaps, papers))
+        body.append(entry_html(n, entry, status[entry["id"]][1], names, papers))
     pending = (f'<p class="pending">Still being surveyed: {html.escape(", ".join(waiting))}. Each area\'s list appears here once its independent review accepts it.</p>'
                if waiting else "")
     return f"""<!doctype html>
@@ -315,4 +325,6 @@ def render(atlas: dict, root: Path) -> str:
     papers = {paper["id"]: paper for paper in json.loads(index_path.read_text(encoding="utf-8")).get("papers", [])} if index_path.exists() else {}
     config = root / "research" / "blueprint" / "keydefs" / "areas.json"
     enabled = json.loads(config.read_text(encoding="utf-8")).get("enabled", []) if config.exists() else []
-    return page(atlas, load_surveys(root), galaxies, papers, enabled)
+    owners_path = root / "research" / "blueprint" / "keydefs" / "owners.json"
+    assigned = json.loads(owners_path.read_text(encoding="utf-8")).get("definitions", {}) if owners_path.exists() else {}
+    return page(atlas, load_surveys(root), galaxies, papers, enabled, assigned)

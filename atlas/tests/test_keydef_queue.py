@@ -9,7 +9,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "research" / "blueprint"))
 sys.path.insert(0, str(ROOT / "scripts"))
 import issues  # noqa: E402
-from make_queue import keydef_parts, keydef_slices  # noqa: E402
+from make_queue import handed_keydefs_text, keydef_owners, keydef_parts, keydef_slices, route_job  # noqa: E402
 from promote import candidates, destinations  # noqa: E402
 
 
@@ -103,6 +103,76 @@ class Promotion(unittest.TestCase):
             files, problem = destinations(root, "research/blueprint/keydefs/KEYDEF-algebraicgeometry.json", {}, set())
             self.assertIsNone(problem)
             self.assertEqual(files, [("research/blueprint/keydefs/KEYDEF-algebraicgeometry.json", "data/keydefs/KEYDEF-algebraicgeometry.json")])
+
+
+def key(kid, items, owners=(), planned_by=None):
+    entry = {"id": kid, "name": "Name of " + kid, "define": "What to define for " + kid,
+             "papers": [{"paper": paper, "items": ids} for paper, ids in items], "owners": list(owners),
+             "api": [{"kind": "example", "statement": "An example of " + kid}]}
+    if planned_by:
+        entry["plannedBy"] = planned_by
+    return ("data/keydefs/KEYDEF-x.json", entry)
+
+
+class Owners(unittest.TestCase):
+    """Who plans a key definition no layer plans (PROTOCOL.md section 19)."""
+    JOBS = [{"id": "BP-Found", "kind": "blueprint", "roadmapIds": ["Found"], "scope": ["Found:F1"], "order": 10},
+            {"id": "BP-Use", "kind": "blueprint", "roadmapIds": ["Use"], "scope": ["Use:U1"], "order": 20},
+            {"id": "DESIGN-FoundPartII", "kind": "design", "roadmapIds": ["FoundPartII"], "name": "Foundations, Part II", "order": 30},
+            {"id": "DESIGN-NewThing", "kind": "design", "roadmapIds": ["NewThing"], "name": "A new thing", "order": 40},
+            {"id": "BP-Done", "kind": "blueprint", "roadmapIds": ["Done"], "scope": ["Done:D1"], "order": 50}]
+    ROUTES = {"A/1": {"route": "source", "roadmap": "Found", "stages": ["Found:F1"]},
+              "A/2": {"route": "source", "roadmap": "Use", "stages": ["Use:U1"]},
+              "B/1": {"route": "source", "roadmap": "Use"},
+              "B/2": {"route": "part-ii", "parent": "Found", "roadmap": "FoundMore"},
+              "C/1": {"route": "new", "roadmap": "NewThing"},
+              "C/2": {"route": "source", "roadmap": "Done"}}
+    STATES = {"BP-Done": "done"}
+    TITLES = {"Found": "Roadmap: Foundations", "Use": "Uses", "Done": "Done already"}
+
+    def owners(self, entries):
+        return keydef_owners(entries, self.ROUTES, self.JOBS, self.STATES, {"Use": {"Found"}, "Found": set()}, self.TITLES)
+
+    def test_routes_lead_to_the_jobs_that_plan_them(self):
+        by_id = {j["id"]: j for j in self.JOBS}
+        self.assertEqual([route_job(self.ROUTES[i], by_id) for i in ("A/1", "B/1", "B/2", "C/1")],
+                         ["BP-Found", "BP-Use", "DESIGN-FoundPartII", "DESIGN-NewThing"])
+
+    def test_the_most_foundational_job_owns_it_and_the_others_cite_it(self):
+        found = self.owners([key("ag/excellent", [("A", ["A/1", "A/2"]), ("B", ["B/1", "B/2"])])])["ag/excellent"]
+        # BP-Use receives most items, but Found supplies Use and is the parent of the Part II.
+        self.assertEqual((found["owner"], found["roadmap"], found["title"], found["reserved"]), ("BP-Found", "Found", "Foundations", "Found:key/excellent"))
+        self.assertEqual(found["importers"], ["BP-Use", "DESIGN-FoundPartII"])
+        self.assertIn("most foundational", found["reason"])
+
+    def test_without_a_supplier_among_them_most_items_decide(self):
+        found = self.owners([key("ag/torsor", [("A", ["A/2"]), ("B", ["B/1"]), ("C", ["C/1"])])])["ag/torsor"]
+        self.assertEqual(found["owner"], "BP-Use")
+        self.assertEqual(found["importers"], ["DESIGN-NewThing"])
+
+    def test_finished_or_claimed_jobs_are_never_handed_work(self):
+        found = self.owners([key("ag/gerbe", [("C", ["C/1", "C/2"])])])["ag/gerbe"]
+        self.assertEqual((found["owner"], found["title"], found["unrouted"]), ("DESIGN-NewThing", "A new thing", 1))
+
+    def test_the_survey_can_name_the_owner_and_planned_ones_are_left_alone(self):
+        found = self.owners([key("ag/named", [("A", ["A/1"]), ("B", ["B/2"])], planned_by="Use"),
+                             key("ag/planned", [("A", ["A/1"]), ("B", ["B/1"])], owners=["Found:F1"]),
+                             key("ag/stranded", [("D", ["D/1"]), ("E", ["E/1"])])])
+        self.assertEqual(found["ag/named"]["owner"], "BP-Use")
+        self.assertNotIn("ag/planned", found)
+        self.assertIsNone(found["ag/stranded"]["owner"])
+
+    def test_the_owner_is_handed_the_entry_and_the_others_the_reserved_id(self):
+        entries = [key("ag/excellent", [("A", ["A/1", "A/2"]), ("B", ["B/1", "B/2"])])]
+        found = self.owners(entries)
+        owned = handed_keydefs_text({"ag/excellent": found["ag/excellent"]}, None, entries)
+        self.assertIn("reserved node id `Found:key/excellent`", owned)
+        self.assertIn("Plan each once, as generally as all its uses need", owned)
+        self.assertIn("(example) An example of ag/excellent", owned)
+        cited = handed_keydefs_text(None, {"ag/excellent": found["ag/excellent"]}, entries)
+        self.assertIn("Cite the reserved node id", cited)
+        self.assertIn("planned by BP-Found (Found)", cited)
+        self.assertEqual(handed_keydefs_text(None, None, entries), "")
 
 
 class Rounds(unittest.TestCase):

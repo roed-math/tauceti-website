@@ -45,13 +45,32 @@ class DefinitionsPage(unittest.TestCase):
         text = page(ATLAS, surveys(), GALAXIES, PAPERS, ["algebraicgeometry", "algebraicnt"])
         order = [m for m in re.findall(r'<h3><span class="num">(\d+)</span> ([^<]+)</h3>', text)]
         self.assertEqual([name for _, name in order], ["Coherent sheaf on a scheme", "Algebraic stack", "Selmer group of a Galois representation"])
-        self.assertIn("3 key definitions from 2 areas, needed by 3 papers; 1 is not yet planned by any layer", text)
+        self.assertIn("3 key definitions from 2 areas, needed by 3 papers; 2 of them in a roadmap so far", text)
         self.assertNotIn("Still being surveyed", text)
+
+    def test_each_entry_says_whether_a_roadmap_plans_it_and_which(self):
+        assigned = {"algebraicgeometry/stack": {"owner": "BP-Stacks", "roadmap": "Stacks", "title": "Stacks and gerbes",
+                                                "reserved": "Stacks:key/stack"}}
+        text = page(ATLAS, surveys(), GALAXIES, PAPERS, [], assigned)
+        rows = dict((name, cell) for name, cell in re.findall(r'<td><a href="#[^"]+">([^<]+)</a></td><td>[^<]*</td><td class="n">\d+</td><td>(.*?)</td></tr>', text))
+        self.assertEqual(rows["Coherent sheaf on a scheme"], "Schemes and stacks")
+        self.assertEqual(rows["Algebraic stack"], '<span class="gap">Not yet</span> · going to Stacks and gerbes')
+        self.assertIn('Yes: <a href="index.html#view=roadmap&amp;id=R&amp;layer=R%3AL1&amp;selected=R%3AL1">Schemes and stacks · L1 Coherent sheaves</a>', text)
+        self.assertIn("whose queued job <code>BP-Stacks</code> plans it as <code>Stacks:key/stack</code>", text)
+        self.assertNotIn("Dependency layer", text)
+        self.assertNotIn("<th>Size</th>", text)
+        # Once the owner's blueprint is promoted, its reserved node puts the key definition in that roadmap.
+        built = {**ATLAS, "roadmaps": ATLAS["roadmaps"] + [{"id": "Stacks", "title": "Stacks and gerbes",
+                                                             "blueprint": {"layers": {"Stacks:S1": [["key/stack", "definition", "Algebraic stacks", 0]]}}}],
+                 "stages": ATLAS["stages"] + [{"id": "Stacks:S1", "owner": "Stacks", "key": "S1", "title": "Stacks"}]}
+        text = page(built, surveys(), GALAXIES, PAPERS, [], assigned)
+        self.assertIn("Yes: <a href=\"index.html#view=roadmap&amp;id=Stacks&amp;layer=Stacks%3AS1&amp;selected=Stacks%3AS1\">Stacks and gerbes · S1 Stacks</a>", text)
+        # One no queued job receives says so.
+        text = page(ATLAS, surveys(), GALAXIES, PAPERS, [], {})
+        self.assertIn("no queued job receives its items: it needs a roadmap", text)
 
     def test_each_entry_carries_its_facts_and_sample_api(self):
         text = page(ATLAS, surveys(), GALAXIES, PAPERS, [])
-        self.assertIn('href="index.html#view=roadmap&amp;id=R&amp;layer=R%3AL1&amp;selected=R%3AL1"', text)
-        self.assertIn("Nothing in the atlas plans it yet", text)
         self.assertIn('<a href="#kd-algebraicgeometry-stack">Algebraic stack</a>', text)
         self.assertIn("Tau Ceti GaloisCohomology, layer 3", text)
         self.assertIn("n &lt; m and <code>Foo.bar</code>", text)
@@ -60,10 +79,6 @@ class DefinitionsPage(unittest.TestCase):
         api = re.search(r'<ol class="api">(.*?)</ol>', text, re.S).group(1)
         self.assertLess(api.index("example</span>"), api.index("counterexample</span>"))
         self.assertLess(api.index("counterexample</span>"), api.index("theorem</span>"))
-        # Dependency layers: the stack needs nothing, the sheaf needs the stack, the Selmer group the sheaf.
-        rows = re.findall(r'<td class="n">(\d+)</td><td><a href="#[^"]+">([^<]+)</a>.*?<td class="n">(\d+)</td><td class="n">(\d+)</td>', text)
-        self.assertEqual({name: layer for _, name, _, layer in rows},
-                         {"Coherent sheaf on a scheme": "1", "Algebraic stack": "0", "Selmer group of a Galois representation": "2"})
         self.assertIn("1 near miss, with why each was left out", text)
 
     def test_before_any_review_the_page_says_what_is_under_way(self):
