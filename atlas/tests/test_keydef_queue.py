@@ -162,6 +162,15 @@ class Owners(unittest.TestCase):
         self.assertNotIn("ag/planned", found)
         self.assertIsNone(found["ag/stranded"]["owner"])
 
+    def test_the_maintainers_decision_comes_first(self):
+        entries = [key("ag/excellent", [("A", ["A/1", "A/2"]), ("B", ["B/1", "B/2"])], planned_by="Found"),
+                   key("ag/stranded", [("D", ["D/1"]), ("E", ["E/1"])])]
+        found = keydef_owners(entries, self.ROUTES, self.JOBS, self.STATES, {"Use": {"Found"}, "Found": set()}, self.TITLES,
+                              {"ag/excellent": "Use", "ag/stranded": "NewThing"})
+        self.assertEqual((found["ag/excellent"]["owner"], found["ag/excellent"]["reason"]), ("BP-Use", "the maintainer decided on Use"))
+        self.assertEqual(found["ag/excellent"]["importers"], ["BP-Found", "DESIGN-FoundPartII"])
+        self.assertEqual(found["ag/stranded"]["owner"], "DESIGN-NewThing")
+
     def test_the_owner_is_handed_the_entry_and_the_others_the_reserved_id(self):
         entries = [key("ag/excellent", [("A", ["A/1", "A/2"]), ("B", ["B/1", "B/2"])])]
         found = self.owners(entries)
