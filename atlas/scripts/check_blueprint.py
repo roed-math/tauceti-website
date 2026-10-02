@@ -278,7 +278,9 @@ def check(path, index, context):
         for pre in node.get("prerequisites", []) or []:
             if pre in own:
                 edges.append((pre, nid)); resolved["node (this packet)"] += 1
-            elif BASE_REF.match(str(pre)):
+            # A Tau Ceti layer (tauceti:TauCetiRoadmap/<roadmap>#<layer>) is an atlas stage, not a
+            # library declaration, although its id starts like one (PROTOCOL.md section 3).
+            elif BASE_REF.match(str(pre)) and pre not in stages:
                 resolved["baseline"] += 1
                 if pre not in declared:
                     errors.append(f"{nid}: baseline prerequisite {pre} is not listed in baseline.declarations")

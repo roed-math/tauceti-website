@@ -50,6 +50,29 @@ def errors_for(data):
     return errors
 
 
+class Prerequisites(unittest.TestCase):
+    """PROTOCOL.md section 3: a prerequisite is a node, a library declaration or an atlas stage."""
+    TAU = "tauceti:TauCetiRoadmap/StableReduction#layer-3-prestable-semistable-stable-and-pointed-curves"
+
+    def results(self, data):
+        atlas, stages, roadmaps, nodes, blueprints, reserved = CONTEXT
+        context = (atlas, {**stages, self.TAU: "tauceti:TauCetiRoadmap/StableReduction"}, roadmaps, nodes, blueprints, reserved)
+        with tempfile.TemporaryDirectory() as folder:
+            path = Path(folder) / "R.json"
+            path.write_text(json.dumps(data))
+            errors, warnings, _ = check(path, None, context)
+        return errors, warnings
+
+    def test_a_tau_ceti_layer_is_a_stage_not_a_library_declaration(self):
+        errors, warnings = self.results(packet([definition(prerequisites=[self.TAU])]))
+        self.assertFalse(any("baseline prerequisite" in error for error in errors), errors)
+        self.assertTrue(any("without a request entry" in warning for warning in warnings), warnings)
+
+    def test_an_undeclared_library_declaration_is_still_an_error(self):
+        errors, _ = self.results(packet([definition(prerequisites=["tauceti:TauCeti.StableCurve.mk"])]))
+        self.assertTrue(any("baseline prerequisite tauceti:TauCeti.StableCurve.mk is not listed" in error for error in errors), errors)
+
+
 class UnitTests(unittest.TestCase):
     def test_a_complete_definition_passes(self):
         self.assertEqual(errors_for(packet([definition()])), [])
