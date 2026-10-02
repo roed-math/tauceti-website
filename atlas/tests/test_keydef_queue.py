@@ -171,6 +171,28 @@ class Owners(unittest.TestCase):
         self.assertEqual(found["ag/excellent"]["importers"], ["BP-Found", "DESIGN-FoundPartII"])
         self.assertEqual(found["ag/stranded"]["owner"], "DESIGN-NewThing")
 
+    def test_an_assignment_stands_once_its_jobs_are_claimed_or_finished(self):
+        entries = [key("ag/excellent", [("A", ["A/1", "A/2"]), ("B", ["B/1", "B/2"])])]
+        first = self.owners(entries)
+        claimed = {"BP-Found": "external", "BP-Use": "running", "DESIGN-FoundPartII": "done"}
+        later = keydef_owners(entries, self.ROUTES, self.JOBS, claimed, {"Use": {"Found"}, "Found": set()}, self.TITLES, None, first)
+        self.assertEqual((later["ag/excellent"]["owner"], later["ag/excellent"]["reserved"]), ("BP-Found", "Found:key/excellent"))
+        self.assertEqual(later["ag/excellent"]["importers"], ["BP-Use", "DESIGN-FoundPartII"])
+        self.assertEqual(later["ag/excellent"]["reason"], first["ag/excellent"]["reason"])
+        # Without the earlier assignment, nothing claimed is handed the definition.
+        fresh = keydef_owners(entries, self.ROUTES, self.JOBS, claimed, {"Use": {"Found"}, "Found": set()}, self.TITLES)
+        self.assertIsNone(fresh["ag/excellent"]["owner"])
+
+    def test_a_withdrawn_owner_or_a_new_decision_moves_it(self):
+        entries = [key("ag/excellent", [("A", ["A/1", "A/2"]), ("B", ["B/1", "B/2"])])]
+        first = self.owners(entries)
+        gone = keydef_owners(entries, self.ROUTES, self.JOBS, {"BP-Found": "superseded"}, {"Use": {"Found"}, "Found": set()},
+                             self.TITLES, None, first)
+        self.assertEqual(gone["ag/excellent"]["owner"], "BP-Use")
+        decided = keydef_owners(entries, self.ROUTES, self.JOBS, {"BP-Found": "external"}, {"Use": {"Found"}, "Found": set()},
+                                self.TITLES, {"ag/excellent": "Use"}, first)
+        self.assertEqual((decided["ag/excellent"]["owner"], decided["ag/excellent"]["reason"]), ("BP-Use", "the maintainer decided on Use"))
+
     def test_the_owner_is_handed_the_entry_and_the_others_the_reserved_id(self):
         entries = [key("ag/excellent", [("A", ["A/1", "A/2"]), ("B", ["B/1", "B/2"])])]
         found = self.owners(entries)
