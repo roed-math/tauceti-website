@@ -43,5 +43,24 @@ class FollowUps(unittest.TestCase):
                     self.assertEqual(bool(make_queue.accepted_pass(job, prior)), expected, (status, review, prior))
 
 
+class Levels(unittest.TestCase):
+    """PROTOCOL.md section 2: lemma level near the front of the line or when picked, target level elsewhere."""
+
+    def test_near_roadmaps_and_picked_ones_are_planned_lemma_by_lemma(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            (root / "data").mkdir()
+            (root / "research" / "blueprint").mkdir(parents=True)
+            (root / "data" / "roadmap-classification.json").write_text(json.dumps({"roadmaps": {
+                "Near": {"distance": 4}, "Edge": {"distance": 5}, "Far": {"distance": 9}, "Unscored": {},
+                "tauceti:TauCetiRoadmap/Upstream": {"distance": 1}}}))
+            (root / "research" / "blueprint" / "detail.json").write_text(json.dumps(
+                {"lemmaLevelMaxDistance": 5, "lemmaLevel": ["Far"]}))
+            with mock.patch.object(make_queue, "REPO", root), mock.patch.object(make_queue, "BP", root / "research" / "blueprint"):
+                self.assertEqual(make_queue.detail_levels(), {"Near": "lemma", "Edge": "lemma", "Far": "lemma"})
+        self.assertIn("target level", make_queue.DETAIL["target"])
+        self.assertIn("lemma level", make_queue.DETAIL["lemma"])
+
+
 if __name__ == "__main__":
     unittest.main()
