@@ -125,6 +125,20 @@ class Deliverables(unittest.TestCase):
         packet("source_decomposed", "closed")
         self.assertTrue(deliverables_complete(plan, self.root))
 
+    def test_a_planning_job_is_finished_by_a_complete_pass_or_planned_stages(self):
+        # PROTOCOL.md section 0: a pass ends at the node budget, or when every stage is planned.
+        plan = {"id": "BP-R", "kind": "blueprint", "scope": ["R:L0", "R:L1"], "outputs": ["packets/R.json", "readmes/R.md"]}
+        self.write("readmes/R.md", "The roadmap document.")
+        self.write("packets/R.json", {"status": "partial", "coverage": [
+            {"stageId": "R:L0", "status": "planned"}, {"stageId": "R:L1", "status": "partial"}]})
+        self.assertFalse(deliverables_complete(plan, self.root))
+        self.write("packets/R.json", {"status": "partial", "coverage": [
+            {"stageId": "R:L0", "status": "planned"}, {"stageId": "R:L1", "status": "closed"}]})
+        self.assertTrue(deliverables_complete(plan, self.root))
+        self.write("packets/R.json", {"status": "complete", "coverage": [
+            {"stageId": "R:L0", "status": "partial"}, {"stageId": "R:L1", "status": "not_read"}]})
+        self.assertTrue(deliverables_complete(plan, self.root))
+
     def test_a_link_map_is_finished_when_it_says_so(self):
         links = {"id": "LINK-R", "kind": "link", "outputs": ["packets/links-R.json"]}
         self.write("packets/links-R.json", {"status": "partial"})

@@ -8,7 +8,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
-from check_blueprint import check  # noqa: E402
+from check_blueprint import NODE_BUDGET, check  # noqa: E402
 
 CONTEXT = ({}, {"R:L0": "R", "R:L1": "R"}, {"R"}, {}, {}, {})
 
@@ -48,6 +48,45 @@ def errors_for(data):
         path.write_text(json.dumps(data))
         errors, _, _ = check(path, None, CONTEXT)
     return errors
+
+
+class Passes(unittest.TestCase):
+    """PROTOCOL.md section 0: a pass is complete at the node budget or when every stage is planned."""
+
+    def lemmas(self, count):
+        return [definition(f"R:L0/item-{i}") for i in range(count)]
+
+    def test_a_pass_may_not_end_early_while_stages_are_unplanned(self):
+        data = packet(self.lemmas(3))
+        data["status"] = "complete"
+        self.assertTrue(any("under the budget" in e for e in errors_for(data)))
+
+    def test_a_pass_ends_when_every_stage_is_planned(self):
+        data = packet([definition(), definition("R:L1/other", "R:L1")])
+        data["status"] = "complete"
+        data["coverage"] = [{"stageId": "R:L0", "status": "planned", "remaining": ["Refine the comparison."]},
+                            {"stageId": "R:L1", "status": "closed", "remaining": []}]
+        self.assertEqual([e for e in errors_for(data) if "budget" in e or "coverage" in e], [])
+
+    def test_at_the_budget_open_stages_go_to_follow_ups_with_what_remains(self):
+        data = packet(self.lemmas(NODE_BUDGET))
+        data["status"] = "complete"
+        self.assertEqual([e for e in errors_for(data) if "budget" in e or "remaining" in e], [])
+        data["coverage"][1] = {"stageId": "R:L1", "status": "not_read"}
+        self.assertTrue(any("without a `remaining` list" in e for e in errors_for(data)))
+
+    def test_a_planned_stage_must_be_realised_here_or_in_the_roadmaps_other_packets(self):
+        data = packet([definition()])
+        data["coverage"][1] = {"stageId": "R:L1", "status": "planned", "remaining": []}
+        self.assertTrue(any("planned but no node realises it" in e for e in errors_for(data)))
+        atlas, stages, roadmaps, nodes, _, reserved = CONTEXT
+        other = {"roadmapId": "R", "nodes": [definition("R:L1/elsewhere", "R:L1")]}
+        context = (atlas, stages, roadmaps, nodes, {Path("/elsewhere/R--L1.json"): other}, reserved)
+        with tempfile.TemporaryDirectory() as folder:
+            path = Path(folder) / "R.json"
+            path.write_text(json.dumps(data))
+            errors, _, _ = check(path, None, context)
+        self.assertFalse(any("realises" in e for e in errors))
 
 
 class Prerequisites(unittest.TestCase):

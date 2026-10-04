@@ -22,7 +22,14 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
 from source_issues import check_issues  # noqa: E402
 KINDS = {"definition", "construction", "lemma", "theorem", "comparison", "application"}
-COVERAGE = {"not_read", "partial", "source_decomposed", "closed"}
+COVERAGE = {"not_read", "partial", "planned", "source_decomposed", "closed"}
+# Stages a planning job has finished with (PROTOCOL.md section 0). `planned` may still list
+# refinements in `remaining`; the other two may not.
+PLANNED = {"planned", "source_decomposed", "closed"}
+# A planning job's node budget (PROTOCOL.md section 0): at this size a pass is complete and goes to
+# review, and whatever stages it leaves open become follow-up jobs. Jobs once grew without
+# finishing: Dirichlet p-adic L-functions reached 2,271 nodes in over 200 checkpoints.
+NODE_BUDGET = 300
 ROLES = {"constructor", "data", "projection", "extensionality", "characterisation", "simp", "instance",
          "structure", "functoriality", "universal-property", "compatibility", "equivalence", "coercion",
          "relation", "example", "other"}
@@ -134,8 +141,8 @@ def check(path, index, context):
         errors.append(f"unknown roadmap {rid!r}")
     if packet.get("protocol") != "blueprint-v1":
         errors.append("protocol must be 'blueprint-v1'")
-    if packet.get("status") not in ("partial", "closed"):
-        errors.append("status must be 'partial' or 'closed'")
+    if packet.get("status") not in ("partial", "complete", "closed"):
+        errors.append("status must be 'partial', 'complete' or 'closed'")
     if not text(packet.get("summary")):
         errors.append("missing summary")
     own_stages = {sid for sid, owner in stages.items() if owner == rid}
@@ -321,6 +328,11 @@ def check(path, index, context):
         if not state.get(v):
             visit(v, [v])
     realised = {real for node in own.values() for real in (node.get("realises") or [])}
+    # Stages the roadmap's other packets realise: a follow-up or a part plans a stage whose nodes
+    # may sit in the packet it continues (PROTOCOL.md section 0).
+    here = Path(path).resolve()
+    elsewhere = {real for where, other in blueprints.items() if where != here and isinstance(other, dict)
+                 and other.get("roadmapId") == rid for node in other.get("nodes") or [] for real in (node.get("realises") or [])}
     covered = {}
     for record in packet.get("coverage", []):
         sid = record.get("stageId")
@@ -334,11 +346,20 @@ def check(path, index, context):
             errors.append(f"coverage {sid}: invalid status {record.get('status')!r}")
         if record.get("status") in ("closed", "source_decomposed") and record.get("remaining"):
             errors.append(f"coverage {sid}: {record.get('status')} with remaining work")
-        if record.get("status") == "closed" and sid not in realised and sid not in DROPPED_STAGES:
-            errors.append(f"coverage {sid}: closed but no node realises it")
+        if record.get("status") in ("closed", "planned") and sid not in realised | elsewhere and sid not in DROPPED_STAGES:
+            errors.append(f"coverage {sid}: {record.get('status')} but no node realises it")
     for sid in scope:
         if sid not in covered:
             errors.append(f"no coverage record for stage {sid}")
+    if packet.get("status") == "complete":
+        # A pass ends when every stage is planned, or at the node budget with what is left recorded.
+        unplanned = [s for s in scope if covered.get(s, {}).get("status") not in PLANNED]
+        if unplanned and len(own) < NODE_BUDGET:
+            errors.append(f"complete with {len(own)} nodes, under the budget of {NODE_BUDGET}, "
+                          f"while stages are not planned: {', '.join(unplanned)}")
+        for s in unplanned:
+            if s in covered and not covered[s].get("remaining"):
+                errors.append(f"coverage {s}: left open by a complete pass without a `remaining` list")
     errors += check_issues(packet.get("sourceIssues"), str(rid))
     for gap in packet.get("gaps", []):
         if not text(gap.get("title")) or not text(gap.get("detail")):
@@ -358,7 +379,8 @@ def check(path, index, context):
                "baselineDeclarations": len(declared),
                "prerequisites": dict(resolved), "gaps": len(packet.get("gaps", [])),
                "requests": len(packet.get("requests", [])), "stagesInScope": len(scope),
-               "stagesClosed": sum(1 for s in scope if covered.get(s, {}).get("status") == "closed")}
+               "stagesClosed": sum(1 for s in scope if covered.get(s, {}).get("status") == "closed"),
+               "stagesPlanned": sum(1 for s in scope if covered.get(s, {}).get("status") in PLANNED)}
     return errors, warnings, summary
 
 
