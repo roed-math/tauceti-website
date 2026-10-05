@@ -4,6 +4,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "research" / "blueprint"))
@@ -280,6 +281,39 @@ class ReviewTitles(unittest.TestCase):
                "roadmapIds": ["tauceti:TauCetiRoadmap/Chebotarev"]}
         self.assertEqual(title(job, {"tauceti:TauCetiRoadmap/Chebotarev": {"title": "The Chebotarev density theorem"}}),
                          "[Review] Fixes for the link map LINK-tauceti_TauCetiRoadmap_Chebotarev: The Chebotarev density theorem")
+
+    def test_a_revision_round_and_its_review_say_which_round_they_are(self):
+        roadmaps = {"R": {"title": "Roadmap R"}}
+        revision = {"id": "BP-R~2", "kind": "blueprint", "roadmapIds": ["R"], "scope": ["R:L0"]}
+        review = {"id": "REV-R~2", "kind": "review", "after": ["BP-R~2"], "roadmapIds": ["R"]}
+        self.assertEqual(title(revision, roadmaps), "[Blueprint] Roadmap R (revision 2)")
+        self.assertEqual(title(review, roadmaps), "[Review] Blueprint: Roadmap R (revision 2)")
+        # Fix rounds keep their titles.
+        fix = {"id": "FIX-RT-AREA-x~2", "kind": "fix", "name": "area x", "roadmapIds": ["R"]}
+        self.assertEqual(title(fix, roadmaps), "[Fix] Red-team findings on the area x")
+
+
+class Focus(unittest.TestCase):
+    def test_the_work_that_finishes_a_focus_roadmap_is_labelled_focus(self):
+        import issues
+        focus = {"R"}
+        cases = (({"id": "BP-R--L1", "kind": "blueprint", "roadmapIds": ["R"]}, True),
+                 ({"id": "BP-R~2", "kind": "blueprint", "roadmapIds": ["R"]}, True),
+                 ({"id": "REV-R--L1", "kind": "review", "after": ["BP-R--L1"], "roadmapIds": ["R"]}, True),
+                 ({"id": "ASM-R", "kind": "assembly", "roadmapIds": ["R"]}, True),
+                 ({"id": "FIX-RT-AREA-x", "kind": "fix", "roadmapIds": ["S", "R"]}, True),
+                 # Red teams check finished work, and keep their turn.
+                 ({"id": "RT-BP-R", "kind": "redteam", "roadmapIds": ["R"]}, False),
+                 ({"id": "REV-RT-BP-R", "kind": "review", "after": ["RT-BP-R"], "roadmapIds": ["R"]}, False),
+                 ({"id": "BP-S", "kind": "blueprint", "roadmapIds": ["S"]}, False))
+        for item, expected in cases:
+            self.assertEqual(issues.is_focus(item, focus), expected, item["id"])
+        with tempfile.TemporaryDirectory() as folder:
+            (Path(folder) / "focus.json").write_text(json.dumps({"areas": {"Area": ["R"]}}))
+            with mock.patch.object(issues, "BP", Path(folder)):
+                self.assertEqual(issues.focus_roadmaps(), {"R"})
+                self.assertIn("focus", labels_for({"id": "BP-R", "kind": "blueprint", "roadmapIds": ["R"], "after": []}, {}, {}))
+                self.assertNotIn("focus", labels_for({"id": "BP-S", "kind": "blueprint", "roadmapIds": ["S"], "after": []}, {}, {}))
 
 
 class IssueSize(unittest.TestCase):

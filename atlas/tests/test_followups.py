@@ -25,7 +25,24 @@ class FollowUps(unittest.TestCase):
         self.assertEqual(review_job("BP-R--L3"), "REV-R--L3")
         self.assertEqual(review_job("DESIGN-RPartII"), "REV-DESIGN-RPartII")
 
-    def test_only_an_accepted_complete_pass_hands_on_its_open_stages(self):
+    def test_only_a_finished_review_that_did_not_accept_the_plan_sends_it_back(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            (root / "research" / "blueprint" / "packets").mkdir(parents=True)
+            path = root / "research" / "blueprint" / "packets" / "R.json"
+            packet = "research/blueprint/packets/R.json"
+            with mock.patch.object(make_queue, "REPO", root):
+                for review, state, expected in (
+                        ({"status": "needs_changes", "reviewer": "independent-review-REV-R"}, "done", True),
+                        ({"status": "rejected", "reviewer": "independent-review-REV-R"}, "done", True),
+                        ({"status": "needs_changes", "reviewer": "independent-review-REV-R"}, "external", False),
+                        ({"status": "accepted", "reviewer": "independent-review-REV-R"}, "done", False),
+                        # A fix's review sent it back: the fix rounds revise it, not a plan revision.
+                        ({"status": "needs_changes", "reviewer": "independent-review-REV-FIX-RT-AREA-x"}, "done", False)):
+                    path.write_text(json.dumps({"status": "complete", "review": review}))
+                    self.assertEqual(make_queue.plan_sent_back(packet, "REV-R", state), expected, (review, state))
+
+    def test_only_an_accepted_pass_hands_on_its_open_stages(self):
         job = {"id": "BP-R", "kind": "blueprint", "outputs": ["research/blueprint/packets/R.json"]}
         done = {"REV-R": {"state": "done"}}
         with tempfile.TemporaryDirectory() as folder:
@@ -37,8 +54,9 @@ class FollowUps(unittest.TestCase):
                         ("complete", "accepted", done, True),
                         ("complete", "accepted", {"REV-R": {"state": "pending"}}, False),
                         ("complete", "needs_changes", done, False),
-                        # Accepted while partial under the earlier rule: its gaps go to red teams and fixes.
-                        ("partial", "accepted", done, False)):
+                        # Accepted while partial under the earlier rule: red teams and fixes plan no missing stage.
+                        ("partial", "accepted", done, True),
+                        ("partial", "needs_changes", done, False)):
                     path.write_text(json.dumps({"status": status, "review": {"status": review}}))
                     self.assertEqual(bool(make_queue.accepted_pass(job, prior)), expected, (status, review, prior))
 
