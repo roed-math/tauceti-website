@@ -31,7 +31,22 @@ def wheel_until(page, selector, delta, predicate, attempts=12):
   target=page.locator(selector).first
   bounds=target.bounding_box()
   if bounds is None:return False
-  page.mouse.move(bounds['x']+bounds['width']/2,bounds['y']+bounds['height']/2)
+  # A reader first drags a mark that sits at the chart's edge (its centre outside the chart or
+  # under the footer) into view, then zooms on it; the wheel over the footer would miss the chart.
+  chart=page.locator('#graph').bounding_box()
+  cx,cy=bounds['x']+bounds['width']/2,bounds['y']+bounds['height']/2
+  if chart and not (chart['x']+24<=cx<=chart['x']+chart['width']-24 and chart['y']+24<=cy<=chart['y']+chart['height']-24):
+   x0,y0=max(bounds['x'],chart['x']+4),max(bounds['y'],chart['y']+4)
+   x1,y1=min(bounds['x']+bounds['width'],chart['x']+chart['width']-4),min(bounds['y']+bounds['height'],chart['y']+chart['height']-4)
+   if x1<=x0 or y1<=y0:return False
+   gx,gy=(x0+x1)/2,(y0+y1)/2
+   page.mouse.move(gx,gy);page.mouse.down()
+   page.mouse.move(chart['x']+chart['width']/2+(gx-cx),chart['y']+chart['height']/2+(gy-cy),steps=12);page.mouse.up()
+   page.wait_for_timeout(400)
+   bounds=target.bounding_box()
+   if bounds is None:return False
+   cx,cy=bounds['x']+bounds['width']/2,bounds['y']+bounds['height']/2
+  page.mouse.move(cx,cy)
   page.mouse.wheel(0,delta)
   try:
    page.wait_for_function(predicate,timeout=1100)
