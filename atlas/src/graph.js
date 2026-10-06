@@ -19,9 +19,6 @@
   const isDefinitionKind = kind => kind === 'definition' || kind === 'construction' || !kind;
   const planetFill = d => isDefinitionKind(d.kind) ? OCEAN : SAND;
   const nameHash = text => Array.from(String(text)).reduce((seed, character) => ((seed * 31 + character.charCodeAt(0)) >>> 0), 7);
-  // The live galaxy (src/live.js): a four-pointed sparkle, drawn at a fixed size on screen, for each
-  // open pull request beside its roadmap.
-  const SPARKLE = 'M0,-7C.9,-1.6 1.6,-.9 7,0C1.6,.9 .9,1.6 0,7C-.9,1.6 -1.6,.9 -7,0C-1.6,-.9 -.9,-1.6 0,-7Z';
   // Two continents on a unit disc, kept well inside its rim.
   const LAND_PATH = 'M-.55,-.35Q-.3,-.75 .05,-.55Q.3,-.4 .1,-.15Q-.1,.05 -.35,-.05Q-.7,0 -.55,-.35Z' +
     'M.2,.25Q.55,.1 .65,.35Q.6,.65 .3,.7Q.05,.6 .2,.25Z';
@@ -116,20 +113,21 @@
         .tau-graph .tau-link-card [data-end]:hover text { fill: #f0e4c8; text-decoration: underline; }
         .tau-graph .tau-route { fill: none; stroke: #6f8496; }
         .tau-graph .tau-live { cursor: pointer; }
-        .tau-graph .tau-live .tau-live-spark, .tau-graph .tau-live .tau-live-glow { transform-box: fill-box; transform-origin: center; }
-        .tau-graph .tau-live .tau-live-spark { fill: #fff3d2; animation: tau-live-twinkle 6s ease-in-out infinite; }
-        .tau-graph .tau-live .tau-live-glow { fill: #ffd27c; animation: tau-live-glow 6s ease-in-out infinite; }
-        .tau-graph .tau-live-new { animation: tau-live-appear 2.5s ease-out 1 both; }
-        .tau-graph .tau-live-merged .tau-live-spark { animation: tau-live-flare 8s ease-out 1 forwards; }
-        .tau-graph .tau-live-merged .tau-live-glow { animation: tau-live-flare-glow 8s ease-out 1 forwards; }
+        .tau-graph .tau-live circle { transform-box: fill-box; transform-origin: center; }
+        .tau-graph .tau-live .tau-live-core { fill: #f4f8ff; }
+        .tau-graph .tau-live .tau-live-halo, .tau-graph .tau-live .tau-live-core { animation: tau-live-twinkle var(--twinkle, 7s) ease-in-out infinite; }
+        .tau-graph .tau-live-new { animation: tau-live-appear 3s ease-out 1 both; }
+        .tau-graph .tau-live.tau-live-merged circle { animation: tau-live-nova 8s ease-out 1 forwards; }
         .tau-graph .tau-live-closed { animation: tau-live-fade 4s ease-in 1 forwards; }
-        @keyframes tau-live-twinkle { 0%, 100% { opacity: .38; transform: scale(.6) rotate(0deg); } 50% { opacity: .95; transform: scale(1) rotate(22deg); } }
-        @keyframes tau-live-glow { 0%, 100% { opacity: .06; transform: scale(.8); } 50% { opacity: .26; transform: scale(1.25); } }
+        @keyframes tau-live-twinkle {
+          0% { opacity: .55; transform: scale(.86); } 9% { opacity: 1; transform: scale(1.08); } 14% { opacity: .64; transform: scale(.9); }
+          23% { opacity: .92; transform: scale(1); } 35% { opacity: .46; transform: scale(.82); } 48% { opacity: .86; transform: scale(1.02); }
+          57% { opacity: .6; transform: scale(.9); } 66% { opacity: 1; transform: scale(1.1); } 78% { opacity: .5; transform: scale(.85); }
+          89% { opacity: .82; transform: scale(.97); } 100% { opacity: .55; transform: scale(.86); } }
         @keyframes tau-live-appear { from { opacity: 0; } to { opacity: 1; } }
-        @keyframes tau-live-flare { 0% { opacity: .95; transform: scale(1); } 12% { opacity: 1; transform: scale(2.6) rotate(45deg); fill: #ffffff; } 100% { opacity: 0; transform: scale(.4) rotate(110deg); } }
-        @keyframes tau-live-flare-glow { 0% { opacity: .26; transform: scale(1); } 12% { opacity: .85; transform: scale(4); fill: #ffe7a6; } 100% { opacity: 0; transform: scale(5.5); } }
+        @keyframes tau-live-nova { 0% { opacity: .9; transform: scale(1); } 12% { opacity: 1; transform: scale(2.3); } 100% { opacity: 0; transform: scale(1.5); } }
         @keyframes tau-live-fade { to { opacity: 0; } }
-        @media (prefers-reduced-motion: reduce) { .tau-graph .tau-live .tau-live-spark, .tau-graph .tau-live .tau-live-glow { animation: none; opacity: .8; } }
+        @media (prefers-reduced-motion: reduce) { .tau-graph .tau-live .tau-live-halo, .tau-graph .tau-live .tau-live-core { animation: none; opacity: .85; } }
       `);
       const defs = this.svg.append('defs');
       defs.append('marker').attr('id', this.id + '-arrow').attr('viewBox', '0 -4 9 8').attr('refX', 8).attr('refY', 0)
@@ -146,6 +144,10 @@
       const corona = defs.append('radialGradient').attr('id', this.id + '-corona');
       [[.46, '#ffd06e', .55], [.52, '#ffb54a', .3], [.7, '#ff9b3d', .09], [1, '#ff9b3d', 0]]
         .forEach(([offset, colour, opacity]) => corona.append('stop').attr('offset', offset).attr('stop-color', colour).attr('stop-opacity', opacity));
+      // A star of the live galaxy: blue-white light that thins into a soft blue halo.
+      const liveStar = defs.append('radialGradient').attr('id', this.id + '-live-star');
+      [[0, '#ffffff', 1], [.16, '#e6efff', .95], [.4, '#a7c6ff', .42], [.7, '#7aa3ff', .12], [1, '#6690ff', 0]]
+        .forEach(([offset, colour, opacity]) => liveStar.append('stop').attr('offset', offset).attr('stop-color', colour).attr('stop-opacity', opacity));
       this.viewport = this.svg.append('g').attr('class', 'tau-viewport');
       this.layers = {};
       ['field', 'core', 'galaxy', 'route', 'constellation', 'figure', 'link', 'star', 'planet', 'artefact', 'live', 'label'].forEach(name => { this.layers[name] = this.viewport.append('g').attr('class', 'tau-layer-' + name); });
@@ -225,23 +227,25 @@
         const node = byId.get(item.roadmapId);
         if (!node || !Number.isFinite(node.x)) return;
         const h = nameHash(item.key), angle = (h % 3600) / 3600 * 2 * Math.PI, ring = 1.3 + ((h >>> 12) % 1000) / 1000 * .9;
+        const period = 5 + ((h >>> 8) % 4000) / 1000;
         placed.push(Object.assign({}, item, { x: node.x + Math.cos(angle) * node.r * ring, y: node.y + Math.sin(angle) * node.r * ring,
-                                               phase: -((h >>> 4) % 6000) / 1000 }));
+                                               period, phase: -((h >>> 4) % 9000) / 1000 }));
       });
       const join = this.layers.live.selectAll('g.tau-live').data(placed, d => d.key);
       join.exit().remove();
       const enter = join.enter().append('g');
-      enter.append('circle').attr('class', 'tau-live-glow').attr('r', 5);
-      enter.append('path').attr('class', 'tau-live-spark').attr('d', SPARKLE);
+      enter.append('circle').attr('class', 'tau-live-halo').attr('r', 4).attr('fill', `url(#${this.id}-live-star)`);
+      enter.append('circle').attr('class', 'tau-live-core').attr('r', .85);
       enter.append('title');
       enter.on('click', d => { d3.event.stopPropagation(); window.open(d.url, '_blank', 'noopener'); });
       const all = enter.merge(join)
         .attr('class', d => 'tau-live' + (d.state === 'merged' ? ' tau-live-merged' : d.state === 'closed' ? ' tau-live-closed' : d.fresh ? ' tau-live-new' : ''));
-      // Each twinkles at its own phase; a flare starts at once.
-      all.selectAll('.tau-live-spark, .tau-live-glow').style('animation-delay', function () {
-        const d = this.parentNode.__data__;
-        return d.state === 'open' ? d.phase + 's' : null;
-      });
+      // Each star flickers at its own slow rhythm and phase, like starlight; a merged one brightens at once and fades.
+      all.selectAll('circle').style('--twinkle', function () { return this.parentNode.__data__.period + 's'; })
+        .style('animation-delay', function () {
+          const d = this.parentNode.__data__;
+          return d.state === 'open' ? d.phase + 's' : null;
+        });
       all.select('title').text(d => `#${d.number} ${d.title}\n${d.state === 'merged' ? 'Merged just now' : d.state === 'closed' ? 'Closed' : 'Open pull request'}` +
         `${d.user ? ' by ' + d.user : ''}\nClick to open it on GitHub`);
       this.positionLive();

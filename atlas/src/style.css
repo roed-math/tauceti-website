@@ -31,7 +31,7 @@ button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible,te
 .quiet:hover{background:var(--hover);color:var(--ink)}
 /* The live galaxy's switch (the Tau Ceti build): a dot that twinkles like the pull requests on the map. */
 .live-status{gap:6px}.live-status[hidden]{display:none}.live-status b{color:var(--ink);font-weight:600}
-.live-dot{width:7px;height:7px;border-radius:50%;background:#ffd27c;box-shadow:0 0 6px #ffd27c;animation:live-dot 6s ease-in-out infinite}
+.live-dot{width:6px;height:6px;border-radius:50%;background:#e6efff;box-shadow:0 0 6px 1px #7aa3ff;animation:live-dot 7s ease-in-out infinite}
 .live-status.paused .live-dot{background:#6f7f8c;box-shadow:none;animation:none}.live-status.stale .live-dot{background:#c98a45;box-shadow:none}
 @keyframes live-dot{0%,100%{opacity:.45}50%{opacity:1}}
 @media (prefers-reduced-motion:reduce){.live-dot{animation:none}}
