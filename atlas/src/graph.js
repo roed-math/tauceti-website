@@ -223,13 +223,25 @@
     drawLive() {
       if (!this.universe || this.destroyed) return;
       const byId = this.universe.byId, placed = [];
+      // An umbrella roadmap with no layers of its own (Tau Ceti's Representation theory) has its label on
+      // pull requests for any of its sub-roadmaps, and the label does not say which. Such a pull request
+      // twinkles beside one of the sub-roadmaps, picked by its number, rather than around an empty disc.
+      const children = new Map();
+      (this.universe.constellations || []).forEach(c => {
+        if (c.parentRoadmapId && (c.starIds || []).length) (children.get(c.parentRoadmapId) || children.set(c.parentRoadmapId, []).get(c.parentRoadmapId)).push(c);
+      });
       this.liveItems.forEach(item => {
-        const node = byId.get(item.roadmapId);
+        let node = byId.get(item.roadmapId), umbrella = null;
+        if (node && !(node.starIds || []).length && children.has(node.id)) {
+          const kids = children.get(node.id);
+          umbrella = node; node = kids[nameHash(String(item.number)) % kids.length];
+        }
         if (!node || !Number.isFinite(node.x)) return;
         const h = nameHash(item.key), angle = (h % 3600) / 3600 * 2 * Math.PI, ring = 1.3 + ((h >>> 12) % 1000) / 1000 * .9;
         const period = 5 + ((h >>> 8) % 4000) / 1000;
         placed.push(Object.assign({}, item, { x: node.x + Math.cos(angle) * node.r * ring, y: node.y + Math.sin(angle) * node.r * ring,
-                                               period, phase: -((h >>> 4) % 9000) / 1000 }));
+                                               period, phase: -((h >>> 4) % 9000) / 1000,
+                                               umbrella: umbrella ? normalizeText(umbrella.label) : null }));
       });
       const join = this.layers.live.selectAll('g.tau-live').data(placed, d => d.key);
       join.exit().remove();
@@ -247,7 +259,8 @@
           return d.state === 'open' ? d.phase + 's' : null;
         });
       all.select('title').text(d => `#${d.number} ${d.title}\n${d.state === 'merged' ? 'Merged just now' : d.state === 'closed' ? 'Closed' : 'Open pull request'}` +
-        `${d.user ? ' by ' + d.user : ''}\nClick to open it on GitHub`);
+        `${d.user ? ' by ' + d.user : ''}` + (d.umbrella ? `\nLabelled for ${d.umbrella} as a whole, so shown beside one of its sub-roadmaps` : '') +
+        '\nClick to open it on GitHub');
       this.positionLive();
     }
 
