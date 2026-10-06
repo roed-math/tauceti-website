@@ -150,6 +150,11 @@ body.has-selection .app-layout{grid-template-columns:236px minmax(320px,1fr) 380
 .report-links{display:flex;flex-wrap:wrap;gap:6px 12px;margin:6px 0 4px}
 .scale-paper{display:flex;align-items:center;gap:7px;margin-top:6px;font-size:10px;color:var(--faint)}
 .progress-legend .paper{flex:none;fill:none;stroke:var(--planned);stroke-width:1.3}
+/* The live galaxy's key: a star like those on the map, flickering the same way. */
+.scale-live{display:flex;align-items:center;gap:7px;margin-top:6px;font-size:10px;color:var(--faint)}.scale-live[hidden]{display:none}
+.progress-legend .live-star{width:11px;height:11px;border-radius:50%;flex:none;background:radial-gradient(circle,#fff 0 13%,#e6efff 19%,rgba(167,198,255,.48) 40%,rgba(102,144,255,0) 70%);animation:live-star 7s ease-in-out infinite}
+@keyframes live-star{0%{opacity:.55;transform:scale(.86)}9%{opacity:1;transform:scale(1.08)}14%{opacity:.64;transform:scale(.9)}23%{opacity:.92;transform:scale(1)}35%{opacity:.46;transform:scale(.82)}48%{opacity:.86;transform:scale(1.02)}57%{opacity:.6;transform:scale(.9)}66%{opacity:1;transform:scale(1.1)}78%{opacity:.5;transform:scale(.85)}89%{opacity:.82;transform:scale(.97)}100%{opacity:.55;transform:scale(.86)}}
+@media (prefers-reduced-motion:reduce){.progress-legend .live-star{animation:none}}
 .kind-legend{display:inline-flex;align-items:center;gap:12px}
 .kind-legend span{display:inline-flex;align-items:center;gap:5px}
 .kind-legend .kind-icon{width:16px;height:12px;flex:none}

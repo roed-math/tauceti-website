@@ -474,8 +474,12 @@ progress.subscribe(()=>{renderInspector();renderCatalogue();renderStats();if(sta
 $('roadmap-total').textContent=DATA.roadmaps.length.toLocaleString();$('stage-total').textContent=DATA.stages.length.toLocaleString();document.querySelector('[data-view="subjects"] small').textContent=allGroups.length;document.querySelector('[data-view="all"] small').textContent=DATA.roadmaps.length;
 if(DATA.variant==='tauceti'){document.body.classList.add('variant-tauceti');document.title='Tau Ceti roadmaps — Tau Ceti Atlas';}
 // The live galaxy (the Tau Ceti build): open pull requests twinkle beside their roadmaps until they merge (src/live.js).
-const startLive=()=>{if(!DATA.live||!window.TauLive)return;const button=$('live-status'),count=button&&button.querySelector('b');
- const live=TauLive.create({...DATA.live,roadmapIds:new Set(DATA.roadmaps.map(r=>r.id)),onChange:(items,s)=>{graph.setLive(items);if(!button)return;
+const startLive=()=>{if(!DATA.live||!window.TauLive)return;const button=$('live-status'),count=button&&button.querySelector('b'),legend=$('live-legend'),guide=$('live-guide');
+ if(guide)guide.hidden=false;
+ const live=TauLive.create({...DATA.live,roadmapIds:new Set(DATA.roadmaps.map(r=>r.id)),onChange:(items,s)=>{graph.setLive(items);
+  // The legend's key shows while the stars do.
+  if(legend){legend.hidden=!!s.paused;legend.title=`${s.shown.toLocaleString()} open pull requests on ${s.roadmaps} roadmaps`;}
+  if(!button)return;
   button.hidden=false;button.setAttribute('aria-pressed',String(!s.paused));button.classList.toggle('paused',!!s.paused);button.classList.toggle('stale',!!s.error);
   count.textContent=s.paused?'Paused':s.shown.toLocaleString();
   button.title=s.paused?'Pull requests are not shown. Click to show them again.':`${s.error?s.error+'. ':''}${s.shown.toLocaleString()} open pull requests on ${s.roadmaps} roadmaps twinkle beside them until they merge${s.updated?' (updated '+s.updated.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})+')':''}. Click to hide them.`;}});
