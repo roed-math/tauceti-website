@@ -19,6 +19,9 @@
   const isDefinitionKind = kind => kind === 'definition' || kind === 'construction' || !kind;
   const planetFill = d => isDefinitionKind(d.kind) ? OCEAN : SAND;
   const nameHash = text => Array.from(String(text)).reduce((seed, character) => ((seed * 31 + character.charCodeAt(0)) >>> 0), 7);
+  // The live galaxy (src/live.js): a four-pointed sparkle, drawn at a fixed size on screen, for each
+  // open pull request beside its roadmap.
+  const SPARKLE = 'M0,-7C.9,-1.6 1.6,-.9 7,0C1.6,.9 .9,1.6 0,7C-.9,1.6 -1.6,.9 -7,0C-1.6,-.9 -.9,-1.6 0,-7Z';
   // Two continents on a unit disc, kept well inside its rim.
   const LAND_PATH = 'M-.55,-.35Q-.3,-.75 .05,-.55Q.3,-.4 .1,-.15Q-.1,.05 -.35,-.05Q-.7,0 -.55,-.35Z' +
     'M.2,.25Q.55,.1 .65,.35Q.6,.65 .3,.7Q.05,.6 .2,.25Z';
@@ -112,6 +115,21 @@
         .tau-graph .tau-link-card [data-end] rect { fill: transparent; pointer-events: all; }
         .tau-graph .tau-link-card [data-end]:hover text { fill: #f0e4c8; text-decoration: underline; }
         .tau-graph .tau-route { fill: none; stroke: #6f8496; }
+        .tau-graph .tau-live { cursor: pointer; }
+        .tau-graph .tau-live .tau-live-spark, .tau-graph .tau-live .tau-live-glow { transform-box: fill-box; transform-origin: center; }
+        .tau-graph .tau-live .tau-live-spark { fill: #fff3d2; animation: tau-live-twinkle 6s ease-in-out infinite; }
+        .tau-graph .tau-live .tau-live-glow { fill: #ffd27c; animation: tau-live-glow 6s ease-in-out infinite; }
+        .tau-graph .tau-live-new { animation: tau-live-appear 2.5s ease-out 1 both; }
+        .tau-graph .tau-live-merged .tau-live-spark { animation: tau-live-flare 8s ease-out 1 forwards; }
+        .tau-graph .tau-live-merged .tau-live-glow { animation: tau-live-flare-glow 8s ease-out 1 forwards; }
+        .tau-graph .tau-live-closed { animation: tau-live-fade 4s ease-in 1 forwards; }
+        @keyframes tau-live-twinkle { 0%, 100% { opacity: .38; transform: scale(.6) rotate(0deg); } 50% { opacity: .95; transform: scale(1) rotate(22deg); } }
+        @keyframes tau-live-glow { 0%, 100% { opacity: .06; transform: scale(.8); } 50% { opacity: .26; transform: scale(1.25); } }
+        @keyframes tau-live-appear { from { opacity: 0; } to { opacity: 1; } }
+        @keyframes tau-live-flare { 0% { opacity: .95; transform: scale(1); } 12% { opacity: 1; transform: scale(2.6) rotate(45deg); fill: #ffffff; } 100% { opacity: 0; transform: scale(.4) rotate(110deg); } }
+        @keyframes tau-live-flare-glow { 0% { opacity: .26; transform: scale(1); } 12% { opacity: .85; transform: scale(4); fill: #ffe7a6; } 100% { opacity: 0; transform: scale(5.5); } }
+        @keyframes tau-live-fade { to { opacity: 0; } }
+        @media (prefers-reduced-motion: reduce) { .tau-graph .tau-live .tau-live-spark, .tau-graph .tau-live .tau-live-glow { animation: none; opacity: .8; } }
       `);
       const defs = this.svg.append('defs');
       defs.append('marker').attr('id', this.id + '-arrow').attr('viewBox', '0 -4 9 8').attr('refX', 8).attr('refY', 0)
@@ -130,7 +148,8 @@
         .forEach(([offset, colour, opacity]) => corona.append('stop').attr('offset', offset).attr('stop-color', colour).attr('stop-opacity', opacity));
       this.viewport = this.svg.append('g').attr('class', 'tau-viewport');
       this.layers = {};
-      ['field', 'core', 'galaxy', 'route', 'constellation', 'figure', 'link', 'star', 'planet', 'artefact', 'label'].forEach(name => { this.layers[name] = this.viewport.append('g').attr('class', 'tau-layer-' + name); });
+      ['field', 'core', 'galaxy', 'route', 'constellation', 'figure', 'link', 'star', 'planet', 'artefact', 'live', 'label'].forEach(name => { this.layers[name] = this.viewport.append('g').attr('class', 'tau-layer-' + name); });
+      this.liveItems = [];
       // Drawn in screen space, above everything: the card of a selected link.
       this.overlay = this.svg.append('g').attr('class', 'tau-overlay');
       this.selectedLinkId = null; this.hoveredLinkId = null;
@@ -189,8 +208,48 @@
       if (settings.camera) this.restoreCamera(settings.camera);
       else if (settings.keepCamera && this.transform !== d3.zoomIdentity) this.scheduleRender();
       else { this.awaitingFit = true; this.resize(); }
+      this.drawLive();
       this.scheduleRender();
       return this;
+    }
+
+    // ----- the live galaxy ----------------------------------------------------
+    // Open pull requests (src/live.js) twinkle slowly beside their roadmaps, each at a spot of its
+    // own; a merged one flares and fades, a closed one fades. They keep their size on screen.
+    setLive(items) { this.liveItems = items || []; this.drawLive(); return this; }
+
+    drawLive() {
+      if (!this.universe || this.destroyed) return;
+      const byId = this.universe.byId, placed = [];
+      this.liveItems.forEach(item => {
+        const node = byId.get(item.roadmapId);
+        if (!node || !Number.isFinite(node.x)) return;
+        const h = nameHash(item.key), angle = (h % 3600) / 3600 * 2 * Math.PI, ring = 1.3 + ((h >>> 12) % 1000) / 1000 * .9;
+        placed.push(Object.assign({}, item, { x: node.x + Math.cos(angle) * node.r * ring, y: node.y + Math.sin(angle) * node.r * ring,
+                                               phase: -((h >>> 4) % 6000) / 1000 }));
+      });
+      const join = this.layers.live.selectAll('g.tau-live').data(placed, d => d.key);
+      join.exit().remove();
+      const enter = join.enter().append('g');
+      enter.append('circle').attr('class', 'tau-live-glow').attr('r', 5);
+      enter.append('path').attr('class', 'tau-live-spark').attr('d', SPARKLE);
+      enter.append('title');
+      enter.on('click', d => { d3.event.stopPropagation(); window.open(d.url, '_blank', 'noopener'); });
+      const all = enter.merge(join)
+        .attr('class', d => 'tau-live' + (d.state === 'merged' ? ' tau-live-merged' : d.state === 'closed' ? ' tau-live-closed' : d.fresh ? ' tau-live-new' : ''));
+      // Each twinkles at its own phase; a flare starts at once.
+      all.selectAll('.tau-live-spark, .tau-live-glow').style('animation-delay', function () {
+        const d = this.parentNode.__data__;
+        return d.state === 'open' ? d.phase + 's' : null;
+      });
+      all.select('title').text(d => `#${d.number} ${d.title}\n${d.state === 'merged' ? 'Merged just now' : d.state === 'closed' ? 'Closed' : 'Open pull request'}` +
+        `${d.user ? ' by ' + d.user : ''}\nClick to open it on GitHub`);
+      this.positionLive();
+    }
+
+    positionLive() {
+      const k = this.transform.k;
+      this.layers.live.selectAll('g.tau-live').attr('transform', d => `translate(${d.x},${d.y}) scale(${1 / k})`);
     }
 
     setProgress(values) {
@@ -445,6 +504,7 @@
       const nearFade = g => .6 * Math.max(0, Math.min(1, (size(g) - .35) / .5)) * Math.max(0, Math.min(1, (9 - k) / 4));
       galaxySelection.select('.tau-dust-far').attr('opacity', farFade).attr('display', g => farFade(g) > 0 ? null : 'none');
       galaxySelection.select('.tau-dust-near').attr('opacity', nearFade).attr('display', g => nearFade(g) > 0 ? null : 'none');
+      this.positionLive();
     }
 
     renderConstellations(items, k, active) {

@@ -205,6 +205,9 @@ def build(output: Path, blueprints: Path | None = None, variant: str | None = No
     if variant == "tauceti":
         # The Tau Ceti build: only the roadmaps Tau Ceti's Progress page reports.
         atlas = tauceti_only(atlas)
+        # The live galaxy (src/live.js): the page asks GitHub for Tau Ceti's open pull requests and shows
+        # each beside the roadmaps its `roadmap/<Name>` labels name.
+        atlas["live"] = {"repo": "TauCetiProject/TauCeti", "labelPrefix": "roadmap/", "idPrefix": "tauceti:TauCetiRoadmap/"}
     retired, link_packets = context["retired"], context["linkPackets"]
     # Layers that are not source refinements: the snapshot's, and those of any roadmap added above.
     original_stage_count = sum(1 for stage in atlas["stages"] if not stage.get("expansion"))
@@ -220,6 +223,7 @@ def build(output: Path, blueprints: Path | None = None, variant: str | None = No
         "LANDMARKS": "src/landmarks.js",
         "PRESENTATION": "src/presentation.js",
         "REFERENCES": "src/references.js",
+        "LIVE": "src/live.js",
         "APP": "src/app.js",
     }
     style_paths = ["src/style.css"]
