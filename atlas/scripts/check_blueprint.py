@@ -241,11 +241,13 @@ def check(path, index, context):
         for ref in node.get("sources", []) or []:
             if ref.get("sourceId") not in sources:
                 errors.append(f"{nid}: unknown sourceId {ref.get('sourceId')!r}")
-            for key in ("locator", "excerpt", "match"):
+            for key in ("locator", "match"):
                 if not text(ref.get(key)):
                     errors.append(f"{nid}: source reference missing {key}")
-            if len(ref.get("excerpt") or "") > 400:
-                warnings.append(f"{nid}: excerpt longer than 400 characters")
+            # The atlas states results in its own words with theorem numbers, and quotes no source
+            # (PROTOCOL.md section 5). Old packets still carry excerpts, until they are removed.
+            if text(ref.get("excerpt")):
+                warnings.append(f"{nid}: a verbatim source excerpt; remove it and cite the source by locator, in your own words")
         if kind in ("definition", "construction"):
             api = node.get("api") or []
             if not api:

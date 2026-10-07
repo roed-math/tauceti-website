@@ -27,6 +27,8 @@ import shutil
 import sys
 from pathlib import Path
 
+from blueprints import drop_source_excerpts
+
 ROOT = Path(__file__).resolve().parents[1]
 RECORD = "data/promotions.json"
 PURPOSE = ("Work promoted into the atlas by scripts/promote.py: each source file, the data files it became, and the review "
@@ -181,7 +183,12 @@ def stage(root: Path, files: list, validate) -> str | None:
         target = root / dest
         saved[dest] = target.read_bytes() if target.exists() else None
         target.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copyfile(root / source, target)
+        if source.startswith("research/blueprint/packets/") and source.endswith(".json"):
+            # The published copy quotes no source (PROTOCOL.md section 5).
+            packet = drop_source_excerpts(json.loads((root / source).read_text(encoding="utf-8")))
+            target.write_text(json.dumps(packet, indent=1, ensure_ascii=False) + "\n", encoding="utf-8")
+        else:
+            shutil.copyfile(root / source, target)
     try:
         if validate:
             validate()

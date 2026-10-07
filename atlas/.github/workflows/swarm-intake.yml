@@ -79,6 +79,21 @@ jobs:
             done
             exit 1
           fi
+      # The atlas quotes no source (PROTOCOL.md section 5). Excerpts that merged work
+      # still carries are removed; files that open pull requests change wait for them.
+      - name: Remove verbatim source excerpts
+        run: |
+          git pull --rebase -q
+          python3 scripts/quotations.py --write
+          if [ -n "$(git status --porcelain -- research/blueprint/packets research/blueprint/papers data/blueprints)" ]; then
+            git add research/blueprint/packets research/blueprint/papers data/blueprints
+            git commit -q -m "Quote no sources: remove the excerpts of merged work"
+            for attempt in 1 2 3 4 5; do
+              git pull --rebase -q && git push -q && exit 0
+              sleep $((attempt * 10))
+            done
+            exit 1
+          fi
       # Mistakes found in published sources (PROTOCOL.md section 18) are
       # collected into research/errata/REGISTER.md after every merge.
       - name: Update the register of mistakes in published sources

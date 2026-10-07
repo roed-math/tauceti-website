@@ -50,6 +50,27 @@ def errors_for(data):
     return errors
 
 
+class Quotation(unittest.TestCase):
+    """PROTOCOL.md section 5: citations give a locator and the worker's own words, never a passage of the source."""
+
+    def warnings_for(self, data):
+        with tempfile.TemporaryDirectory() as folder:
+            path = Path(folder) / "R.json"
+            path.write_text(json.dumps(data))
+            _, warnings, _ = check(path, None, CONTEXT)
+        return warnings
+
+    def test_a_citation_needs_a_locator_and_a_match_but_no_excerpt(self):
+        quiet = definition(sources=[{"sourceId": "s", "locator": "Theorem 2.1, p. 1", "match": "It defines the object."}])
+        self.assertFalse([e for e in errors_for(packet([quiet])) if "source reference" in e])
+        self.assertFalse([w for w in self.warnings_for(packet([quiet])) if "verbatim" in w])
+        self.assertTrue([e for e in errors_for(packet([definition(sources=[{"sourceId": "s", "locator": "p. 1"}])])) if "missing match" in e])
+
+    def test_an_excerpt_is_flagged_for_removal(self):
+        quoted = definition(sources=[{"sourceId": "s", "locator": "p. 1", "excerpt": "Definition.", "match": "exact"}])
+        self.assertTrue([w for w in self.warnings_for(packet([quoted])) if "verbatim source excerpt" in w])
+
+
 class Passes(unittest.TestCase):
     """PROTOCOL.md section 0: a pass is complete at the node budget or when every stage is planned."""
 

@@ -130,12 +130,13 @@ def unlawful(documents: dict, reg: dict) -> list:
 def blocked(deps: dict, reg: dict, kind: str = "") -> list:
     """The cited works a reader cannot get and no free source replaces.
 
-    These are what someone has to buy or borrow for the work to proceed. `kind`
+    These are what someone has to buy or borrow for the work to proceed. A work the maintainer has
+    provided (`provided`) is no longer one of them. `kind`
     narrows to "book", "article" or "notes"; empty means all of them.
     """
     index = works(reg)
     wanted = [index[work] for work in deps
-              if index[work].get("access") != "free" and not index[work].get("substitute")
+              if index[work].get("access") != "free" and not index[work].get("substitute") and not index[work].get("provided")
               and (not kind or index[work].get("kind", "book") == kind)]
     return sorted(wanted, key=lambda work: (-len(deps[work["id"]]), work["id"]))
 
@@ -305,7 +306,7 @@ def main(argv: list) -> int:
     index = works(reg)
     named = [index[work]["title"] for work in spare
              if index[work].get("kind", "book") == "book" and index[work].get("access") != "free"
-             and not index[work].get("substitute")]
+             and not index[work].get("substitute") and not index[work].get("provided")]
     print(f"\nNamed in a reading list but nothing is pinned to them ({len(named)}) -- "
           f"no one has to obtain these:")
     for title in sorted(named):

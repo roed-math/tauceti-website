@@ -11,7 +11,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
-from blueprints import add_new_roadmaps, load_promoted, merge_blueprints, replaced_layers, trim_decompositions  # noqa: E402
+from blueprints import add_new_roadmaps, drop_source_excerpts, load_promoted, merge_blueprints, replaced_layers, trim_decompositions  # noqa: E402
 from decompositions import merge_decompositions, merge_links  # noqa: E402
 from galaxies import apply_galaxies  # noqa: E402
 from restructure import apply_restructurings, load_accepted  # noqa: E402
@@ -239,7 +239,8 @@ def build(output: Path, blueprints: Path | None = None, variant: str | None = No
         if marker not in page:
             raise ValueError("Missing template marker: " + marker)
         page = page.replace(marker, safe_script(read_text(path)))
-    payload = json.dumps(atlas, ensure_ascii=False, separators=(",", ":"))
+    # The page quotes no source: a citation carries its locator, never a passage (PROTOCOL.md section 5).
+    payload = json.dumps(drop_source_excerpts(atlas), ensure_ascii=False, separators=(",", ":"))
     payload = payload.replace("<", "\\u003c").replace("\u2028", "\\u2028").replace("\u2029", "\\u2029")
     if "/*__DATA__*/" not in page:
         raise ValueError("Missing data template marker.")

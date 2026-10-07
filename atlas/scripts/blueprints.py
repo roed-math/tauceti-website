@@ -28,6 +28,18 @@ EVIDENCE_PER_LINK = 2
 EXCERPT = 160
 
 
+def drop_source_excerpts(value):
+    """value without the verbatim `excerpt` of any reference to a source: a citation, a paper's source or a
+    misprint record (a dict with a `sourceId`, `source` or `locator`). The atlas keeps its own statements and
+    the theorem numbers they rest on, never passages of the sources (PROTOCOL.md section 5)."""
+    if isinstance(value, dict):
+        cites = bool({"sourceId", "source", "locator"} & value.keys())
+        return {key: drop_source_excerpts(item) for key, item in value.items() if not (key == "excerpt" and cites)}
+    if isinstance(value, list):
+        return [drop_source_excerpts(item) for item in value]
+    return value
+
+
 def load_promoted(root: Path, folder: Path | None = None) -> tuple:
     """(packets as [(file stem, packet)], documents {file stem: path}, new roadmap definitions).
 

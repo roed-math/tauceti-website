@@ -6,7 +6,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
-from blueprints import add_new_roadmaps, merge_blueprints, replaced_layers, trim_decompositions  # noqa: E402
+from blueprints import add_new_roadmaps, drop_source_excerpts, merge_blueprints, replaced_layers, trim_decompositions  # noqa: E402
 
 
 def stage(sid, requires=()):
@@ -41,6 +41,30 @@ def packet():
                       node("R:L0/c", "theorem", "The beta theorem", ["R:L0/b", "S:S1", "mathlib:Foo"], planet="Beta theorem"),
                       node("R:L1/d", "definition", "The delta object", ["R:L0/c"])],
             "coverage": [{"stageId": "R:L0", "status": "source_decomposed", "remaining": []}]}
+
+
+class NoQuotation(unittest.TestCase):
+    def test_published_citations_keep_their_locator_and_lose_the_passage(self):
+        packet = {"nodes": [{"id": "R:L0/x", "statement": "Our own words.", "sources": [{"sourceId": "s", "locator": "Thm 1", "excerpt": "Their words.", "match": "m"}]}],
+                  "sourceIssues": [{"source": "s", "excerpt": "A misprint, quoted.", "locator": "p. 2"}]}
+        clean = drop_source_excerpts(packet)
+        self.assertEqual(clean["nodes"][0]["sources"], [{"sourceId": "s", "locator": "Thm 1", "match": "m"}])
+        self.assertEqual(clean["nodes"][0]["statement"], "Our own words.")
+        # A misprint record loses its quoted context too; what it says the source prints is in our own words.
+        self.assertEqual(clean["sourceIssues"], [{"source": "s", "locator": "p. 2"}])
+        self.assertIn("excerpt", packet["nodes"][0]["sources"][0])
+
+    def test_the_cut_keeps_the_layout_of_the_rest_of_the_file(self):
+        sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
+        from quotations import stripped
+        text = ('{\n  "nodes": [\n    {\n      "id": "R:L0/x",\n      "sources": [\n        {\n          "sourceId": "s",\n'
+                '          "locator": "Theorem 1",\n          "excerpt": "Their \\"quoted\\" words.",\n          "match": "m"\n        },\n'
+                '        {"sourceId": "t", "locator": "p. 3", "match": "n", "excerpt": "More."}\n      ]\n    }\n  ]\n}\n')
+        cut = stripped(text)
+        self.assertEqual(text.count("\n") - cut.count("\n"), 1)
+        self.assertNotIn("excerpt", cut)
+        self.assertIn('{"sourceId": "t", "locator": "p. 3", "match": "n"}', cut)
+        self.assertIsNone(stripped(cut))
 
 
 class Blueprints(unittest.TestCase):
