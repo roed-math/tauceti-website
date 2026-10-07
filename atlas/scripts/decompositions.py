@@ -133,7 +133,9 @@ def merge_decompositions(snapshot, packets):
             for reference in node["sources"]:
                 if reference.get("sourceId") not in sources:
                     raise ValueError(f"Unknown source for {node_id}")
-                for key in ("locator", "excerpt", "match"):
+                # A citation gives its locator and, in our own words, what is there; it quotes no
+                # passage of the source (research/blueprint/PROTOCOL.md section 5).
+                for key in ("locator", "match"):
                     require_text(reference.get(key), node_id + " " + key)
             new_nodes[node_id] = (owner, node)
         covered = set()

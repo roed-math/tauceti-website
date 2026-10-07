@@ -5,7 +5,8 @@ Citations and misprint records used to carry an `excerpt`, a passage copied from
 every one of them from:
 - the plans (research/blueprint/packets);
 - the paper extractions (research/blueprint/papers);
-- their published copies (data/blueprints).
+- their published copies (data/blueprints);
+- the source decompositions and their drafts (data/decompositions, research/expansion).
 
 The statement each node makes, in the worker's own words, the theorem number in its `locator`, and the `match`
 saying what is there all stay.
@@ -29,7 +30,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from blueprints import drop_source_excerpts  # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[1]
-FOLDERS = ("research/blueprint/packets", "research/blueprint/papers", "data/blueprints")
+FOLDERS = ("research/blueprint/packets", "research/blueprint/papers", "data/blueprints", "data/decompositions",
+           "research/expansion/drafts", "research/expansion/external/*")
 
 
 STRING = r'"(?:[^"\\]|\\.)*"'
@@ -80,7 +82,7 @@ def main() -> int:
     busy = set() if args.all else open_pull_request_files()
     changed, waiting = [], []
     for folder in FOLDERS:
-        for path in sorted((ROOT / folder).glob("*.json")):
+        for path in sorted(ROOT.glob(folder + "/*.json")):
             relative = str(path.relative_to(ROOT))
             try:
                 text = stripped(path.read_text(encoding="utf-8"))

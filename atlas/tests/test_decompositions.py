@@ -1,3 +1,4 @@
+import copy
 """Integrity checks for source refinements; no fixtures are published in the atlas."""
 from copy import deepcopy
 from pathlib import Path
@@ -77,8 +78,10 @@ class DecompositionIntegrity(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "Invalid dependency"):
             merge_decompositions(self.atlas, [self.packet])
 
-    def test_citation_without_a_verified_excerpt_is_rejected(self):
-        self.packet["nodes"][0]["sources"][0]["excerpt"] = ""
+    def test_citation_without_a_locator_is_rejected_and_needs_no_excerpt(self):
+        self.packet["nodes"][0]["sources"][0].pop("excerpt")
+        merge_decompositions(copy.deepcopy(self.atlas), [copy.deepcopy(self.packet)])
+        self.packet["nodes"][0]["sources"][0]["locator"] = ""
         with self.assertRaisesRegex(ValueError, "Missing text"):
             merge_decompositions(self.atlas, [self.packet])
 
