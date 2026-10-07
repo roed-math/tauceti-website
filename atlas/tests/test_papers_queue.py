@@ -78,6 +78,28 @@ class PaperDesigns(unittest.TestCase):
         self.assertIn("(300 items)", brief)
         self.assertIn("research/blueprint/papers/PAPER-X.result.json, the route to Fresh", brief)
 
+    def test_a_direction_split_off_a_combined_design_is_a_design_of_its_own(self):
+        massey = self.call({"route": "part-ii", "parent": "Heights", "roadmap": "HeightsPartIIMassey", "title": "Massey heights", "area": "arithmeticgeometry",
+                            "brief": "Massey products.", "items": ["PAPER-X/1"]})
+        fano = self.call({"route": "part-ii", "parent": "Heights", "roadmap": "HeightsPartIIFano", "title": "Random Fano", "area": "arithmeticgeometry",
+                          "brief": "Fano varieties.", "items": ["PAPER-Y/2"]}, "PAPER-Y")
+        splits = {"HeightsPartIIFano": {"design": "DESIGN-HeightsPartII", "parent": "Heights", "packet": "research/blueprint/packets/HeightsPartII.json",
+                                        "roadmaps": ["HeightsPartIIFano"], "notes": {"HeightsPartIIFano": "Mind the Massey part."}}}
+        designs = {d[0]: d for d in make_queue.paper_designs([massey, fano], self.ROADMAPS, splits)}
+        self.assertEqual(sorted(designs), ["DESIGN-HeightsPartII", "DESIGN-HeightsPartIIFano"])
+        self.assertIn("Massey products.", designs["DESIGN-HeightsPartII"][3])
+        self.assertNotIn("Fano varieties.", designs["DESIGN-HeightsPartII"][3])
+        job, rid, area, brief, title = designs["DESIGN-HeightsPartIIFano"]
+        self.assertEqual((rid, area, title), ("HeightsPartIIFano", "arithmeticgeometry", "Random Fano"))
+        self.assertIn("extends Heights", brief)
+        self.assertIn("research/blueprint/packets/HeightsPartII.json", brief)
+        self.assertIn("Mind the Massey part.", brief)
+        self.assertIn("Fano varieties.", brief)
+        # A split names its parent: a route of another roadmap's Part II stays where it was.
+        other = self.call({"route": "part-ii", "parent": "Other", "roadmap": "HeightsPartIIFano", "title": "Elsewhere", "area": "langlands",
+                           "brief": "Other.", "items": ["PAPER-Z/1"]}, "PAPER-Z")
+        self.assertEqual([d[0] for d in make_queue.paper_designs([other], self.ROADMAPS, splits)], ["DESIGN-OtherPartII"])
+
     def test_a_new_roadmap_several_papers_call_for_is_one_design(self):
         route = {"route": "new", "roadmap": "Fresh", "title": "Fresh theory", "area": "langlands", "brief": "Fresh.", "items": ["PAPER-X/4"]}
         designs = make_queue.paper_designs([self.call(route), self.call(dict(route, brief="Also fresh.", items=["PAPER-Y/1"]), "PAPER-Y")], self.ROADMAPS)

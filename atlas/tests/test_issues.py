@@ -315,6 +315,24 @@ class Focus(unittest.TestCase):
                 self.assertIn("focus", labels_for({"id": "BP-R", "kind": "blueprint", "roadmapIds": ["R"], "after": []}, {}, {}))
                 self.assertNotIn("focus", labels_for({"id": "BP-S", "kind": "blueprint", "roadmapIds": ["S"], "after": []}, {}, {}))
 
+    def test_the_areas_put_first_are_labelled_top_as_well(self):
+        import issues
+        with tempfile.TemporaryDirectory() as folder:
+            (Path(folder) / "focus.json").write_text(json.dumps({"top": ["First"], "areas": {"First": ["R"], "Later": ["S"]}}))
+            with mock.patch.object(issues, "BP", Path(folder)):
+                self.assertEqual(issues.focus_roadmaps(), {"R", "S"})
+                self.assertEqual(issues.focus_roadmaps(top=True), {"R"})
+                first = labels_for({"id": "BP-R", "kind": "blueprint", "roadmapIds": ["R"], "after": []}, {}, {})
+                later = labels_for({"id": "BP-S", "kind": "blueprint", "roadmapIds": ["S"], "after": []}, {}, {})
+                self.assertTrue({"focus", "top"} <= set(first))
+                self.assertIn("focus", later)
+                self.assertNotIn("top", later)
+                # Red teams keep their turn in the top areas too.
+                self.assertNotIn("top", labels_for({"id": "RT-BP-R", "kind": "redteam", "roadmapIds": ["R"], "after": []}, {}, {}))
+            (Path(folder) / "focus.json").write_text(json.dumps({"areas": {"First": ["R"]}}))
+            with mock.patch.object(issues, "BP", Path(folder)):
+                self.assertEqual(issues.focus_roadmaps(top=True), set())
+
 
 class IssueSize(unittest.TestCase):
     def test_instructions_too_long_for_an_issue_shorten_their_longest_list_entries(self):
