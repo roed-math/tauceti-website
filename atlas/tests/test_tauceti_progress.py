@@ -188,6 +188,30 @@ Change of family.
         apply(data, board)
         self.assertEqual([row["id"] for row in data["taucetiProgress"]["unplaced"]], ["TauCetiRoadmap/Mystery"])
 
+    def test_the_title_comes_before_the_roadmaps_a_readme_names_and_a_tie_waits_for_a_choice(self):
+        from tauceti_progress import add_new_roadmaps
+        data = {"roadmaps": [{"id": "tauceti:TauCetiRoadmap/PDE", "origin": "tauceti", "group": "pde", "stages": []},
+                             {"id": "tauceti:TauCetiRoadmap/AlgebraicTopology", "origin": "tauceti", "group": "topology", "stages": []}],
+                "stages": [], "roadmapLinks": [], "progress": {"stages": {}, "roadmaps": {}},
+                "groups": [{"id": "pde", "label": "Partial differential equations"}, {"id": "topology", "label": "Topology"},
+                           {"id": "diffgeom", "label": "Differential geometry"}, {"id": "grouptheory", "label": "Group theory"}],
+                "fields": [{"id": "differential-geometry", "label": "Differential geometry", "groupIds": ["diffgeom"]}]}
+        # Both READMEs name one roadmap in each of two areas: the roadmaps they build on.
+        names = "It builds on [PDE](../PDE/README.md) and [algebraic topology](../AlgebraicTopology/README.md).\n\n## Layer 0: forms\n\nForms.\n"
+        board = self.board(self.row("DifferentialGeometry", ["Layer 0: forms"], ["untouched"]), self.row("Peripheral", ["Layer 0: forms"], ["untouched"]))
+        readmes = {"TauCetiRoadmap/DifferentialGeometry": "# Roadmap: differential geometry — forms, flows, and degree\n\n" + names,
+                   "TauCetiRoadmap/Peripheral": "# Roadmap: peripheral actions\n\n" + names}
+        self.assertEqual(add_new_roadmaps(data, board, readmes, {}), ["tauceti:TauCetiRoadmap/DifferentialGeometry"])
+        self.assertEqual(data["roadmaps"][-1]["group"], "diffgeom")
+        self.assertEqual(data["roadmapClassification"]["roadmaps"]["tauceti:TauCetiRoadmap/DifferentialGeometry"]["rationale"],
+                         "Placed provisionally in the area its title names.")
+        # The tie is not broken by name; a maintainer's choice settles it.
+        chosen = {"TauCetiRoadmap/Peripheral": {"galaxy": "grouptheory", "reason": "group theory about free pro-p groups."}}
+        self.assertEqual(add_new_roadmaps(data, board, readmes, chosen), ["tauceti:TauCetiRoadmap/Peripheral"])
+        self.assertEqual(data["roadmaps"][-1]["group"], "grouptheory")
+        record = data["roadmapClassification"]["roadmaps"]["tauceti:TauCetiRoadmap/Peripheral"]
+        self.assertEqual((record["basis"], record["rationale"]), ("provisional", "Placed where the maintainers chose: group theory about free pro-p groups."))
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -13,8 +13,12 @@ reports keeps its snapshot.
 A roadmap Tau Ceti accepts appears on the board before it appears in the
 atlas's snapshot. Its README is kept too (data/tauceti-new-roadmaps.json), and
 the build adds it to the map from that README and the board's list of its
-layers: in the area of the Tau Ceti roadmaps its README names, or of the field
-its title names, and not at all until one of those says where it belongs.
+layers. It goes in the area a maintainer chose for it
+(data/tauceti-placements.json); else in the area or field its title names;
+else in the area that holds more of the Tau Ceti roadmaps its README names than
+any other; and not at all until one of those says where it belongs. The title
+comes before the README because a README also names the roadmaps it builds on,
+which often lie in other areas.
 
 Usage: tauceti_progress.py --fetch   download the board's data and new roadmaps' READMEs into data/
 """
@@ -34,6 +38,7 @@ PAGE = "https://taucetiproject.github.io/TauCeti/progress/"
 REPOSITORY = "https://github.com/TauCetiProject/TauCetiRoadmap/blob/main/"
 COPY = ROOT / "data" / "tauceti-progress.json"
 READMES = ROOT / "data" / "tauceti-new-roadmaps.json"
+PLACEMENTS = ROOT / "data" / "tauceti-placements.json"
 RAW = "https://raw.githubusercontent.com/TauCetiProject/TauCetiRoadmap/main/"
 STATUS = {"done": "complete", "partial": "in_progress", "untouched": "planned"}
 
@@ -153,28 +158,50 @@ def short_name(roadmap_id: str) -> str:
     return name(roadmap_id).split("/")[-1]
 
 
-def area_for(text: str, title: str, atlas: dict, own: str) -> tuple:
-    """(area, Tau Ceti roadmaps the README names): the area most of those roadmaps are in;
-    failing that, the largest area of the field the title names; failing that, None."""
+def load_placements(path: Path = PLACEMENTS) -> dict:
+    """The areas maintainers chose for new Tau Ceti roadmaps, by board id (data/tauceti-placements.json)."""
+    try:
+        return json.loads(path.read_text(encoding="utf-8")).get("placements", {})
+    except (OSError, ValueError):
+        return {}
+
+
+def area_for(text: str, title: str, atlas: dict, own: str, chosen: str | None = None) -> tuple:
+    """(area, Tau Ceti roadmaps the README names, basis), on the most direct evidence there is:
+    - "chosen": the area a maintainer chose (data/tauceti-placements.json);
+    - "title": the area or field the title names, the earliest in the title, an area before a
+      field at the same place (a field means its largest area);
+    - "readme": the area that holds more of the Tau Ceti roadmaps the README names than any other.
+    A README also names the roadmaps a roadmap builds on, often in other areas, so it decides only
+    on a clear lead, never by a tie-break. Failing all three, the area is None."""
     known = {}
     for roadmap in atlas["roadmaps"]:
         if roadmap.get("origin") == "tauceti" and short_name(roadmap["id"]) != own and roadmap.get("group"):
             known.setdefault(short_name(roadmap["id"]), roadmap)
     linked = re.findall(r"\]\((?:\.\./|/?TauCetiRoadmap/|https://github\.com/TauCetiProject/TauCetiRoadmap/(?:blob|tree)/main/TauCetiRoadmap/)([A-Za-z0-9]+)", text)
     names = sorted({n for n in linked if n in known}) or sorted(n for n in known if re.search(r"\b" + re.escape(n) + r"\b", text))
-    if names:
-        groups = Counter(known[n]["group"] for n in names)
-        return max(sorted(groups), key=groups.get), [known[n]["id"] for n in names]
-    words, groups = title.lower(), {group["id"] for group in atlas.get("groups", [])}
+    named = [known[n]["id"] for n in names]
+    groups = {group["id"] for group in atlas.get("groups", [])}
+    if chosen in groups:
+        return chosen, named, "chosen"
+    words = title.lower()
     size = Counter(roadmap.get("group") for roadmap in atlas["roadmaps"])
+    candidates = []
+    for group in atlas.get("groups", []):
+        found = re.search(r"\b" + re.escape(group["label"].lower()) + r"\b", words)
+        if found:
+            candidates.append((found.start(), 0, group["id"]))
     for field_ in atlas.get("fields", []):
         members = [g for g in field_.get("groupIds", []) if g in groups]
-        if members and field_["label"].lower() in words:
-            return max(sorted(members), key=lambda g: size[g]), []
-    for group in atlas.get("groups", []):
-        if group["label"].lower() in words:
-            return group["id"], []
-    return None, []
+        found = re.search(r"\b" + re.escape(field_["label"].lower()) + r"\b", words)
+        if members and found:
+            candidates.append((found.start(), 1, max(sorted(members), key=lambda g: size[g])))
+    if candidates:
+        return min(candidates)[2], named, "title"
+    ranked = Counter(known[n]["group"] for n in names).most_common()
+    if ranked and (len(ranked) == 1 or ranked[0][1] > ranked[1][1]):
+        return ranked[0][0], named, "readme"
+    return None, named, None
 
 
 def summary(text: str, least: int = 40, most: int = 150) -> str:
@@ -208,8 +235,9 @@ def summary(text: str, least: int = 40, most: int = 150) -> str:
     return cut[:end + 1] if end >= 0 and len(cut[:end + 1].split()) >= least else cut + " …"
 
 
-def add_new_roadmaps(atlas: dict, progress: dict, readmes: dict) -> list:
+def add_new_roadmaps(atlas: dict, progress: dict, readmes: dict, placements: dict | None = None) -> list:
     """Add the roadmaps the board reports and the atlas lacks, built from their READMEs; the ids added."""
+    placements = load_placements() if placements is None else placements
     added = []
     for row in unplaced(atlas, progress):
         text = readmes.get(row["id"])
@@ -219,7 +247,8 @@ def add_new_roadmaps(atlas: dict, progress: dict, readmes: dict) -> list:
         heading = re.search(r"^#\s+(.+)$", text, re.M)
         title = re.sub(r"^Roadmap:\s*", "", heading.group(1).strip()) if heading else (row.get("title") or short_name(roadmap_id))
         title = title[:1].upper() + title[1:]
-        group, named = area_for(text, title, atlas, short_name(roadmap_id))
+        choice = placements.get(row["id"]) or {}
+        group, named, basis = area_for(text, title, atlas, short_name(roadmap_id), choice.get("galaxy"))
         if not group:
             continue
         lines = text.splitlines()
@@ -261,8 +290,10 @@ def add_new_roadmaps(atlas: dict, progress: dict, readmes: dict) -> list:
         atlas["stages"] += stages
         atlas.setdefault("stageEdges", []).extend(edges)
         atlas.setdefault("roadmapLinks", []).extend({"source": roadmap_id, "target": other, "kind": "reference", "label": short_name(other), "anchor": ""} for other in named)
-        reason = (f"Placed provisionally with the Tau Ceti roadmaps its README names ({', '.join(short_name(n) for n in named)})." if named
-                  else "Placed provisionally in the field its title names.")
+        # "provisional": joined from its README since the snapshot, until a classification job classifies it.
+        reason = {"chosen": f"Placed where the maintainers chose: {choice.get('reason', '').strip()}",
+                  "title": "Placed provisionally in the area its title names.",
+                  "readme": f"Placed provisionally with most of the Tau Ceti roadmaps its README names ({', '.join(short_name(n) for n in named)})."}[basis]
         atlas.setdefault("roadmapClassification", {}).setdefault("roadmaps", {})[roadmap_id] = {"basis": "provisional", "rationale": reason}
         added.append(roadmap_id)
     return added
