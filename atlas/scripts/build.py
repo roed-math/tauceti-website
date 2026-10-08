@@ -39,6 +39,9 @@ def safe_script(text: str) -> str:
     return re.sub(r"</script", r"<\\/script", text, flags=re.IGNORECASE)
 
 
+REPOSITORY = "https://github.com/CBirkbeck/tauceti-explorer"
+
+
 def comment_text(text: str) -> str:
     return text.replace("--", "—")
 
@@ -190,6 +193,11 @@ def assemble(require_distances: bool = True, blueprints: Path | None = None) -> 
             raise ValueError("A paper artefact refers to something not in the atlas: " + paper["id"])
         if paper["link"] and not re.match(r"^https?://", paper["link"]):
             raise ValueError("Paper links must be public web addresses: " + paper["id"])
+    # Complete roadmaps in Tau Ceti's own form, as published in roadmaps/<Name>/ (research/blueprint/PROTOCOL.md section 20).
+    ids = {roadmap["id"] for roadmap in atlas["roadmaps"]}
+    atlas["packages"] = {folder.name: {"readme": f"{REPOSITORY}/blob/main/roadmaps/{folder.name}/README.md",
+                                       "lean": f"{REPOSITORY}/blob/main/roadmaps/{folder.name}/Suggested.lean"}
+                         for folder in sorted((ROOT / "roadmaps").glob("*")) if (folder / "README.md").exists() and folder.name in ids}
     return atlas, {"retired": retired, "linkPackets": link_packets, "originalStageCount": original_stage_count, "blueprints": packets}
 
 

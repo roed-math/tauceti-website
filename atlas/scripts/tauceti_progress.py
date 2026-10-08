@@ -323,7 +323,7 @@ def tauceti_only(atlas: dict) -> dict:
     keep = set((atlas.get("taucetiProgress") or {}).get("roadmaps", {}))
     stage_ids = {stage["id"] for stage in atlas["stages"] if stage.get("owner") in keep}
     on_layer = lambda key: key in stage_ids or key.split("::landmark:")[0] in stage_ids
-    cut = dict(atlas, variant="tauceti", papers=[], restructurings=[], blueprintLayers=[])
+    cut = dict(atlas, variant="tauceti", papers=[], restructurings=[], blueprintLayers=[], packages={})
     cut["roadmaps"] = [roadmap for roadmap in atlas["roadmaps"] if roadmap["id"] in keep]
     cut["stages"] = [stage for stage in atlas["stages"] if stage["id"] in stage_ids]
     cut["stageEdges"] = [edge for edge in atlas.get("stageEdges", []) if edge["source"] in stage_ids and edge["target"] in stage_ids]

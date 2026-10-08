@@ -67,7 +67,9 @@ def decide(path: str, data: dict, jobs: list, record: dict) -> tuple:
     job = by_id.get(job_id)
     if job is None:
         return "refuse", f"{job_id} is not a job of the queue"
-    writers = {j["id"] for j in jobs if path in (j.get("outputs") or [])}
+    # A roadmap package's verdict sits beside the package: its review must review a job that wrote the README.
+    written = path[:-len("review.json")] + "README.md" if path.startswith("research/blueprint/packages/") else path
+    writers = {j["id"] for j in jobs if written in (j.get("outputs") or [])}
     if not writers & set(job.get("after") or []):
         return "refuse", f"{job_id} does not review a job that wrote {path}"
     if job.get("state") != "done":
@@ -78,6 +80,12 @@ def decide(path: str, data: dict, jobs: list, record: dict) -> tuple:
 def destinations(root: Path, path: str, data: dict, atlas_roadmaps: set) -> tuple:
     """(files to copy as (source, destination), problem or None)."""
     name = Path(path).name
+    if path.startswith("research/blueprint/packages/"):
+        # An accepted roadmap package is published as upstream lays out a roadmap (PROTOCOL.md section 20).
+        folder = Path(path).parent
+        files = [(str(folder / f), f"roadmaps/{folder.name}/{f}") for f in ("README.md", "Suggested.lean", "metadata.toml")]
+        missing = [src for src, _ in files if not (root / src).exists()]
+        return (files, None) if not missing else ([], "the package lacks " + ", ".join(missing))
     if path.startswith("research/blueprint/links/"):
         return [(path, f"data/links/{name}")], None
     if path.startswith("research/blueprint/keydefs/"):
@@ -102,6 +110,7 @@ def candidates(root: Path) -> list:
     bp = root / "research" / "blueprint"
     found = [str(p.relative_to(root)) for folder in ("packets", "links") for p in sorted((bp / folder).glob("*.json"))]
     found += [str(p.relative_to(root)) for p in sorted((bp / "keydefs").glob("KEYDEF-*.json"))]
+    found += [str(p.relative_to(root)) for p in sorted((bp / "packages").glob("*/review.json"))]
     return found + [str(p.relative_to(root)) for p in sorted((bp / "restructure").glob("RS-*.result.json"))]
 
 

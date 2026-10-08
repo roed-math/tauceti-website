@@ -120,7 +120,7 @@ jobs:
           git pull --rebase -q
           python3 scripts/promote.py --comment | tee "$RUNNER_TEMP/promoted.txt" | tee -a "$GITHUB_STEP_SUMMARY"
           if [ -z "$(git status --porcelain -- data)" ]; then exit 0; fi
-          if [ -n "$(git status --porcelain -- data/blueprints data/links data/restructure data/keydefs)" ]; then
+          if [ -n "$(git status --porcelain -- data/blueprints data/links data/restructure data/keydefs roadmaps)" ]; then
             python3 scripts/measure_distances.py > /dev/null
             python3 scripts/build.py > /dev/null
             python3 -m unittest discover -s tests -p 'test_*.py'
@@ -130,7 +130,7 @@ jobs:
             python3 tests/validate_browser.py > "$RUNNER_TEMP/browser.log" 2>&1 || python3 tests/validate_browser.py > "$RUNNER_TEMP/browser.log" 2>&1 || { tail -60 "$RUNNER_TEMP/browser.log"; exit 1; }
             python3 tests/validate_blueprints_browser.py
           fi
-          git add -A -- data index.html definitions.html BUILD.json
+          git add -A -- data roadmaps index.html definitions.html BUILD.json
           git commit -q -m "Atlas: promote accepted work" -m "$(cat "$RUNNER_TEMP/promoted.txt")"
           for attempt in 1 2 3 4 5; do
             git pull --rebase -q && git push -q && exit 0
