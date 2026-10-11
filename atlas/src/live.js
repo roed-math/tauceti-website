@@ -6,22 +6,32 @@
    A pull request's `roadmap/<Name>` labels say which roadmaps it twinkles beside; one
    without a roadmap (`roadmap/none`) is not shown. A pull request opened while the page
    is open appears with a flash, and a merged one flares and fades away. Nothing is
-   asked while the page is hidden, and a refusal from GitHub waits for its reset. */
+   asked while the page is hidden, and a refusal from GitHub waits for its reset.
+
+   Tau Ceti lands pull requests through bors, which pushes the squashed commit to main
+   and then closes the pull request instead of merging it, so GitHub never marks it
+   merged and the search for merges never finds it. A pull request that leaves the open
+   list is therefore also looked for among main's recent commits, whose first lines end
+   in "(#1234)": one found there flares like a merge. */
 (function () {
   'use strict';
 
   const SEARCH = 'https://api.github.com/search/issues';
+  const API = 'https://api.github.com';
   const INTERVAL = 90 * 1000;
   const RECENT = 15 * 60 * 1000;     // merges this recent flare once when the page opens
   const OVERLAP = 5 * 60 * 1000;     // the search index lags: each look reaches back this far
   const LINGER = 9 * 1000;           // a merged or closed pull request's fade, before it is dropped
+  const LANDED = 60 * 60 * 1000;     // bors closes a pull request some minutes after its commit lands
 
   function create(options) {
     const repo = options.repo, labelPrefix = options.labelPrefix || 'roadmap/', idPrefix = options.idPrefix || '';
+    const branch = options.branch || 'main';
     const known = options.roadmapIds || new Set(), onChange = options.onChange || (() => {});
     const open = new Map();            // number -> pull request
     const leaving = new Map();         // number -> { pull request, state: 'merged' | 'closed', at }
     const seenMerged = new Set();
+    let coreWaitUntil = 0;             // the core API's allowance is sixty requests an hour without a token
     let started = Date.now(), lastLook = started - RECENT, first = true, timer = null, running = false, paused = false;
     let status = { open: 0, shown: 0, roadmaps: 0, updated: null, error: null };
 
@@ -57,6 +67,32 @@
       return items;
     }
 
+    // The pull requests whose commits reached main in the last hour, by the "(#1234)" that ends a squashed
+    // commit's first line. One request to the core API, asked only when a pull request has left the open list
+    // without showing as merged; when it fails or the allowance is spent, those pull requests fade as closed.
+    async function landedOnMain() {
+      const landed = new Set();
+      if (Date.now() < coreWaitUntil) return landed;
+      const since = new Date(Date.now() - LANDED).toISOString().replace(/\.\d+Z$/, 'Z');
+      try {
+        const response = await fetch(`${API}/repos/${repo}/commits?sha=${encodeURIComponent(branch)}&since=${since}&per_page=100`,
+                                     { headers: { Accept: 'application/vnd.github+json' } });
+        if (!response.ok) {
+          const reset = Number(response.headers.get('x-ratelimit-reset')) * 1000 || 0;
+          coreWaitUntil = reset > Date.now() ? reset : Date.now() + 15 * 60 * 1000;
+          return landed;
+        }
+        for (const commit of await response.json()) {
+          const subject = ((commit.commit && commit.commit.message) || '').split('\n')[0];
+          const match = /\(#(\d+)\)\s*$/.exec(subject);
+          if (match) landed.add(Number(match[1]));
+        }
+      } catch (error) {
+        coreWaitUntil = Date.now() + INTERVAL;
+      }
+      return landed;
+    }
+
     function items() {
       const out = [];
       const add = (pr, state, at) => pr.roadmaps.forEach(id => out.push({
@@ -85,12 +121,16 @@
           search(`repo:${repo} is:pr is:merged merged:>=${since}`)]);
         const mergedNow = new Map(merged.map(item => [item.number, item]));
         const openNow = new Map(current.map(item => [item.number, item]));
-        // A pull request that has gone from the open list flares if it merged, and fades quietly if it closed.
+        const gone = [...open.keys()].filter(number => !openNow.has(number) && !mergedNow.has(number));
+        const landed = gone.length ? await landedOnMain() : new Set();
+        // A pull request that has gone from the open list flares if it merged or bors landed it, and fades
+        // quietly if it was closed.
         open.forEach((pr, number) => {
           if (openNow.has(number)) return;
-          leaving.set(number, { pr, state: mergedNow.has(number) ? 'merged' : 'closed', at: now });
+          const didMerge = mergedNow.has(number) || landed.has(number);
+          leaving.set(number, { pr, state: didMerge ? 'merged' : 'closed', at: now });
           open.delete(number);
-          if (mergedNow.has(number)) seenMerged.add(number);
+          if (didMerge) seenMerged.add(number);
         });
         openNow.forEach((item, number) => {
           if (!open.has(number)) open.set(number, pull(item, !first && Date.parse(item.created_at) > started - OVERLAP));
