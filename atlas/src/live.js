@@ -1,28 +1,36 @@
 /* The live galaxy: Tau Ceti's open pull requests twinkle beside their roadmaps.
 
    Every 90 seconds the page asks GitHub's search API for the repository's open pull
-   requests and for those merged since the last look. The search API has its own
-   allowance, ten requests a minute without a token, and one look takes about four.
+   requests. The search API has its own allowance, ten requests a minute without a token,
+   and one look takes a request per hundred open pull requests, so a look is never asked
+   within a minute of the last one, and a refusal waits for GitHub's reset. Nothing is
+   asked while the page is hidden.
+
    A pull request's `roadmap/<Name>` labels say which roadmaps it twinkles beside; one
    without a roadmap (`roadmap/none`) is not shown. A pull request opened while the page
-   is open appears with a flash, and a merged one flares and fades away. Nothing is
-   asked while the page is hidden, and a refusal from GitHub waits for its reset.
+   is open appears with a flash; one that lands flares and fades away, and one closed
+   without landing fades quietly.
 
    Tau Ceti lands pull requests through bors, which pushes the squashed commit to main
    and then closes the pull request instead of merging it, so GitHub never marks it
-   merged and the search for merges never finds it. A pull request that leaves the open
-   list is therefore also looked for among main's recent commits, whose first lines end
-   in "(#1234)": one found there flares like a merge. */
+   merged. A pull request that leaves the open list is therefore looked for among main's
+   recent commits, whose first lines end in "(#1234)": one found there has landed.
+
+   The last list seen is kept in the browser's storage, so a page opened while GitHub is
+   refusing requests still shows the stars as they were (marked as such in the header)
+   until a look succeeds. */
 (function () {
   'use strict';
 
   const SEARCH = 'https://api.github.com/search/issues';
   const API = 'https://api.github.com';
   const INTERVAL = 90 * 1000;
-  const RECENT = 15 * 60 * 1000;     // merges this recent flare once when the page opens
-  const OVERLAP = 5 * 60 * 1000;     // the search index lags: each look reaches back this far
-  const LINGER = 9 * 1000;           // a merged or closed pull request's fade, before it is dropped
+  const MIN_GAP = 60 * 1000;         // never two looks within this, however often the tab is shown
+  const OVERLAP = 5 * 60 * 1000;     // a pull request opened this soon before the page counts as new
+  const LINGER = 9 * 1000;           // a landed or closed pull request's fade, before it is dropped
   const LANDED = 60 * 60 * 1000;     // bors closes a pull request some minutes after its commit lands
+  const CACHE_KEY = 'tauceti-live-v1';
+  const CACHE_AGE = 3 * 60 * 60 * 1000;   // a remembered list older than this is not shown
 
   function create(options) {
     const repo = options.repo, labelPrefix = options.labelPrefix || 'roadmap/', idPrefix = options.idPrefix || '';
@@ -30,9 +38,9 @@
     const known = options.roadmapIds || new Set(), onChange = options.onChange || (() => {});
     const open = new Map();            // number -> pull request
     const leaving = new Map();         // number -> { pull request, state: 'merged' | 'closed', at }
-    const seenMerged = new Set();
     let coreWaitUntil = 0;             // the core API's allowance is sixty requests an hour without a token
-    let started = Date.now(), lastLook = started - RECENT, first = true, timer = null, running = false, paused = false;
+    let started = Date.now(), lastAttempt = 0, first = true, remembered = false, rememberedNote = '';
+    let timer = null, running = false, paused = false;
     let status = { open: 0, shown: 0, roadmaps: 0, updated: null, error: null };
 
     function roadmapsOf(item) {
@@ -51,10 +59,13 @@
                created: Date.parse(item.created_at) || 0, roadmaps: roadmapsOf(item), fresh: !!fresh };
     }
 
+    // Oldest first: a pull request opened while the pages are fetched joins the end of the list instead of
+    // shifting every page by one, which made the default "best match" order repeat some pull requests and
+    // skip others.
     async function search(query) {
       const items = [];
       for (let page = 1; page <= 10; page += 1) {
-        const response = await fetch(`${SEARCH}?q=${encodeURIComponent(query)}&per_page=100&page=${page}`,
+        const response = await fetch(`${SEARCH}?q=${encodeURIComponent(query)}&sort=created&order=asc&per_page=100&page=${page}`,
                                      { headers: { Accept: 'application/vnd.github+json' } });
         if (!response.ok) {
           const reset = Number(response.headers.get('x-ratelimit-reset')) * 1000 || 0;
@@ -67,9 +78,10 @@
       return items;
     }
 
-    // The pull requests whose commits reached main in the last hour, by the "(#1234)" that ends a squashed
-    // commit's first line. One request to the core API, asked only when a pull request has left the open list
-    // without showing as merged; when it fails or the allowance is spent, those pull requests fade as closed.
+    // The pull requests whose commits reached main in the last hour: a squashed commit's first line ends in
+    // "(#1234)", and a merge commit's starts "Merge pull request #1234". One request to the core API, asked only
+    // when a pull request has left the open list; when it fails or the allowance is spent, those pull requests
+    // fade as closed.
     async function landedOnMain() {
       const landed = new Set();
       if (Date.now() < coreWaitUntil) return landed;
@@ -84,13 +96,36 @@
         }
         for (const commit of await response.json()) {
           const subject = ((commit.commit && commit.commit.message) || '').split('\n')[0];
-          const match = /\(#(\d+)\)\s*$/.exec(subject);
+          const match = /\(#(\d+)\)\s*$/.exec(subject) || /^Merge pull request #(\d+)\b/.exec(subject);
           if (match) landed.add(Number(match[1]));
         }
       } catch (error) {
         coreWaitUntil = Date.now() + INTERVAL;
       }
       return landed;
+    }
+
+    // The browser keeps the last list seen. Storage can be blocked or full; the page works without it.
+    function remember() {
+      try {
+        localStorage.setItem(CACHE_KEY, JSON.stringify({ repo, at: Date.now(),
+          prs: [...open.values()].map(pr => ({ ...pr, fresh: false })) }));
+      } catch (error) { /* nothing to do */ }
+    }
+
+    function recall() {
+      try {
+        const saved = JSON.parse(localStorage.getItem(CACHE_KEY) || 'null');
+        if (!saved || saved.repo !== repo || !Array.isArray(saved.prs) || !(Date.now() - saved.at < CACHE_AGE)) return false;
+        saved.prs.forEach(pr => open.set(pr.number, { ...pr, fresh: false,
+                                                      roadmaps: (pr.roadmaps || []).filter(id => known.has(id)) }));
+        const at = new Date(saved.at);
+        rememberedNote = `Showing the pull requests open at ${at.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
+        status = { ...status, updated: at, error: rememberedNote };
+        return open.size > 0;
+      } catch (error) {
+        return false;
+      }
     }
 
     function items() {
@@ -112,43 +147,36 @@
     async function look() {
       if (running || paused) return;
       if (document.visibilityState === 'hidden') { schedule(INTERVAL); return; }
+      if (Date.now() - lastAttempt < MIN_GAP) { schedule(MIN_GAP - (Date.now() - lastAttempt)); return; }
       running = true;
-      const since = new Date(Math.min(lastLook, Date.now() - OVERLAP)).toISOString().replace(/\.\d+Z$/, 'Z');
+      lastAttempt = Date.now();
       const now = Date.now();
       try {
-        const [current, merged] = await Promise.all([
-          search(`repo:${repo} is:pr is:open`),
-          search(`repo:${repo} is:pr is:merged merged:>=${since}`)]);
-        const mergedNow = new Map(merged.map(item => [item.number, item]));
+        const current = await search(`repo:${repo} is:pr is:open`);
         const openNow = new Map(current.map(item => [item.number, item]));
-        const gone = [...open.keys()].filter(number => !openNow.has(number) && !mergedNow.has(number));
-        const landed = gone.length ? await landedOnMain() : new Set();
-        // A pull request that has gone from the open list flares if it merged or bors landed it, and fades
-        // quietly if it was closed.
-        open.forEach((pr, number) => {
-          if (openNow.has(number)) return;
-          const didMerge = mergedNow.has(number) || landed.has(number);
-          leaving.set(number, { pr, state: didMerge ? 'merged' : 'closed', at: now });
+        // The first look after a remembered list was shown drops what has gone since without a display;
+        // after that, a pull request that leaves the open list flares if it landed and fades if it was closed.
+        const quiet = first && remembered;
+        const gone = [...open.keys()].filter(number => !openNow.has(number));
+        const landed = gone.length && !quiet ? await landedOnMain() : new Set();
+        gone.forEach(number => {
+          const pr = open.get(number);
           open.delete(number);
-          if (didMerge) seenMerged.add(number);
+          if (!quiet) leaving.set(number, { pr, state: landed.has(number) ? 'merged' : 'closed', at: now });
         });
         openNow.forEach((item, number) => {
           if (!open.has(number)) open.set(number, pull(item, !first && Date.parse(item.created_at) > started - OVERLAP));
           else open.set(number, { ...pull(item, open.get(number).fresh) });
         });
-        // Merges not seen open (they opened and merged between looks, or before the page opened) flare too.
-        mergedNow.forEach((item, number) => {
-          if (seenMerged.has(number) || open.has(number) || leaving.has(number)) return;
-          seenMerged.add(number);
-          leaving.set(number, { pr: pull(item, false), state: 'merged', at: now });
-        });
-        lastLook = now; first = false;
+        first = false;
         status = { ...status, updated: new Date(now), error: null };
+        remember();
         schedule(INTERVAL);
       } catch (error) {
         const wait = error.reset && error.reset > Date.now() ? error.reset - Date.now() + 5000 : 3 * INTERVAL;
-        status = { ...status, error: error.status === 403 || error.status === 429 ? 'GitHub asked us to wait' : 'GitHub could not be reached' };
-        schedule(wait);
+        const why = error.status === 403 || error.status === 429 ? 'GitHub asked us to wait' : 'GitHub could not be reached';
+        status = { ...status, error: remembered && first ? `${rememberedNote}; ${why}` : why };
+        schedule(Math.max(wait, MIN_GAP));
       } finally {
         running = false;
       }
@@ -169,6 +197,8 @@
 
     function start() {
       paused = false; started = Date.now();
+      remembered = recall();
+      if (remembered) publish();
       document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && !paused && !running) look(); });
       look();
       return api;
