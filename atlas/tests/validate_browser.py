@@ -439,8 +439,14 @@ def check_paper_artefacts(page,scope):
 def check_click_journey(page,scope):
  page.evaluate("TauExplorer.navigate({view:'all',id:null,layer:null,selected:null})");page.wait_for_timeout(600)
  page.locator('[data-node-id="AnalyticNumberTheory"] .tau-hit').click()
- page.wait_for_function("TauExplorer.getState().view==='roadmap' && TauExplorer.getState().id==='AnalyticNumberTheory'");page.wait_for_timeout(500)
- record(scope+' clicking a roadmap point travels into its constellation',page.evaluate("() => { const d=TauExplorer.graph.debugState(); return d.focus.level==='constellation' && d.visible.stars>=10; }") and page.locator('#selection-kind').inner_text()=='Campaign roadmap')
+ page.wait_for_function("TauExplorer.getState().view==='roadmap' && TauExplorer.getState().id==='AnalyticNumberTheory'")
+ # Wait for the zoom to arrive rather than a fixed half second: a GitHub runner draws a frame of the full atlas in
+ # about half a second, so the flight into the constellation can take several (2026-10-09 to 10-12).
+ try:
+   page.wait_for_function("() => { const d=TauExplorer.graph.debugState(); return !!d && d.focus.level==='constellation' && d.visible.stars>=10; }",timeout=20000);arrived=True
+ except Exception:
+   arrived=False
+ record(scope+' clicking a roadmap point travels into its constellation',arrived and page.locator('#selection-kind').inner_text()=='Campaign roadmap')
  record(scope+' the selected roadmap shows its own links',page.locator('.tau-link').count()==page.evaluate("TauExplorer.data.edges.filter(e=>e.source==='AnalyticNumberTheory'||e.target==='AnalyticNumberTheory').length"))
  # Selecting a link names the two things it joins, and either name opens its end.
  spot=page.evaluate("""() => { for (const h of document.querySelectorAll('.tau-link-hit')) { const p=h.getPointAtLength(h.getTotalLength()/2), m=h.getScreenCTM(), x=m.a*p.x+m.c*p.y+m.e, y=m.b*p.x+m.d*p.y+m.f; if (document.elementFromPoint(x,y)===h) return {x, y, source:h.dataset.source, target:h.dataset.target}; } return null; }""")
