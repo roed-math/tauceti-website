@@ -413,11 +413,17 @@
         field.labelVisible = true;
         const lines = T.small ? [(field.short || field.label).toUpperCase()] : wrapText(field.label.toUpperCase(), 28, 2);
         // Above the field, clear of its top area's name; else above one of its
-        // areas, largest first; else below the field.
-        const middle = (field.left + field.right) / 2;
+        // areas, largest first; else below the field, or below one of its
+        // areas; else beside the field. In the crowded middle of the map every
+        // place above can be taken: the analysis field lost its name on
+        // 2026-10-12, once Tau Ceti's operator-theory roadmaps joined it.
+        const middle = (field.left + field.right) / 2, centre = (field.top + field.bottom) / 2;
+        const areas = field.galaxyIds.map(id => universe.byId.get(id)).sort((a, b) => b.count - a.count || a.id.localeCompare(b.id));
         const spots = [{ x: middle, y: field.top - 42 / k, above: true }]
-          .concat(field.galaxyIds.map(id => universe.byId.get(id)).sort((a, b) => b.count - a.count || a.id.localeCompare(b.id))
-            .map(g => ({ x: g.x, y: g.top - 42 / k, above: true })), [{ x: middle, y: field.bottom + 16 / k, above: false }]);
+          .concat(areas.map(g => ({ x: g.x, y: g.top - 42 / k, above: true })),
+            [{ x: middle, y: field.bottom + 16 / k, above: false }],
+            areas.map(g => ({ x: g.x, y: g.bottom + 16 / k, above: false })),
+            [{ x: field.right + 10 / k, y: centre, above: false, anchor: 'start' }, { x: field.left - 10 / k, y: centre, above: false, anchor: 'end' }]);
         labels.push({ id: 'field:' + field.id, nodeId: field.id, kind: 'field', x: spots[0].x, y: spots[0].y, lines, font: T.small ? 10 : 11, anchor: 'middle', above: true,
           priority: 150 + field.count, active: active === field.id, members: new Set(field.galaxyIds), alternatives: spots.slice(1) });
       });
