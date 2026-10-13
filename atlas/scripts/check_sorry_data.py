@@ -16,6 +16,7 @@ DATA_FIELDS = ('carrier', 'toFun', 'invFun', 'obj', 'map', 'hom', 'inv', 'r', 'd
                'toAddMonoidHom', 'toFunctor', 'toPrefunctor', 'biddual', 'ι', 'basis', 'point', 'section',
                'sheaf', 'presheaf', 'space', 'ring', 'group', 'module', 'topology', 'uniformity', 'order',
                'norm', 'dist', 'measure', 'smul', 'mul', 'add', 'one', 'zero', 'neg', 'sub', 'div', 'npow', 'nsmul')
+PROP_CLASS = re.compile(r':\s*(?:[A-Za-z_.]*\.)?(?:Module\.(?:Free|Finite|FinitePresentation|Flat|Projective|Injective)|Algebra\.(?:Flat|FiniteType|FinitePresentation|Smooth|Etale|Unramified|IsIntegral)|Is[A-Z][A-Za-z0-9_]*|Fact|Nonempty|Finite|Infinite|Subsingleton|Nontrivial|Decidable[A-Za-z]*|No[A-Z][A-Za-z]*|T[0-9](?:\.5)?Space|R[0-9]Space|CompactSpace|LocallyCompactSpace|CompleteSpace|SeparableSpace|TotallyDisconnectedSpace|DiscreteTopology|CharZero|CharP|ExpChar|PerfectRing|PerfectField|FaithfulSMul|SMulCommClass|IsScalarTower|NeZero|Countable|Uncountable|WellFoundedLT|WellFoundedGT|ContinuousSMul|ContinuousAdd|ContinuousMul|ContinuousNeg|ContinuousInv|ContinuousConstSMul|TopologicalSpace\.[A-Z][A-Za-z]*Space)\b')
 DATA_FIELD = re.compile(r'^\s*(' + '|'.join(re.escape(f) for f in DATA_FIELDS) + r')\b(?:\s+(?:\([^)]*\)|[A-Za-z_][A-Za-z0-9_]*))*\s*:=\s*(?:by\s+)?sorry\b')
 
 def offenders(path):
@@ -31,6 +32,10 @@ def offenders(path):
             body.append(lines[j]); j += 1
         text = '\n'.join(body)
         bad = False
+        # An `instance` of a Prop-valued class (`Module.Free`, `IsNoetherian`, `Fact`, `T2Space`, …) is a
+        # theorem in instance form: a sorry there is a proof, not data.
+        if m.group(1) == 'instance' and PROP_CLASS.search(text.split(':=')[0]):
+            i = j; continue
         where = re.search(r'\bwhere\b', text)
         if where:
             # the signature ends at `where`; only data-named fields count
