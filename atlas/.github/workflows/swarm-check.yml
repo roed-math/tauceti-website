@@ -83,4 +83,13 @@ jobs:
           if [ -n "$redteam" ]; then python3 scripts/check_redteam.py $redteam | tee -a "$GITHUB_STEP_SUMMARY" || status=1; fi
           if [ -n "$errata" ]; then python3 scripts/check_errata.py $errata | tee -a "$GITHUB_STEP_SUMMARY" || status=1; fi
           if [ -n "$keydefs" ]; then python3 scripts/check_keydefs.py $keydefs | tee -a "$GITHUB_STEP_SUMMARY" || status=1; fi
+          # A package's Suggested.lean is short by construction (PACKAGE_REVIEW.md, "Shape of a roadmap"):
+          # at most about 1,500 lines, and no data definition with a sorry body.
+          for lean in $(changed '^research/blueprint/packages/[^/]+/Suggested\.lean$'); do
+            n=$(wc -l < "$lean")
+            if [ "$n" -gt 1600 ]; then
+              echo "$lean has $n lines; a package Suggested.lean is at most about 1,500 lines (PACKAGE_REVIEW.md, Shape of a roadmap). Move the rest into the README as targets." | tee -a "$GITHUB_STEP_SUMMARY"; status=1
+            fi
+            if python3 scripts/check_sorry_data.py "$lean" | tee -a "$GITHUB_STEP_SUMMARY"; then :; else status=1; fi
+          done
           exit $status
