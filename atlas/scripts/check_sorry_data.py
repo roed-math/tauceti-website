@@ -16,7 +16,7 @@ DATA_FIELDS = ('carrier', 'toFun', 'invFun', 'obj', 'map', 'hom', 'inv', 'r', 'd
                'toAddMonoidHom', 'toFunctor', 'toPrefunctor', 'biddual', 'ι', 'basis', 'point', 'section',
                'sheaf', 'presheaf', 'space', 'ring', 'group', 'module', 'topology', 'uniformity', 'order',
                'norm', 'dist', 'measure', 'smul', 'mul', 'add', 'one', 'zero', 'neg', 'sub', 'div', 'npow', 'nsmul')
-DATA_FIELD = re.compile(r'^\s*(' + '|'.join(re.escape(f) for f in DATA_FIELDS) + r')\s*(?:\([^)]*\)\s*|[A-Za-z_][A-Za-z0-9_]*\s*)*:=\s*(?:by\s+)?sorry\b')
+DATA_FIELD = re.compile(r'^\s*(' + '|'.join(re.escape(f) for f in DATA_FIELDS) + r')\b(?:\s+(?:\([^)]*\)|[A-Za-z_][A-Za-z0-9_]*))*\s*:=\s*(?:by\s+)?sorry\b')
 
 def offenders(path):
     lines = open(path, encoding='utf-8').read().split('\n')
