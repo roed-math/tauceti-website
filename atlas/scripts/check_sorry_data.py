@@ -22,7 +22,11 @@ def offenders(path):
                 body.append(lines[j]); j += 1
                 if j < len(lines) and re.match(r'^(?:@\[|theorem|lemma|def|abbrev|instance|structure|class|example|namespace|end|section|open|variable|/-|--|#)', lines[j]):
                     break
-            text = '\n'.join(body)
+            # Proof fields of a structure instance (`add_mem' := by sorry`, `map_one' := …`,
+            # `left_inv := …`) are propositions: the data is still determined. Drop them.
+            PROOF_FIELD = re.compile(r"^\s*(?:[A-Za-z_][A-Za-z0-9_]*'|map_[A-Za-z_]+|left_inv|right_inv|leftInverse|rightInverse|continuous_[A-Za-z_]+|[a-z_]+_mem|is[A-Z][A-Za-z_]*|[a-z_]*_(?:le|lt|eq|ne|pos|nonneg|comm|assoc|injective|surjective)|h[A-Za-z0-9_]*)\s*:=\s*(?:by\s+)?sorry\s*\}?\s*$")
+            kept = [ln for ln in body if not PROOF_FIELD.match(ln)]
+            text = '\n'.join(kept)
             if re.search(r':=\s*(?:by\s+)?sorry\b', text) or re.search(r'\bsorry\s*$', text.strip()):
                 out.append((i + 1, m.group(1), lines[i].strip()[:100]))
             i = j
