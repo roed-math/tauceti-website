@@ -213,5 +213,60 @@ Change of family.
         self.assertEqual((record["basis"], record["rationale"]), ("provisional", "Placed where the maintainers chose: group theory about free pro-p groups."))
 
 
+class ArxivAreas(unittest.TestCase):
+    """A Tau Ceti roadmap sits in an area its own arXiv category allows (data/tauceti-arxiv-areas.json)."""
+    CATEGORIES = {"math.GR": {"areas": ["grouptheory"], "default": "grouptheory"},
+                  "math.NT": {"areas": ["classical", "iwasawa"], "default": "classical"},
+                  "math.RT": {"areas": ["representations"], "default": "representations"}}
+    TOPICS = {"math.GR": "Group Theory", "math.NT": "Number Theory", "math.RT": "Representation Theory"}
+
+    def atlas(self):
+        return {"roadmaps": [{"id": "tauceti:TauCetiRoadmap/GlobalFields", "origin": "tauceti", "group": "classical", "stages": [],
+                              "title": "Global fields", "readme": "# Global fields\n"},
+                             {"id": "tauceti:TauCetiRoadmap/GrothendieckForms", "origin": "tauceti", "group": "homological", "stages": [],
+                              "title": "Grothendieck groups, Cartan maps and Euler forms", "readme": "# Grothendieck groups\n"}],
+                "stages": [], "roadmapLinks": [], "progress": {"stages": {}, "roadmaps": {}},
+                "groups": [{"id": "classical", "label": "Number fields and class field theory"}, {"id": "iwasawa", "label": "Iwasawa theory and special values"},
+                           {"id": "grouptheory", "label": "Group theory"}, {"id": "representations", "label": "Representation theory"},
+                           {"id": "homological", "label": "Homological algebra"}],
+                "fields": []}
+
+    def row(self, name, arxiv):
+        return {"id": "TauCetiRoadmap/" + name, "title": name, "completed": False, "readme": f"TauCetiRoadmap/{name}/README.md",
+                "arxiv": arxiv, "topic": self.TOPICS[arxiv], "layer_ids": json.dumps(["Layer 0"]), "layers": json.dumps(["Layer 0: things"]),
+                "states": json.dumps(["untouched"])}
+
+    def test_a_new_roadmap_goes_where_its_category_allows_even_against_its_readme(self):
+        from tauceti_progress import add_new_roadmaps
+        data = self.atlas()
+        board = {"exported_at": "2026-10-14T00:00:00Z", "rows": [self.row("RestrictedProducts", "math.GR")]}
+        # The README names a number-field roadmap, which used to put it among the number fields.
+        readme = "# Roadmap: restricted products of topological groups\n\nUsed by [global fields](../GlobalFields/README.md).\n\n## Layer 0: things\n\nStuff.\n"
+        added = add_new_roadmaps(data, board, {"TauCetiRoadmap/RestrictedProducts": readme}, {}, self.CATEGORIES)
+        self.assertEqual(added, ["tauceti:TauCetiRoadmap/RestrictedProducts"])
+        self.assertEqual(data["roadmaps"][-1]["group"], "grouptheory")
+        self.assertEqual(data["roadmapClassification"]["roadmaps"][added[0]]["rationale"], "Placed by its arXiv category, math.GR (Group Theory).")
+
+    def test_the_title_still_chooses_among_the_areas_the_category_allows(self):
+        from tauceti_progress import add_new_roadmaps
+        data = self.atlas()
+        board = {"exported_at": "2026-10-14T00:00:00Z", "rows": [self.row("PadicMeasures", "math.NT")]}
+        readme = "# Roadmap: p-adic measures for Iwasawa theory and special values\n\n## Layer 0: things\n\nStuff.\n"
+        added = add_new_roadmaps(data, board, {"TauCetiRoadmap/PadicMeasures": readme}, {}, self.CATEGORIES)
+        self.assertEqual(data["roadmaps"][-1]["group"], "iwasawa")
+        self.assertIn("among the areas its arXiv category (math.NT) allows", data["roadmapClassification"]["roadmaps"][added[0]]["rationale"])
+
+    def test_a_snapshot_roadmap_outside_its_category_moves_and_one_inside_stays(self):
+        from tauceti_progress import fit_to_arxiv
+        data = self.atlas()
+        board = {"rows": [self.row("GrothendieckForms", "math.RT"), self.row("GlobalFields", "math.NT")]}
+        self.assertEqual(fit_to_arxiv(data, board, self.CATEGORIES), ["tauceti:TauCetiRoadmap/GrothendieckForms"])
+        self.assertEqual({r["id"].split("/")[-1]: r["group"] for r in data["roadmaps"]},
+                         {"GlobalFields": "classical", "GrothendieckForms": "representations"})
+        record = data["roadmapClassification"]["roadmaps"]["tauceti:TauCetiRoadmap/GrothendieckForms"]
+        self.assertEqual(record["basis"], "arxiv")
+        self.assertIn("math.RT (Representation Theory)", record["rationale"])
+
+
 if __name__ == "__main__":
     unittest.main()

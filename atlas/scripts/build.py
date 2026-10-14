@@ -19,7 +19,7 @@ from retirements import apply_retirements, load_retirements  # noqa: E402
 from library_coverage import already_available, coverage_statuses, load_coverage  # noqa: E402
 from artefacts import paper_artefacts  # noqa: E402
 from definitions_page import render as definitions_page  # noqa: E402
-from tauceti_progress import add_new_roadmaps as add_new_tauceti_roadmaps, apply as apply_tauceti_progress  # noqa: E402
+from tauceti_progress import add_new_roadmaps as add_new_tauceti_roadmaps, apply as apply_tauceti_progress, fit_to_arxiv  # noqa: E402
 from tauceti_progress import load as load_tauceti_progress, load_readmes as load_tauceti_readmes, tauceti_only  # noqa: E402
 
 
@@ -210,6 +210,8 @@ def build(output: Path, blueprints: Path | None = None, variant: str | None = No
         added = add_new_tauceti_roadmaps(atlas, board, load_tauceti_readmes())
         if added:
             apply_tauceti_progress(atlas, board)
+        # Each Tau Ceti roadmap declares an arXiv category; it sits in an area that category allows.
+        fit_to_arxiv(atlas, board)
     if variant == "tauceti":
         # The Tau Ceti build: only the roadmaps Tau Ceti's Progress page reports.
         atlas = tauceti_only(atlas)

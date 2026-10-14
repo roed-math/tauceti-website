@@ -39,6 +39,7 @@ REPOSITORY = "https://github.com/TauCetiProject/TauCetiRoadmap/blob/main/"
 COPY = ROOT / "data" / "tauceti-progress.json"
 READMES = ROOT / "data" / "tauceti-new-roadmaps.json"
 PLACEMENTS = ROOT / "data" / "tauceti-placements.json"
+ARXIV_AREAS = ROOT / "data" / "tauceti-arxiv-areas.json"
 RAW = "https://raw.githubusercontent.com/TauCetiProject/TauCetiRoadmap/main/"
 STATUS = {"done": "complete", "partial": "in_progress", "untouched": "planned"}
 
@@ -158,6 +159,24 @@ def short_name(roadmap_id: str) -> str:
     return name(roadmap_id).split("/")[-1]
 
 
+def load_arxiv_areas(path: Path = ARXIV_AREAS) -> dict:
+    """The areas each arXiv category allows, with its default (data/tauceti-arxiv-areas.json)."""
+    try:
+        return json.loads(path.read_text(encoding="utf-8")).get("categories", {})
+    except (OSError, ValueError):
+        return {}
+
+
+def arxiv_fit(row: dict, categories: dict) -> tuple:
+    """(areas allowed, default area, category) for a Progress-page row's arXiv category; (None, None, None) when
+    it declares none or one the file does not list."""
+    category = row.get("arxiv") if isinstance(row.get("arxiv"), str) else None
+    entry = categories.get(category) if category else None
+    if not entry:
+        return None, None, None
+    return set(entry.get("areas", [])), entry.get("default"), category
+
+
 def load_placements(path: Path = PLACEMENTS) -> dict:
     """The areas maintainers chose for new Tau Ceti roadmaps, by board id (data/tauceti-placements.json)."""
     try:
@@ -166,14 +185,15 @@ def load_placements(path: Path = PLACEMENTS) -> dict:
         return {}
 
 
-def area_for(text: str, title: str, atlas: dict, own: str, chosen: str | None = None) -> tuple:
+def area_for(text: str, title: str, atlas: dict, own: str, chosen: str | None = None, allowed: set | None = None) -> tuple:
     """(area, Tau Ceti roadmaps the README names, basis), on the most direct evidence there is:
     - "chosen": the area a maintainer chose (data/tauceti-placements.json);
     - "title": the area or field the title names, the earliest in the title, an area before a
       field at the same place (a field means its largest area);
     - "readme": the area that holds more of the Tau Ceti roadmaps the README names than any other.
     A README also names the roadmaps a roadmap builds on, often in other areas, so it decides only
-    on a clear lead, never by a tie-break. Failing all three, the area is None."""
+    on a clear lead, never by a tie-break. Failing all three, the area is None.
+    With `allowed` (the areas the roadmap's arXiv category allows), every rule chooses among those only."""
     known = {}
     for roadmap in atlas["roadmaps"]:
         if roadmap.get("origin") == "tauceti" and short_name(roadmap["id"]) != own and roadmap.get("group"):
@@ -181,7 +201,7 @@ def area_for(text: str, title: str, atlas: dict, own: str, chosen: str | None = 
     linked = re.findall(r"\]\((?:\.\./|/?TauCetiRoadmap/|https://github\.com/TauCetiProject/TauCetiRoadmap/(?:blob|tree)/main/TauCetiRoadmap/)([A-Za-z0-9]+)", text)
     names = sorted({n for n in linked if n in known}) or sorted(n for n in known if re.search(r"\b" + re.escape(n) + r"\b", text))
     named = [known[n]["id"] for n in names]
-    groups = {group["id"] for group in atlas.get("groups", [])}
+    groups = {group["id"] for group in atlas.get("groups", []) if allowed is None or group["id"] in allowed}
     if chosen in groups:
         return chosen, named, "chosen"
     words = title.lower()
@@ -189,7 +209,7 @@ def area_for(text: str, title: str, atlas: dict, own: str, chosen: str | None = 
     candidates = []
     for group in atlas.get("groups", []):
         found = re.search(r"\b" + re.escape(group["label"].lower()) + r"\b", words)
-        if found:
+        if found and group["id"] in groups:
             candidates.append((found.start(), 0, group["id"]))
     for field_ in atlas.get("fields", []):
         members = [g for g in field_.get("groupIds", []) if g in groups]
@@ -198,7 +218,7 @@ def area_for(text: str, title: str, atlas: dict, own: str, chosen: str | None = 
             candidates.append((found.start(), 1, max(sorted(members), key=lambda g: size[g])))
     if candidates:
         return min(candidates)[2], named, "title"
-    ranked = Counter(known[n]["group"] for n in names).most_common()
+    ranked = Counter(known[n]["group"] for n in names if known[n]["group"] in groups).most_common()
     if ranked and (len(ranked) == 1 or ranked[0][1] > ranked[1][1]):
         return ranked[0][0], named, "readme"
     return None, named, None
@@ -235,9 +255,12 @@ def summary(text: str, least: int = 40, most: int = 150) -> str:
     return cut[:end + 1] if end >= 0 and len(cut[:end + 1].split()) >= least else cut + " …"
 
 
-def add_new_roadmaps(atlas: dict, progress: dict, readmes: dict, placements: dict | None = None) -> list:
-    """Add the roadmaps the board reports and the atlas lacks, built from their READMEs; the ids added."""
+def add_new_roadmaps(atlas: dict, progress: dict, readmes: dict, placements: dict | None = None,
+                     categories: dict | None = None) -> list:
+    """Add the roadmaps the board reports and the atlas lacks, built from their READMEs; the ids added.
+    Each goes to an area its arXiv category allows (data/tauceti-arxiv-areas.json), when it declares one."""
     placements = load_placements() if placements is None else placements
+    categories = load_arxiv_areas() if categories is None else categories
     added = []
     for row in unplaced(atlas, progress):
         text = readmes.get(row["id"])
@@ -248,7 +271,10 @@ def add_new_roadmaps(atlas: dict, progress: dict, readmes: dict, placements: dic
         title = re.sub(r"^Roadmap:\s*", "", heading.group(1).strip()) if heading else (row.get("title") or short_name(roadmap_id))
         title = title[:1].upper() + title[1:]
         choice = placements.get(row["id"]) or {}
-        group, named, basis = area_for(text, title, atlas, short_name(roadmap_id), choice.get("galaxy"))
+        allowed, default, category = arxiv_fit(row, categories)
+        group, named, basis = area_for(text, title, atlas, short_name(roadmap_id), choice.get("galaxy"), allowed)
+        if not group and default:
+            group, basis = default, "arxiv"
         if not group:
             continue
         lines = text.splitlines()
@@ -291,12 +317,39 @@ def add_new_roadmaps(atlas: dict, progress: dict, readmes: dict, placements: dic
         atlas.setdefault("stageEdges", []).extend(edges)
         atlas.setdefault("roadmapLinks", []).extend({"source": roadmap_id, "target": other, "kind": "reference", "label": short_name(other), "anchor": ""} for other in named)
         # "provisional": joined from its README since the snapshot, until a classification job classifies it.
+        within = f", among the areas its arXiv category ({category}) allows" if category else ""
         reason = {"chosen": f"Placed where the maintainers chose: {choice.get('reason', '').strip()}",
-                  "title": "Placed provisionally in the area its title names.",
-                  "readme": f"Placed provisionally with most of the Tau Ceti roadmaps its README names ({', '.join(short_name(n) for n in named)})."}[basis]
-        atlas.setdefault("roadmapClassification", {}).setdefault("roadmaps", {})[roadmap_id] = {"basis": "provisional", "rationale": reason}
+                  "title": f"Placed provisionally in the area its title names{within}.",
+                  "readme": f"Placed provisionally with most of the Tau Ceti roadmaps its README names ({', '.join(short_name(n) for n in named)}){within}.",
+                  "arxiv": f"Placed by its arXiv category, {category} ({row.get('topic') or category})."}[basis]
+        record = {"basis": "provisional", "rationale": reason}
+        if category:
+            record["arxiv"] = category
+        atlas.setdefault("roadmapClassification", {}).setdefault("roadmaps", {})[roadmap_id] = record
         added.append(roadmap_id)
     return added
+
+
+def fit_to_arxiv(atlas: dict, progress: dict, categories: dict | None = None) -> list:
+    """Move every Tau Ceti roadmap whose area its arXiv category does not allow: to the area its title or README
+    favours among the allowed ones, else to the category's default. The category is the roadmap's own
+    (its metadata.toml, through the Progress page), so it outranks the snapshot's classification.
+    Returns the ids moved."""
+    categories = load_arxiv_areas() if categories is None else categories
+    notes = atlas.setdefault("roadmapClassification", {}).setdefault("roadmaps", {})
+    moved = []
+    for roadmap_id, row in matches(atlas, progress).items():
+        roadmap = next((r for r in atlas["roadmaps"] if r["id"] == roadmap_id), None)
+        allowed, default, category = arxiv_fit(row, categories)
+        if not roadmap or not allowed or roadmap.get("group") in allowed:
+            continue
+        group, _, _ = area_for(roadmap.get("readme") or "", roadmap.get("title") or "", atlas, short_name(roadmap_id), None, allowed)
+        before, roadmap["group"] = roadmap.get("group"), group or default
+        notes[roadmap_id] = {**notes.get(roadmap_id, {}), "basis": "arxiv", "arxiv": category,
+                             "rationale": f"Placed by its arXiv category, {category} ({row.get('topic') or category}), "
+                                          f"which the area it had ({before}) does not cover."}
+        moved.append(roadmap_id)
+    return moved
 
 
 def fetch_readmes(progress: dict, snapshot: Path = ROOT / "data" / "atlas.json", copy: Path = READMES) -> dict:
