@@ -14,7 +14,7 @@ on:
     workflows: ["Swarm submission check"]
     types: [completed]
   schedule:
-    - cron: '17 */2 * * *'
+    - cron: '*/20 * * * *'
   workflow_dispatch:
 
 permissions:
