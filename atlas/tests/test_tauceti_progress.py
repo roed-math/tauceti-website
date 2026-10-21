@@ -212,6 +212,75 @@ Change of family.
         record = data["roadmapClassification"]["roadmaps"]["tauceti:TauCetiRoadmap/Peripheral"]
         self.assertEqual((record["basis"], record["rationale"]), ("provisional", "Placed where the maintainers chose: group theory about free pro-p groups."))
 
+    def test_a_roadmap_the_page_lists_without_layers_takes_them_from_its_readme_unassessed(self):
+        # The board reads `## Layer 1: …` and `## A1: …` but not `## A1. …`, so a README written that
+        # way reaches it with no layers (34 of its 137 roadmaps on 2026-10-20), and such a roadmap
+        # used to stay off the map.
+        from tauceti_progress import add_new_roadmaps
+        data = self.atlas()
+        readme = ("# Etale cohomology of curves\n\n## Scope and conventions\n\nWhat is consumed.\n\n"
+                  "## A1. Constructible sheaves\n\nFinite locally constant sheaves.\n\n"
+                  "## A2. Cohomology with supports\n\n### A2.1. Excision\n\nThe long exact sequence.\n\n## References\n\nMilne.\n")
+        board = self.board(self.row("EtaleCurves", [], []))
+        added = add_new_roadmaps(data, board, {"TauCetiRoadmap/EtaleCurves": readme}, {})
+        self.assertEqual(added, ["tauceti:TauCetiRoadmap/EtaleCurves"])
+        self.assertEqual(data["roadmaps"][-1]["group"], "etale")
+        stages = [s for s in data["stages"] if s["owner"] == added[0]]
+        self.assertEqual([(s["key"], s["title"]) for s in stages], [("A1", "Constructible sheaves"), ("A2", "Cohomology with supports")])
+        self.assertEqual(stages[1]["requires"], [stages[0]["id"]])
+        self.assertIn("The long exact sequence.", stages[1]["description"])
+        apply(data, board)
+        info = data["taucetiProgress"]
+        self.assertEqual(info["unplaced"], [])
+        self.assertFalse({s["id"] for s in stages} & set(data["progress"]["stages"]))
+        self.assertEqual(info["roadmaps"][added[0]]["layers"], "readme")
+        self.assertEqual(info["readmeLayers"], added)
+        # They count, unassessed, so the share done dips when such a roadmap is accepted.
+        self.assertEqual(info["counts"], {"done": 0, "partial": 0, "untouched": 0, "unassessed": 2, "total": 2})
+
+    def test_the_boards_own_layers_come_before_the_readmes(self):
+        from tauceti_progress import add_new_roadmaps
+        data = self.atlas()
+        board = self.board(self.row("EtaleCurves", ["Layer 0: sheaves"], ["done"]))
+        readme = "# Etale cohomology of curves\n\n## Layer 0: sheaves\n\nSheaves.\n\n### A1. Constructible sheaves\n\nMore.\n"
+        added = add_new_roadmaps(data, board, {"TauCetiRoadmap/EtaleCurves": readme}, {})
+        self.assertEqual([s["key"] for s in data["stages"] if s["owner"] == added[0]], ["Layer 0"])
+        apply(data, board)
+        self.assertNotIn("layers", data["taucetiProgress"]["roadmaps"][added[0]])
+        self.assertEqual((data["taucetiProgress"]["readmeLayers"], data["taucetiProgress"]["counts"]["total"]), ([], 1))
+
+
+class ReadmeLayers(unittest.TestCase):
+    """The layers of a README whose headings Tau Ceti's Progress page cannot read."""
+
+    def test_the_labels_tau_ceti_roadmaps_use(self):
+        from tauceti_progress import readme_layers
+        cases = [
+            ("a full stop after the label", "## Scope and conventions\n\n## A1. Currents and cohomology\n\n## A2. Levels (draft)\n",
+             [("A1", "A1. Currents and cohomology"), ("A2", "A2. Levels")]),
+            ("a longer prefix and a dash", "### CG1 — Contact distributions\n\n### CG2 — Reeb dynamics\n",
+             [("CG1", "CG1 — Contact distributions"), ("CG2", "CG2 — Reeb dynamics")]),
+            ("numbers, with sub-numbers beneath", "## Milestones at a glance\n\n## 1. Shared foundations\n\n### 1.1. Walks\n\n## 2. Cuts and separators\n",
+             [("1", "1. Shared foundations"), ("2", "2. Cuts and separators")]),
+            ("dotted labels with no separator", "## G.1 Compactification objects\n\n## F.0.A1 Decomposition groups\n\n## 0.5 Finite presentation\n",
+             [("G.1", "G.1 Compactification objects"), ("F.0.A1", "F.0.A1 Decomposition groups"), ("0.5", "0.5 Finite presentation")]),
+            ("a sub-label at the same level stays, in order", "## I1. Involutive functions\n\n## I2.0. Circles\n\n## I2. Liouville–Arnold\n\n### I2.1. Action-angle\n",
+             [("I1", "I1. Involutive functions"), ("I2.0", "I2.0. Circles"), ("I2", "I2. Liouville–Arnold")]),
+            ("a bare letter among the labels", "## Scope\n\n### K1. Resolution circles\n\n### G. Plane geometry\n\n### K2. Frobenius object\n",
+             [("K1", "K1. Resolution circles"), ("G", "G. Plane geometry"), ("K2", "K2. Frobenius object")]),
+            ("worded headings, as the board reads them", "## Layer 1: Poisson summation\n\n### A1. detail\n\n## Layer 2: theta series\n",
+             [("Layer 1", "Layer 1: Poisson summation"), ("Layer 2", "Layer 2: theta series")]),
+            ("a later mention of a layer", "## A1. Constructions\n\n## A2. Calculus\n\n## A1. Constructions, revisited\n",
+             [("A1", "A1. Constructions"), ("A2", "A2. Calculus")]),
+            ("the sub-headings of a section about the layers", "## Introduction\n\n## The build, in layers\n\n### Gram rigidity\n\n### Orthogonal series\n\n## References\n",
+             [("Gram rigidity", "Gram rigidity"), ("Orthogonal series", "Orthogonal series")]),
+            ("an umbrella over other roadmaps", "## Scope\n\n## The roadmaps\n\n## How they depend on one another\n", []),
+            ("titles that start with a name such as L2 or K3", "## L2 cohomology\n\n## K3 surfaces and H1 classes\n", []),
+        ]
+        for case, text, layers in cases:
+            with self.subTest(case):
+                self.assertEqual(readme_layers("# Roadmap\n\nIntro.\n\n" + text), layers)
+
 
 class ArxivAreas(unittest.TestCase):
     """A Tau Ceti roadmap sits in an area its own arXiv category allows (data/tauceti-arxiv-areas.json)."""

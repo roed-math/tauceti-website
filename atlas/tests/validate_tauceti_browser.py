@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Browser checks for the Tau Ceti build (tauceti/index.html): only the roadmaps
-Tau Ceti's Progress page reports, its own layer counts as the headline, and each
-roadmap's live report."""
+Tau Ceti's Progress page reports, its own layer counts as the headline (with the
+layers read from READMEs it lists without layers), and each roadmap's live report."""
 import json
 import sys
 from pathlib import Path
@@ -37,13 +37,21 @@ with sync_playwright() as p:
           return document.getElementById('atlas-percent').textContent===percent+'%'
             && count.includes(`${c.done.toLocaleString()} of ${c.total.toLocaleString()} layers done`) && count.includes(`${c.partial.toLocaleString()} partial`)
             && getComputedStyle(document.querySelector('.scale-marker')).display!=='none' && document.getElementById('atlas-marker').style.left===percent+'%'; }"""))
-        record(scope + ' the panel says where the data comes from, and names any roadmap not yet placed', page.evaluate("""() => {
-          const e=document.getElementById('atlas-source'), u=TauExplorer.data.taucetiProgress.unplaced;
-          return e.textContent.startsWith("From Tau Ceti's Progress page") && (u.length ? e.textContent.includes(`${u.length} newer roadmap`) : !/newer roadmap/.test(e.textContent))
-            && u.every(x=>e.title.includes(x.id.split('/').pop())); }"""))
+        record(scope + ' the panel says where the data comes from, which layers come from READMEs, and names any roadmap not yet placed', page.evaluate("""() => {
+          const e=document.getElementById('atlas-source'), t=e.textContent, u=TauExplorer.data.taucetiProgress.unplaced, r=TauExplorer.data.taucetiProgress.readmeLayers;
+          return t.startsWith("From Tau Ceti's Progress page") && (u.length ? t.includes(`${u.length} newer roadmap`) : !/newer roadmap/.test(t))
+            && (r.length ? t.includes(`of ${r.length} roadmap${r.length===1?'':'s'} it lists without layers`) : !/without layers/.test(t))
+            && u.every(x=>e.title.includes(x.id.split('/').pop())) && r.every(id=>e.title.includes(id.split('/').pop())); }"""))
         record(scope + ' a roadmap Tau Ceti accepted since the snapshot is on the map, counted in the layers', page.evaluate("""() => {
           const d=TauExplorer.data, added=d.roadmaps.filter(r=>(d.roadmapClassification.roadmaps[r.id]||{}).basis==='provisional'), u=TauExplorer.getUniverse();
           return added.every(r=>u.byId.has(r.id) && r.stages.every(s=>u.byId.has(s)) && TauExplorer.progress.roadmapLeaves(r.id).length===r.stages.length); }"""))
+        # The board lists no layers for a roadmap whose headings it cannot read (`## A1. ...`); the
+        # build reads them from the README, and none of them has a state.
+        record(scope + ' a roadmap the board lists without layers has its README\'s layers on the map, unassessed', page.evaluate("""() => {
+          const d=TauExplorer.data, u=TauExplorer.getUniverse(), ids=d.taucetiProgress.readmeLayers;
+          return ids.every(id => { const r=d.roadmaps.find(x=>x.id===id);
+            return r && r.layersFrom==='readme' && r.stages.length>0 && u.byId.has(id) && d.taucetiProgress.roadmaps[id].layers==='readme'
+              && r.stages.every(s=>u.byId.has(s) && TauExplorer.progress.leafState(s).status==='unknown'); }); }"""))
         if scope == 'Desktop':
             roadmap = page.evaluate("() => Object.entries(TauExplorer.data.taucetiProgress.roadmaps).find(([id,b])=>b.status)[0]")
             page.evaluate("id => TauExplorer.openItem(id)", roadmap)
@@ -61,6 +69,12 @@ with sync_playwright() as p:
             page.wait_for_timeout(700)
             record('A layer shows what its latest report says is still to do', page.evaluate("""id => [...document.querySelectorAll('#inspector-content .section-label')].some(h=>h.textContent==='Still to do')
               && document.getElementById('inspector-content').textContent.includes(TauExplorer.data.taucetiProgress.remaining[id].slice(0,40))""", layer))
+            readme = page.evaluate("() => TauExplorer.data.taucetiProgress.readmeLayers[0] || null")
+            if readme:
+                page.evaluate("id => TauExplorer.openItem(id)", readme)
+                page.wait_for_timeout(700)
+                record('A roadmap whose layers come from its README says so in its report', page.evaluate("""() =>
+                  [...document.querySelectorAll('#inspector-content .detail-note')].some(p=>p.textContent.includes('lists no layers for this roadmap'))"""))
         record(scope + ' has no application errors', not errors)
         page.close()
     browser.close()

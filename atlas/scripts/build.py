@@ -323,7 +323,8 @@ def build(output: Path, blueprints: Path | None = None, variant: str | None = No
     }
     if atlas.get("taucetiProgress"):
         report["taucetiProgress"] = {"exportedAt": atlas["taucetiProgress"]["exportedAt"], "roadmaps": len(atlas["taucetiProgress"]["roadmaps"]),
-                                     "unplaced": len(atlas["taucetiProgress"]["unplaced"]), "layers": atlas["taucetiProgress"]["counts"], "added": added}
+                                     "unplaced": len(atlas["taucetiProgress"]["unplaced"]), "layers": atlas["taucetiProgress"]["counts"], "added": added,
+                                     "readmeLayers": atlas["taucetiProgress"]["readmeLayers"]}
     report["variant"] = variant or "atlas"
     (output.parent / "BUILD.json" if variant else ROOT / "BUILD.json").write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
     return report

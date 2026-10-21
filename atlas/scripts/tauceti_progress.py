@@ -13,7 +13,10 @@ reports keeps its snapshot.
 A roadmap Tau Ceti accepts appears on the board before it appears in the
 atlas's snapshot. Its README is kept too (data/tauceti-new-roadmaps.json), and
 the build adds it to the map from that README and the board's list of its
-layers. It goes in the area a maintainer chose for it
+layers. The board reads only headings such as `## Layer 1: ...` or `## A1: ...`;
+when it lists no layers for a roadmap, they are read from the README's own
+labelled headings (`## A1. ...`, `## HF0. ...`, `## G.1 ...`), unassessed, and
+counted as such. It goes in the area a maintainer chose for it
 (data/tauceti-placements.json); else in the area or field its title names;
 else in the area that holds more of the Tau Ceti roadmaps its README names than
 any other; and not at all until one of those says where it belongs. The title
@@ -103,7 +106,9 @@ def apply(atlas: dict, progress: dict) -> dict:
             by_key[(stage.get("owner"), stage.get("key"))].append(stage)
     date = str(progress.get("exported_at", ""))[:10]
     info = {"exportedAt": progress.get("exported_at"), "page": PAGE, "recentDays": progress.get("recent_days"), "roadmaps": {}, "remaining": {}, "unplaced": [],
-            "counts": counts(progress)}
+            "counts": counts(progress), "readmeLayers": []}
+    from_readme = {roadmap["id"] for roadmap in atlas["roadmaps"] if roadmap.get("layersFrom") == "readme"}
+    owned = Counter(stage.get("owner") for stage in atlas["stages"] if not stage.get("expansion"))
     matched = matches(atlas, progress)
     for roadmap_id, row in matched.items():
         assessment = field(row, "assessment", {}) or {}
@@ -133,6 +138,12 @@ def apply(atlas: dict, progress: dict) -> dict:
         info["roadmaps"][roadmap_id] = {"activity": field(row, "activity", {}) or {}, "assessment": assessment.get("source"),
                                         "status": REPOSITORY + status_path if status_path else None, "completed": bool(row.get("completed")),
                                         "frontier": frontier[:6]}
+        if roadmap_id in from_readme and not field(row, "layer_ids", []):
+            # Layers the board does not list, read from the README: unassessed, and counted as such.
+            info["roadmaps"][roadmap_id]["layers"] = "readme"
+            info["readmeLayers"].append(roadmap_id)
+            info["counts"]["unassessed"] += owned[roadmap_id]
+            info["counts"]["total"] += owned[roadmap_id]
     # The snapshot's copies of each report are superseded by the live report, linked instead.
     for roadmap in atlas["roadmaps"]:
         if roadmap["id"] in matched:
@@ -255,6 +266,49 @@ def summary(text: str, least: int = 40, most: int = 150) -> str:
     return cut[:end + 1] if end >= 0 and len(cut[:end + 1].split()) >= least else cut + " …"
 
 
+def heading_label(heading: str) -> str | None:
+    """The label a README heading starts with (`A1`, `HF0`, `M0.1`, `G.1`, `0.DP.1`, `R5a`, `1`, or
+    a bare capital as in `G. Plane geometry`), or None. A label carries a digit and ends in a full
+    stop, a colon, a dash or a comma; a dotted one needs none. So `L2 cohomology` is a title."""
+    found = re.match(r"([A-Z0-9][A-Za-z0-9]*(?:[.\-][A-Za-z0-9]+)*)(\.?)(\s*[:—–,]|\s|$)", heading)
+    if not found:
+        return None
+    label, stop, separator = found.groups()
+    if not re.search(r"\d", label):
+        return label if len(label) == 1 and stop else None
+    return label if stop or separator.strip() or "." in label else None
+
+
+def readme_layers(text: str) -> list:
+    """(key, heading) for each layer of a README, in its order, for a roadmap the board lists without
+    layers. Worded headings come first, as on the board (`## Layer 1: ...`); else the labelled
+    headings at the outermost level that has any, a later mention of a label being no new layer;
+    else the sub-headings of a section about the layers (`## The build, in layers`); else none."""
+    headings = [(len(found.group(1)), re.sub(r"\s*\([^()]*\)\s*$", "", found.group(2)).strip())
+                for found in re.finditer(r"^(#{2,4})\s+(.+?)\s*$", text, re.M)]
+    worded = [(re.match(r"(.*?)\s*(?:[:—–,(]|$)", heading).group(1), heading) for _, heading in headings
+              if re.match(r"(?:Layer|Lane|Part|Stage|Milestone)\b", heading)]
+    labelled = [(level, label, heading) for level, heading in headings if (label := heading_label(heading))]
+    outermost = min((level for level, _, _ in labelled), default=None)
+    layers = worded or [(label, heading) for level, label, heading in labelled if level == outermost]
+    if not layers:
+        for index, (level, heading) in enumerate(headings):
+            if re.search(r"\blayers\b", heading, re.I):
+                for deeper, below in headings[index + 1:]:
+                    if deeper <= level:
+                        break
+                    if deeper == level + 1:
+                        layers.append((below, below))
+                if layers:
+                    break
+    seen, out = set(), []
+    for key, heading in layers:
+        if key not in seen:
+            seen.add(key)
+            out.append((key, heading))
+    return out
+
+
 def add_new_roadmaps(atlas: dict, progress: dict, readmes: dict, placements: dict | None = None,
                      categories: dict | None = None) -> list:
     """Add the roadmaps the board reports and the atlas lacks, built from their READMEs; the ids added.
@@ -293,10 +347,14 @@ def add_new_roadmaps(atlas: dict, progress: dict, readmes: dict, placements: dic
             return 1, ""
 
         headings = field(row, "layers", [])
+        layers = [(layer, headings[index] if index < len(headings) else layer) for index, layer in enumerate(field(row, "layer_ids", []))]
+        # The board lists no layers when it cannot read the README's headings: read them from the README.
+        from_readme = not layers
+        if from_readme:
+            layers = readme_layers(text)
         stages, edges = [], []
         # Layers in the order the README lists them, each after the one before it.
-        for index, layer in enumerate(field(row, "layer_ids", [])):
-            label = headings[index] if index < len(headings) else layer
+        for index, (layer, label) in enumerate(layers):
             short = label[len(layer):].lstrip(" :.—–-").strip() if label.startswith(layer) else label
             line, body = section(label)
             stage = {"id": f"{roadmap_id}#{slug(label)}", "owner": roadmap_id, "key": layer, "title": short or layer, "description": body[:4000],
@@ -312,7 +370,7 @@ def add_new_roadmaps(atlas: dict, progress: dict, readmes: dict, placements: dic
         atlas["roadmaps"].append({"id": roadmap_id, "title": title, "summary": summary(text), "readme": text, "origin": "tauceti", "lifecycle": "active",
                                   "group": group, "parentRoadmapId": ("tauceti:" + row["parent_id"]) if row.get("parent_id") else None,
                                   "sourcePath": row.get("readme"), "repositoryPath": row.get("readme"), "stages": [stage["id"] for stage in stages],
-                                  "prerequisites": [], "consumers": [], "sections": []})
+                                  "prerequisites": [], "consumers": [], "sections": [], **({"layersFrom": "readme"} if from_readme else {})})
         atlas["stages"] += stages
         atlas.setdefault("stageEdges", []).extend(edges)
         atlas.setdefault("roadmapLinks", []).extend({"source": roadmap_id, "target": other, "kind": "reference", "label": short_name(other), "anchor": ""} for other in named)
