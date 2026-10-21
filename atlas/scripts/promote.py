@@ -3,6 +3,7 @@
 
 Usage:
   python3 scripts/promote.py [--dry-run]
+  python3 scripts/promote.py --notices FILE   (the intake: what to tell the workers, posted with --post FILE once published)
 
 A blueprint packet or a link map goes live when its review object says
 "accepted" and names, as "independent-review-<job>", a review job that is
@@ -220,17 +221,33 @@ def build_check():
     load_surveys(ROOT)
 
 
+def post(said: list, run=None) -> None:
+    """Comment on each issue; said is [(issue number, comment), ...] as notices() gives it."""
+    if run is None:
+        import subprocess
+        run = lambda args: subprocess.run(args, cwd=ROOT, check=False, capture_output=True)
+    for number, body in said:
+        run(["gh", "issue", "comment", str(number), "--body", body])
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--dry-run", action="store_true", help="say what would be promoted, change nothing")
     parser.add_argument("--comment", action="store_true", help="tell the workers on the issues of the jobs that wrote the work")
+    parser.add_argument("--notices", metavar="FILE", help="write what --comment would say to FILE instead, to post once the work is published")
+    parser.add_argument("--post", metavar="FILE", help="post the notices --notices wrote to FILE, and do nothing else")
     args = parser.parse_args()
+    if args.post:
+        post(json.loads(Path(args.post).read_text(encoding="utf-8")))
+        return 0
     summary = promote(ROOT, validate=build_check, dry_run=args.dry_run)
-    if args.comment and not args.dry_run:
-        import subprocess
+    if (args.comment or args.notices) and not args.dry_run:
         jobs = json.loads((ROOT / "research" / "blueprint" / "queue.json").read_text(encoding="utf-8"))["jobs"]
-        for number, body in notices(ROOT, summary, jobs):
-            subprocess.run(["gh", "issue", "comment", str(number), "--body", body], cwd=ROOT, check=False, capture_output=True)
+        said = notices(ROOT, summary, jobs)
+        if args.notices:
+            Path(args.notices).write_text(json.dumps(said, ensure_ascii=False) + "\n", encoding="utf-8")
+        else:
+            post(said)
     for path in summary["promoted"]:
         print("promoted", path)
     for path, reason in summary["refused"]:

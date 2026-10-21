@@ -118,6 +118,15 @@ class Promote(unittest.TestCase):
         self.assertIn("is now in the atlas", said[0][1])
         self.assertIn("#view=roadmap&id=R", said[0][1])
 
+    def test_saved_notices_are_posted_as_they_were_written(self):
+        # The intake saves the notices (--notices) and posts them (--post) only once its push has
+        # published the work: from 2026-10-09 every failed run had told workers their work was live.
+        from promote import post
+        said = [(41, "`research/blueprint/packets/R.json` is now in the atlas."), (7, "The atlas could not take in Q.")]
+        calls = []
+        post(json.loads(json.dumps(said)), run=calls.append)
+        self.assertEqual(calls, [["gh", "issue", "comment", "41", "--body", said[0][1]], ["gh", "issue", "comment", "7", "--body", said[1][1]]])
+
     def test_a_new_roadmap_goes_live_with_its_definition(self):
         (self.root / "data" / "atlas.json").write_text(json.dumps({"roadmaps": []}))
         verdict = promote(self.root, validate=lambda: None)
