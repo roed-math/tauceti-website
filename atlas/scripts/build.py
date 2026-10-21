@@ -11,7 +11,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
-from blueprints import add_new_roadmaps, drop_source_excerpts, load_promoted, merge_blueprints, replaced_layers, trim_decompositions  # noqa: E402
+from blueprints import add_new_roadmaps, check_new_summaries, drop_source_excerpts, load_promoted, merge_blueprints, replaced_layers, trim_decompositions  # noqa: E402
 from decompositions import merge_decompositions, merge_links  # noqa: E402
 from galaxies import apply_galaxies  # noqa: E402
 from restructure import apply_restructurings, load_accepted  # noqa: E402
@@ -157,6 +157,7 @@ def assemble(require_distances: bool = True, blueprints: Path | None = None) -> 
     for roadmap in atlas["roadmaps"]:
         if roadmap["id"] in atlas["roadmapSummaries"]:
             roadmap["summary"] = atlas["roadmapSummaries"][roadmap["id"]]
+    check_new_summaries(atlas["roadmaps"], definitions)
     atlas["bibliography"] = json.loads(read_text("data/bibliography.json"))
     stage_ids = {stage["id"] for stage in atlas["stages"]}
     if set(atlas["stagePresentation"]) - stage_ids:

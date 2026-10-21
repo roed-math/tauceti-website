@@ -6,7 +6,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
-from blueprints import add_new_roadmaps, drop_source_excerpts, merge_blueprints, replaced_layers, trim_decompositions  # noqa: E402
+from blueprints import add_new_roadmaps, check_new_summaries, drop_source_excerpts, merge_blueprints, replaced_layers, trim_decompositions  # noqa: E402
 
 
 def stage(sid, requires=()):
@@ -182,6 +182,20 @@ class NewRoadmaps(unittest.TestCase):
         grouped["roadmaps"][0]["group"] = "diophantine"
         galaxies = {"padic": "p-adic", "langlands": "galois"}
         self.assertEqual(add_new_roadmaps(grouped, [self.definition()], self.records(), galaxies)[1]["N"]["galaxy"], "padic")
+
+    def test_a_new_roadmap_needs_a_summary_the_page_can_show(self):
+        # The browser suite asks every roadmap for forty words of mathematical prose. A design whose summary
+        # is shorter used to pass promotion and then stop every publication of the intake (2026-10-21), so the
+        # build refuses it, and promotion with it, unless an edited summary replaces it.
+        prose = " ".join(["Completed twisted L-functions of classical groups by the doubling method."] * 4)
+        short, long = self.definition(summary="Doubling for classical groups."), self.definition(summary=prose)
+        with self.assertRaisesRegex(ValueError, r"N .*4 words.*forty"):
+            check_new_summaries([dict(long, summary=short["summary"])], [short])
+        check_new_summaries([long], [long])
+        # An edited summary (data/roadmap-summaries.json) is what the page shows.
+        check_new_summaries([long], [short])
+        with self.assertRaisesRegex(ValueError, "portfolio audit"):
+            check_new_summaries([dict(long, summary=prose + " A portfolio audit follows.")], [long])
 
 
 if __name__ == "__main__":

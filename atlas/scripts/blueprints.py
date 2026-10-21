@@ -19,6 +19,7 @@ The snapshot passed in is never changed.
 from __future__ import annotations
 
 import json
+import re
 from collections import Counter, defaultdict
 from copy import deepcopy
 from pathlib import Path
@@ -26,6 +27,30 @@ from pathlib import Path
 PLANET_KINDS = {"definition", "construction", "theorem"}
 EVIDENCE_PER_LINK = 2
 EXCERPT = 160
+# What the page's overview of a roadmap may not be: shorter than forty words, or about the process
+# rather than the mathematics (tests/validate_browser.py, "All roadmap summaries use mathematical prose").
+SUMMARY_WORDS = 40
+PROCEDURAL = re.compile(r"portfolio audit|component implements|silently attributed")
+
+
+def check_new_summaries(roadmaps: list, definitions: list) -> None:
+    """Raise unless each roadmap a promoted design adds has a summary the page can show. It keeps the
+    summary its review accepted, unless data/roadmap-summaries.json replaces it; scripts/promote.py
+    tries this build, so a design whose summary is too short is refused and its worker told, rather
+    than stopping every later publication."""
+    summaries = {roadmap["id"]: roadmap.get("summary") or "" for roadmap in roadmaps}
+    for definition in definitions:
+        rid = definition["id"]
+        if rid not in summaries:
+            continue  # retired since, so not on the page
+        summary = summaries[rid]
+        words = len(summary.split())
+        if words < SUMMARY_WORDS:
+            raise ValueError(f"The new roadmap {rid} has a summary of {words} words "
+                             f"(research/blueprint/roadmaps/{rid}.json); the atlas shows at least forty words of mathematical prose")
+        found = PROCEDURAL.search(summary)
+        if found:
+            raise ValueError(f"The summary of the new roadmap {rid} describes the work (\"{found.group(0)}\"), not the mathematics")
 
 
 def drop_source_excerpts(value):
