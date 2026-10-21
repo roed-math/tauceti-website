@@ -1,9 +1,10 @@
 name: Tau Ceti progress
 
-# Four times a day, take Tau Ceti's own progress from the Progress page of the Tau Ceti
-# site (static/progress.json) and rebuild both pages with it: the atlas, whose Tau
-# Ceti roadmaps take their layer states from it, and the Tau Ceti atlas
-# (tauceti/index.html), which shows only those roadmaps. A roadmap Tau Ceti has
+# Four times a day, rebuild the published pages from Tau Ceti's own data: the Progress page of
+# the Tau Ceti site (static/progress.json), for the state of each layer of its roadmaps, and the
+# open pull requests to TauCetiRoadmap, for the roadmaps proposed to it (scripts/tauceti_prs.py).
+# The atlas (index.html) shows both, since 2026-10-21 in place of the campaign's own planned
+# roadmaps; the Tau Ceti atlas (tauceti/index.html) shows only Tau Ceti's. A roadmap Tau Ceti has
 # accepted since the atlas's snapshot joins both maps from its README. Nothing is pushed unless
 # the data changed and both pages pass their checks.
 
@@ -34,17 +35,23 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - name: Fetch the Progress page's data
-        run: python3 scripts/tauceti_progress.py --fetch | tee -a "$GITHUB_STEP_SUMMARY"
+      - name: Fetch the Progress page's data and the proposed roadmaps
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python3 scripts/tauceti_progress.py --fetch | tee -a "$GITHUB_STEP_SUMMARY"
+          python3 scripts/tauceti_prs.py --fetch | tee -a "$GITHUB_STEP_SUMMARY"
       - name: Rebuild, check and publish if it changed
         shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
-          if git diff --quiet -- data/tauceti-progress.json data/tauceti-new-roadmaps.json; then echo "No change on the Progress page." | tee -a "$GITHUB_STEP_SUMMARY"; exit 0; fi
+          if git diff --quiet -- data/tauceti-progress.json data/tauceti-new-roadmaps.json data/tauceti-prs.json; then echo "No change on the Progress page or in the pull requests." | tee -a "$GITHUB_STEP_SUMMARY"; exit 0; fi
           python3 scripts/build.py > /dev/null
           python3 scripts/build.py --tauceti > /dev/null
           # Only the tests of what builds the pages. The full suite also checks the swarm's live queue,
           # which is not this workflow's to fix and stalled the progress from 2026-10-11 (RS-01).
-          python3 -m unittest tests/test_tauceti_progress.py tests/test_blueprints.py tests/test_decompositions.py \
+          python3 -m unittest tests/test_tauceti_progress.py tests/test_tauceti_prs.py tests/test_blueprints.py tests/test_decompositions.py \
             tests/test_definitions_page.py tests/test_galaxies.py tests/test_artefacts.py tests/test_library_coverage.py \
             tests/test_restructure.py tests/test_radial_layout.py tests/test_distances.py tests/test_items.py \
             tests/test_collation.py tests/test_merge_landmark_names.py
@@ -55,8 +62,8 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           publish() {
-            git add data/tauceti-progress.json data/tauceti-new-roadmaps.json index.html definitions.html BUILD.json tauceti
-            git commit -q -m "Atlas: Tau Ceti progress from the Progress page ($(python3 -c "import json; print(json.load(open('data/tauceti-progress.json'))['exported_at'])"))"
+            git add data/tauceti-progress.json data/tauceti-new-roadmaps.json data/tauceti-prs.json index.html definitions.html BUILD.json tauceti
+            git commit -q -m "Atlas: Tau Ceti progress from the Progress page ($(python3 -c "import json; print(json.load(open('data/tauceti-progress.json'))['exported_at'])")) and its open pull requests"
           }
           publish
           for attempt in 1 2 3 4 5; do
@@ -65,8 +72,8 @@ jobs:
             # would conflict. Start again from their main: fetch, rebuild, commit, push.
             sleep $((attempt * 15))
             git fetch -q origin main && git reset -q --hard origin/main
-            python3 scripts/tauceti_progress.py --fetch > /dev/null
-            if git diff --quiet -- data/tauceti-progress.json data/tauceti-new-roadmaps.json; then echo "Main already has this data."; exit 0; fi
+            python3 scripts/tauceti_progress.py --fetch > /dev/null && python3 scripts/tauceti_prs.py --fetch > /dev/null
+            if git diff --quiet -- data/tauceti-progress.json data/tauceti-new-roadmaps.json data/tauceti-prs.json; then echo "Main already has this data."; exit 0; fi
             python3 scripts/build.py > /dev/null && python3 scripts/build.py --tauceti > /dev/null
             publish
           done

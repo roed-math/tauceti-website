@@ -168,6 +168,9 @@ Change of family.
         self.assertNotIn("|", summary(text))
         self.assertIn("Bold opening", summary(text))
         self.assertNotIn("rfl", summary(text))
+        # The panel shows a summary as plain text, so emphasis and code marks go.
+        self.assertTrue(summary("**Summary.** The bound `Det(C) = g` holds for __every__ tower. " + "More words. " * 30).startswith(
+            "Summary. The bound Det(C) = g holds for every tower."))
 
     def test_a_summary_starts_where_the_readme_says_what_the_roadmap_does(self):
         from tauceti_progress import summary

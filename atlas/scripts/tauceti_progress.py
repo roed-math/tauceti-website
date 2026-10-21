@@ -210,7 +210,10 @@ def area_for(text: str, title: str, atlas: dict, own: str, chosen: str | None = 
         if roadmap.get("origin") == "tauceti" and short_name(roadmap["id"]) != own and roadmap.get("group"):
             known.setdefault(short_name(roadmap["id"]), roadmap)
     linked = re.findall(r"\]\((?:\.\./|/?TauCetiRoadmap/|https://github\.com/TauCetiProject/TauCetiRoadmap/(?:blob|tree)/main/TauCetiRoadmap/)([A-Za-z0-9]+)", text)
-    names = sorted({n for n in linked if n in known}) or sorted(n for n in known if re.search(r"\b" + re.escape(n) + r"\b", text))
+    # A name is a word of the README when it is one of its maximal runs of word characters, as `\bName\b` finds it:
+    # one pass over the README, not one per roadmap (a search per name took minutes over the proposed roadmaps).
+    words = set(re.findall(r"\w+", text))
+    names = sorted({n for n in linked if n in known}) or sorted(n for n in known if n in words)
     named = [known[n]["id"] for n in names]
     groups = {group["id"] for group in atlas.get("groups", []) if allowed is None or group["id"] in allowed}
     if chosen in groups:
@@ -250,7 +253,9 @@ def summary(text: str, least: int = 40, most: int = 150) -> str:
             continue
         if fenced or not block or block.startswith(("#", "|", ">", "<!--")) or re.match(r"^([-*+]|\d+\.)\s", block):
             continue
-        blocks.append(re.sub(r"\[([^\]]+)\]\([^)]*\)", r"\1", " ".join(block.split())))
+        # Plain text, as the panel shows it: links reduced to their text, emphasis and code marks dropped.
+        plain = re.sub(r"\[([^\]]+)\]\([^)]*\)", r"\1", " ".join(block.split()))
+        blocks.append(re.sub(r"`([^`]+)`", r"\1", re.sub(r"(\*\*|__)(.+?)\1", r"\2", plain)))
     start = next((i for i, block in enumerate(blocks[:6]) if block.startswith("This roadmap")), 0)
     kept, words = [], 0
     for block in blocks[start:]:

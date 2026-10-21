@@ -21,6 +21,7 @@ from artefacts import paper_artefacts  # noqa: E402
 from definitions_page import render as definitions_page  # noqa: E402
 from tauceti_progress import add_new_roadmaps as add_new_tauceti_roadmaps, apply as apply_tauceti_progress, fit_to_arxiv  # noqa: E402
 from tauceti_progress import load as load_tauceti_progress, load_readmes as load_tauceti_readmes, tauceti_only  # noqa: E402
+from tauceti_prs import add_proposed, load as load_tauceti_prs  # noqa: E402
 
 
 def load_decompositions() -> list:
@@ -203,7 +204,8 @@ def assemble(require_distances: bool = True, blueprints: Path | None = None) -> 
 
 
 def build(output: Path, blueprints: Path | None = None, variant: str | None = None) -> dict:
-    atlas, context = assemble(blueprints=blueprints)
+    # Only the campaign's own map shows the distances of its planned roadmaps; the published pages do not need them.
+    atlas, context = assemble(require_distances=variant == "campaign", blueprints=blueprints)
     # Roadmaps Tau Ceti has accepted since the snapshot join the map from their READMEs, so each
     # one counts in the layers (and lowers the share complete) from the day the Progress page lists it.
     board, added = load_tauceti_progress(), []
@@ -213,12 +215,30 @@ def build(output: Path, blueprints: Path | None = None, variant: str | None = No
             apply_tauceti_progress(atlas, board)
         # Each Tau Ceti roadmap declares an arXiv category; it sits in an area that category allows.
         fit_to_arxiv(atlas, board)
-    if variant == "tauceti":
+    # The key definitions page lists what the explorer's own surveys found (research/blueprint/PROTOCOL.md, section 19).
+    listing = definitions_page(atlas, ROOT) if variant is None else None
+    if variant in (None, "tauceti"):
         # The Tau Ceti build: only the roadmaps Tau Ceti's Progress page reports.
         atlas = tauceti_only(atlas)
         # The live galaxy (src/live.js): the page asks GitHub for Tau Ceti's open pull requests and shows
         # each beside the roadmaps its `roadmap/<Name>` labels name.
         atlas["live"] = {"repo": "TauCetiProject/TauCeti", "labelPrefix": "roadmap/", "idPrefix": "tauceti:TauCetiRoadmap/"}
+    if variant is None:
+        # The atlas (since 2026-10-21): Tau Ceti's roadmaps and every roadmap an open pull request to TauCetiRoadmap
+        # proposes, whoever opened it. The explorer's own planned roadmaps are the "campaign" build, not published.
+        atlas["variant"] = "atlas"
+        proposals = load_tauceti_prs() or {"pulls": [], "roadmaps": {}, "openPulls": 0}
+        proposed = add_proposed(atlas, proposals)
+        owners = set(proposed)
+        layers = sum(1 for stage in atlas["stages"] if stage["owner"] in owners)
+        # Proposed layers count as not started: the headline is the share done of Tau Ceti's and the proposed layers.
+        counts = atlas["taucetiProgress"]["counts"]
+        counts["proposed"], counts["total"] = layers, counts["total"] + layers
+        atlas["proposals"] = {"repository": "TauCetiProject/TauCetiRoadmap", "openPulls": proposals.get("openPulls", 0),
+                              "pulls": len({roadmap["pull"]["number"] for roadmap in atlas["roadmaps"] if roadmap["id"] in owners}),
+                              "roadmaps": proposed, "layers": layers,
+                              "unplaced": sorted("tauceti:" + folder for folder in proposals["roadmaps"] if "tauceti:" + folder not in owners),
+                              "updatedAt": max((pull["updatedAt"] for pull in proposals["pulls"]), default=None)}
     retired, link_packets = context["retired"], context["linkPackets"]
     # Layers that are not source refinements: the snapshot's, and those of any roadmap added above.
     original_stage_count = sum(1 for stage in atlas["stages"] if not stage.get("expansion"))
@@ -269,9 +289,8 @@ def build(output: Path, blueprints: Path | None = None, variant: str | None = No
         raise ValueError("An absolute home directory remains in the public atlas.")
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text(page, encoding="utf-8")
-    if variant is None:
+    if listing is not None:
         # The key definitions as one plain list page, for sharing (research/blueprint/PROTOCOL.md, section 19).
-        listing = definitions_page(atlas, ROOT)
         if re.search(r"/(?:Users|home)/[^/\s]+/", listing):
             raise ValueError("An absolute home directory remains in the definitions page.")
         (output.parent / "definitions.html").write_text(listing, encoding="utf-8")
@@ -326,6 +345,9 @@ def build(output: Path, blueprints: Path | None = None, variant: str | None = No
         report["taucetiProgress"] = {"exportedAt": atlas["taucetiProgress"]["exportedAt"], "roadmaps": len(atlas["taucetiProgress"]["roadmaps"]),
                                      "unplaced": len(atlas["taucetiProgress"]["unplaced"]), "layers": atlas["taucetiProgress"]["counts"], "added": added,
                                      "readmeLayers": atlas["taucetiProgress"]["readmeLayers"]}
+    if atlas.get("proposals"):
+        report["proposals"] = {key: atlas["proposals"][key] for key in ("openPulls", "pulls", "layers", "unplaced", "updatedAt")}
+        report["proposals"]["roadmaps"] = len(atlas["proposals"]["roadmaps"])
     report["variant"] = variant or "atlas"
     (output.parent / "BUILD.json" if variant else ROOT / "BUILD.json").write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
     return report
@@ -336,9 +358,12 @@ def main() -> None:
     parser.add_argument("--output", type=Path, default=ROOT / "index.html", help="HTML output path; defaults to the repository's index.html")
     parser.add_argument("--blueprints", type=Path, help="read promoted blueprints from this folder instead of data/blueprints (tests)")
     parser.add_argument("--tauceti", action="store_true", help="build the Tau Ceti atlas (tauceti/index.html): only the roadmaps Tau Ceti's Progress page reports")
+    parser.add_argument("--campaign", action="store_true", help="build the explorer's own planned map (campaign/index.html, not published) "
+                                                                 "with its blueprints, papers and links")
     arguments = parser.parse_args()
-    output = arguments.output if arguments.output != ROOT / "index.html" or not arguments.tauceti else ROOT / "tauceti" / "index.html"
-    print(json.dumps(build(output.resolve(), arguments.blueprints, "tauceti" if arguments.tauceti else None), indent=2))
+    variant = "tauceti" if arguments.tauceti else "campaign" if arguments.campaign else None
+    output = arguments.output if arguments.output != ROOT / "index.html" or variant is None else ROOT / variant / "index.html"
+    print(json.dumps(build(output.resolve(), arguments.blueprints, variant), indent=2))
 
 
 if __name__ == "__main__":

@@ -4,6 +4,8 @@ An interactive atlas of mathematical roadmaps: one universe with Mathlib at its 
 
 **[Open the interactive atlas](https://cbirkbeck.github.io/tauceti-explorer/)**
 
+Since 21 October 2026 the atlas shows Tau Ceti's own roadmaps, with each layer's state from Tau Ceti's [Progress page](https://taucetiproject.github.io/TauCeti/progress/), and every roadmap proposed in an open pull request to [TauCetiRoadmap](https://github.com/TauCetiProject/TauCetiRoadmap), whoever opened it, in place of the campaign's own planned roadmaps. A proposed roadmap's layers come from the README on its pull request's branch; they count as not started, and its panel links to the pull request. [The Tau Ceti atlas](https://cbirkbeck.github.io/tauceti-explorer/tauceti/) shows Tau Ceti's roadmaps alone. Both are rebuilt four times a day by `.github/workflows/tauceti-progress.yml`.
+
 The atlas also runs entirely offline. Download `index.html` and open it in a browser; its roadmap text, data, graph library, and interface are embedded in that single file. No installation, account, or local server is required.
 
 ## Explore
@@ -85,7 +87,7 @@ Requires Python 3.9 or later, using only its standard library:
 python3 scripts/build.py
 ```
 
-This writes the self-contained `index.html` and a `BUILD.json` report containing counts and input/output hashes. It reads only repository files and makes no network requests. An alternate output location can be supplied with `--output`.
+This writes the self-contained `index.html` and a `BUILD.json` report containing counts and input/output hashes, and makes no network requests. The proposed roadmaps' READMEs are too large to keep in the repository, so first fetch them (Python 3.11 or later, with an authenticated `gh`): `python3 scripts/tauceti_prs.py --fetch`; the build stops rather than drop them when they are missing. `--tauceti` builds the Tau Ceti atlas, and `--campaign` the campaign's own planned map with its blueprints, papers and links (`campaign/index.html`, not published since 21 October 2026). An alternate output location can be supplied with `--output`.
 
 The builder packages the checked-in snapshot. To update the published mathematics or imported reports, update the corresponding documents and data, retain their provenance, and rebuild. Rebuilding does not fetch upstream changes or import anyone's browser-local progress.
 

@@ -169,19 +169,17 @@ def notices(root: Path, summary: dict, jobs: list) -> list:
     mapping = json.loads(mapping_path.read_text(encoding="utf-8")) if mapping_path.exists() else {}
     said = []
     for path, problem in [(path, None) for path in summary["promoted"]] + list(summary["refused"]):
-        try:
-            roadmap = json.loads((root / path).read_text(encoding="utf-8")).get("roadmapId", "")
-        except (OSError, ValueError):
-            roadmap = ""
         for job in jobs:
             if path in (job.get("outputs") or []) and job["id"] in mapping:
                 if problem is None:
-                    where = f"{SITE}definitions.html" if path.startswith("research/blueprint/keydefs/") else f"{SITE}#view=roadmap&id={roadmap}"
-                    body = (f"`{path}` is now in the atlas, as its independent review accepted it: "
-                            f"{where}. Later changes go live after their own accepted review.")
+                    # The published map shows Tau Ceti's roadmaps and those proposed in pull requests (since 2026-10-21),
+                    # not the campaign's; a key definition still shows on the definitions page.
+                    where = (f"; it shows on {SITE}definitions.html" if path.startswith("research/blueprint/keydefs/") else "")
+                    body = (f"`{path}` is now in the atlas's data, as its independent review accepted it{where}. "
+                            "Later changes are taken in after their own accepted review.")
                 else:
                     body = (f"The atlas could not take in `{path}` after its accepted review: {problem}. "
-                            "Fix the file in a new pull request; it goes live after its next accepted review.")
+                            "Fix the file in a new pull request; it is taken in after its next accepted review.")
                 said.append((mapping[job["id"]], body))
     return said
 

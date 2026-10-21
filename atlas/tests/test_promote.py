@@ -115,8 +115,10 @@ class Promote(unittest.TestCase):
         jobs = JOBS + [{"id": "BP-Q", "outputs": ["research/blueprint/packets/Q.json"]}]
         said = notices(self.root, summary, jobs)
         self.assertEqual([number for number, _ in said], [41])
-        self.assertIn("is now in the atlas", said[0][1])
-        self.assertIn("#view=roadmap&id=R", said[0][1])
+        # The published atlas shows Tau Ceti's roadmaps and those proposed in pull requests (since 2026-10-21), not
+        # the campaign's, so accepted work goes into the data, and the comment links to no map.
+        self.assertIn("is now in the atlas's data", said[0][1])
+        self.assertNotIn("#view=roadmap", said[0][1])
 
     def test_saved_notices_are_posted_as_they_were_written(self):
         # The intake saves the notices (--notices) and posts them (--post) only once its push has

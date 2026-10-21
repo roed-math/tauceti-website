@@ -12,12 +12,13 @@ overview_only='--overview-only' in sys.argv[1:]
 # then chooses another planet with the same properties rather than failing.
 FORMULA_PLANET='EllipticKTheory:E.2::landmark:k-0-x-xrightarrow-sim-mathbb-z-oplus-opera-e9le4x'
 results=[];errors=[];requests=[]
-# A promoted blueprint's details are read on demand from data/blueprints/, by an offline copy from the published
-# site, and the panel shows the node the page embeds when that fails. Such a request is aborted like any other but
-# is not one the page needs; tests/validate_blueprints_browser.py checks the details over HTTP.
-BLUEPRINT_DETAILS='https://cbirkbeck.github.io/tauceti-explorer/data/blueprints/'
+# Requests the page makes but does not need, each with an offline fallback, are aborted like any other but not
+# counted: a promoted blueprint's details (read from data/blueprints/, by an offline copy from the published site;
+# tests/validate_blueprints_browser.py checks them over HTTP), the live galaxy's look at Tau Ceti's open pull
+# requests (GitHub's API), and a proposed roadmap's README on its pull request's branch.
+OPTIONAL_REQUESTS=('https://cbirkbeck.github.io/tauceti-explorer/data/blueprints/','https://api.github.com/','https://raw.githubusercontent.com/')
 def abort_offline(route):
- if not route.request.url.startswith(BLUEPRINT_DETAILS):requests.append(route.request.url)
+ if not route.request.url.startswith(OPTIONAL_REQUESTS):requests.append(route.request.url)
  route.abort()
 def record(name,value=True):
  if not value:
@@ -125,8 +126,9 @@ def pinch_gesture(page, session, selector, scale):
  page.wait_for_timeout(400)
  return True
 def plain(text):
- """Text as a reader sees it: the panel renders the markdown its source records."""
- return ' '.join(re.sub(r'[*_`]', '', text or '').split())
+ """Text as a reader sees it: the panel renders the markdown its source records, list markers included
+ (a Tau Ceti roadmap's references are a list)."""
+ return ' '.join(re.sub(r'[*_`]', '', re.sub(r'(?m)^\s*(?:[-+*]|\d+[.)])\s+', '', text or '')).split())
 
 
 # Where a planet's mathematics is shown: a roadmap landmark's description, or a promoted blueprint's statement.
@@ -365,13 +367,13 @@ def check_overview(page,scope,touch=False):
  # The headline figure and the scale under it are the map's own encoding, so they have to agree
  # with the data and with the ramp the planets are drawn from.
  record(scope+' the atlas states how much is complete, and it matches the data',page.evaluate("""() => {
-  const s=TauExplorer.progress.atlas(),shown=document.getElementById('atlas-percent').textContent.trim();
+  const c=TauExplorer.data.taucetiProgress?.counts,s=['tauceti','atlas'].includes(TauExplorer.data.variant)?{complete:c.done,total:c.total}:TauExplorer.progress.atlas(),shown=document.getElementById('atlas-percent').textContent.trim();
   const want=s.total?Math.round(s.complete/s.total*100):0;
   const caption=document.getElementById('atlas-count').textContent;
   return shown===want+'%' && caption.includes(s.complete.toLocaleString()) && caption.includes(s.total.toLocaleString());
  }"""))
  record(scope+' the marker sits where the figure says on the ramp',page.evaluate("""() => {
-  const s=TauExplorer.progress.atlas(),want=s.total?Math.round(s.complete/s.total*100):0;
+  const c=TauExplorer.data.taucetiProgress?.counts,s=['tauceti','atlas'].includes(TauExplorer.data.variant)?{complete:c.done,total:c.total}:TauExplorer.progress.atlas(),want=s.total?Math.round(s.complete/s.total*100):0;
   return document.getElementById('atlas-marker').style.left===want+'%';
  }"""))
  record(scope+' the scale starts grey at not started, then runs from red to bright white',page.evaluate("""() => {
@@ -392,7 +394,9 @@ def check_fields(page):
  inside={gid for f in d['fields'] for gid in f['galaxyIds']}
  shown=page.evaluate("Array.from(document.querySelectorAll('.tau-label-galaxy')).map(e=>e.getAttribute('data-label-for'))")
  fields=page.evaluate("Array.from(document.querySelectorAll('.tau-label-field')).map(e=>e.getAttribute('data-label-for'))")
- record('Overview names each field above its areas, and the areas',len(set(fields))>=4 and len(inside.intersection(shown))>=10)
+ # Every field the layout draws is named, and its areas too, but for one in ten held back for room.
+ record('Overview names each field above its areas, and the areas',len(d['fields'])>=2 and len(set(fields))==len(d['fields'])
+        and len(inside.intersection(shown))>=len(inside)-math.ceil(len(inside)*.1))
  field='field:algebraic-number-theory'
  label=page.locator('.tau-label-field[data-label-for="%s"]'%field)
  label.hover();page.wait_for_timeout(300)
@@ -409,7 +413,9 @@ def check_fields(page):
  page.mouse.move(5,5)
  page.evaluate("f => { const g=TauExplorer.graph; g.svg.interrupt(); const t=g.overviewTransform(),k=t.k*f,cx=(g.width/2-t.x)/t.k,cy=(g.height/2-t.y)/t.k; g.svg.call(g.zoom.transform,d3.zoomIdentity.translate(g.width/2-cx*k,g.height/2-cy*k).scale(k)); }",1.7);page.wait_for_timeout(500)
  faded=page.evaluate("""() => Array.from(document.querySelectorAll('.tau-label-galaxy')).map(e=>e.getAttribute('data-label-for')).filter(id=>{
-  const e=document.querySelector('.tau-galaxy[data-node-id="'+CSS.escape(id)+'"] .tau-dust-far');return !e||Number(e.getAttribute('opacity'))<.9;}).length""")
+  const g=document.querySelector('.tau-galaxy[data-node-id="'+CSS.escape(id)+'"]'),far=g&&g.querySelector('.tau-dust-far'),near=g&&g.querySelector('.tau-dust-near');
+  return !far||!(Number(far.getAttribute('opacity'))>=.9||Number(near?.getAttribute('opacity')||0)>=.3);}).length""")
+ # An area that fills the screen hands its colours from its far dust to its nearer dust (src/graph.js, farFade): either counts.
  record('Named areas keep their progress colours closer in',faded==0)
  page.evaluate("TauExplorer.navigate({view:'all',id:null,layer:null,selected:null})");page.evaluate("TauExplorer.graph.fitAll(false)");page.wait_for_timeout(600)
 def check_hover_links(page):
@@ -422,13 +428,17 @@ def check_zoom_journey(page,scope):
  # A continuous wheel zoom carries the reader from the universe into one
  # galaxy, one constellation and one star system, and the address follows.
  fit_all(page)
- home=page.evaluate("TauExplorer.data.roadmaps.find(r=>r.id==='AnalyticNumberTheory').group")
- record(scope+' wheel zoom enters a galaxy',wheel_until(page,'.tau-galaxy[data-node-id="%s"] ellipse'%home,-300,"TauExplorer.getState().view==='group' && TauExplorer.getState().id==='%s'"%home,attempts=14))
+ home=page.evaluate("TauExplorer.data.roadmaps.find(r=>r.id==="+json.dumps(ROADMAP)+").group")
+ # The camera enters the area in the middle of the view, so the reader first drags the area there.
+ center_on(page,home)
+ # One notch at a time: a three-notch jump can reach a large neighbouring area's zoom before this one's, and then
+ # this one's constellations, without the camera ever being in this area alone (2026-10-21, the atlas's Curves area).
+ record(scope+' wheel zoom enters a galaxy',wheel_until(page,'.tau-galaxy[data-node-id="%s"] ellipse'%home,-100,"TauExplorer.getState().view==='group' && TauExplorer.getState().id==='%s'"%home,attempts=24))
  page.wait_for_timeout(400)
  record(scope+' inside a galaxy its constellations resolve into stars',wheel_until(page,'.tau-galaxy[data-node-id="%s"] ellipse'%home,-200,"(() => { const d=TauExplorer.graph.debugState(); return d.visible.resolved>0 && d.visible.stars>0; })()",attempts=6))
  # One real wheel notch at a time (deltaY 100): a three-notch jump can carry the
  # camera past the roadmap straight into a star, which is allowed.
- record(scope+' wheel zoom enters a roadmap constellation',wheel_until(page,'[data-node-id="AnalyticNumberTheory"] .tau-hit',-100,"TauExplorer.getState().view==='roadmap' && TauExplorer.getState().id==='AnalyticNumberTheory' && !TauExplorer.getState().layer",attempts=24))
+ record(scope+' wheel zoom enters a roadmap constellation',wheel_until(page,'[data-node-id='+json.dumps(ROADMAP)+'] .tau-hit',-100,"TauExplorer.getState().view==='roadmap' && TauExplorer.getState().id==="+json.dumps(ROADMAP)+" && !TauExplorer.getState().layer",attempts=24))
  record(scope+' constellation names and star names are legible and disjoint',labels_are_clean(page) and names_are_unique(page))
  record(scope+' wheel zoom enters a star system',wheel_until(page,'[data-node-id='+json.dumps(STAR)+'] .tau-hit',-300,"TauExplorer.getState().layer==="+json.dumps(STAR)+"",attempts=14))
  record(scope+' a star system shows its planets',page.locator('.tau-planet').count()>0 and page.locator('.tau-orbit').count()>0)
@@ -466,16 +476,17 @@ def check_paper_artefacts(page,scope):
    record(scope+' a paper fills from the bottom by the share of its layers done',abs(fill['share']-fill['progress']/100)<.03)
 def check_click_journey(page,scope):
  page.evaluate("TauExplorer.navigate({view:'all',id:null,layer:null,selected:null})");page.wait_for_timeout(600)
- page.locator('[data-node-id="AnalyticNumberTheory"] .tau-hit').click()
- page.wait_for_function("TauExplorer.getState().view==='roadmap' && TauExplorer.getState().id==='AnalyticNumberTheory'")
+ page.locator('[data-node-id='+json.dumps(ROADMAP)+'] .tau-hit').click()
+ page.wait_for_function("TauExplorer.getState().view==='roadmap' && TauExplorer.getState().id==="+json.dumps(ROADMAP)+"")
  # Wait for the zoom to arrive rather than a fixed half second: a GitHub runner draws a frame of the full atlas in
  # about half a second, so the flight into the constellation can take several (2026-10-09 to 10-12).
  try:
    page.wait_for_function("() => { const d=TauExplorer.graph.debugState(); return !!d && d.focus.level==='constellation' && d.visible.stars>=10; }",timeout=20000);arrived=True
  except Exception:
    arrived=False
- record(scope+' clicking a roadmap point travels into its constellation',arrived and page.locator('#selection-kind').inner_text()=='Campaign roadmap')
- record(scope+' the selected roadmap shows its own links',page.locator('.tau-link').count()==page.evaluate("TauExplorer.data.edges.filter(e=>e.source==='AnalyticNumberTheory'||e.target==='AnalyticNumberTheory').length"))
+ kind={'tauceti':'Tau Ceti roadmap','proposed':'Proposed roadmap'}.get(page.evaluate("id => TauExplorer.data.roadmaps.find(r=>r.id===id).origin",ROADMAP),'Campaign roadmap')
+ record(scope+' clicking a roadmap point travels into its constellation',arrived and page.locator('#selection-kind').inner_text()==kind)
+ record(scope+' the selected roadmap shows its own links',page.locator('.tau-link').count()==page.evaluate("TauExplorer.data.edges.filter(e=>e.source==="+json.dumps(ROADMAP)+"||e.target==="+json.dumps(ROADMAP)+").length"))
  # Selecting a link names the two things it joins, and either name opens its end.
  spot=page.evaluate("""() => { for (const h of document.querySelectorAll('.tau-link-hit')) { const p=h.getPointAtLength(h.getTotalLength()/2), m=h.getScreenCTM(), x=m.a*p.x+m.c*p.y+m.e, y=m.b*p.x+m.d*p.y+m.f; if (document.elementFromPoint(x,y)===h) return {x, y, source:h.dataset.source, target:h.dataset.target}; } return null; }""")
  record(scope+' a link can be picked out on the chart',spot is not None)
@@ -483,11 +494,11 @@ def check_click_journey(page,scope):
  ends=page.evaluate("Array.from(document.querySelectorAll('.tau-link-card [data-end]')).map(e=>e.dataset.nodeId)")
  record(scope+' selecting a link names both of its ends',ends==[spot['source'],spot['target']] and page.locator('.tau-link.is-selected').count()==1)
  page.screenshot(path=str(ROOT/('preview-'+scope.lower().replace(' ','-')+'-link.png')),animations='disabled')
- other=spot['target'] if spot['source']=='AnalyticNumberTheory' else spot['source']
+ other=spot['target'] if spot['source']==ROADMAP else spot['source']
  page.locator('.tau-link-card [data-end][data-node-id="%s"]'%other).click()
  page.wait_for_function("TauExplorer.getState().id===%s"%json.dumps(other));page.wait_for_timeout(500)
  record(scope+' a link card opens the roadmap at its other end',page.evaluate("TauExplorer.getState().id")==other and page.locator('.tau-link-card').count()==0)
- page.evaluate("TauExplorer.navigate({view:'roadmap',id:'AnalyticNumberTheory',layer:null,selected:'AnalyticNumberTheory'})");page.wait_for_function("TauExplorer.getState().id==='AnalyticNumberTheory'");page.wait_for_timeout(500)
+ page.evaluate("TauExplorer.navigate({view:'roadmap',id:"+json.dumps(ROADMAP)+",layer:null,selected:"+json.dumps(ROADMAP)+"})");page.wait_for_function("TauExplorer.getState().id==="+json.dumps(ROADMAP)+"");page.wait_for_timeout(500)
  page.mouse.move(5,5);page.wait_for_timeout(200)
  page.screenshot(path=str(ROOT/('preview-'+scope.lower().replace(' ','-')+'-constellation.png')),animations='disabled')
  page.locator('[data-node-id='+json.dumps(STAR)+'] .tau-hit').click()
@@ -549,7 +560,7 @@ def check_refinements(page):
  page.screenshot(path=str(ROOT/'preview-deep-zoom.png'),animations='disabled')
  page.screenshot(path=str(ROOT/'preview-refined-layer.png'),animations='disabled')
 def check_catalogue_selection(page,scope,touch=False):
- title=page.evaluate("TauExplorer.data.roadmaps.find(r=>r.id==='AnalyticNumberTheory').title")
+ title=page.evaluate("TauExplorer.data.roadmaps.find(r=>r.id==="+json.dumps(ROADMAP)+").title")
  if touch:page.locator('#catalogue-button').tap()
  item=page.locator('#catalogue .catalogue-item[title='+json.dumps(title)+']');group=item.locator('xpath=..')
  if not group.evaluate('(e)=>e.open'):
@@ -557,10 +568,39 @@ def check_catalogue_selection(page,scope,touch=False):
   else:group.locator('summary').click()
  if touch:item.scroll_into_view_if_needed();item.tap()
  else:item.click()
- page.wait_for_function("TauExplorer.getState().selected==='AnalyticNumberTheory'&&TauExplorer.getState().view==='roadmap'");page.wait_for_timeout(600)
- record(scope+' catalogue selection travels to the roadmap and names it once',page.locator('.tau-label[data-label-for="AnalyticNumberTheory"]').count()==1 and names_are_unique(page) and page.evaluate("TauExplorer.graph.debugState().focus.id==='AnalyticNumberTheory'"))
+ page.wait_for_function("TauExplorer.getState().selected==="+json.dumps(ROADMAP)+"&&TauExplorer.getState().view==='roadmap'");page.wait_for_timeout(600)
+ record(scope+' catalogue selection travels to the roadmap and names it once',page.locator('.tau-label[data-label-for='+json.dumps(ROADMAP)+']').count()==1 and names_are_unique(page) and page.evaluate("TauExplorer.graph.debugState().focus.id==="+json.dumps(ROADMAP)+""))
  page.screenshot(path=str(ROOT/('preview-'+scope.lower().replace(' ','-')+'-catalogue-selection.png')),animations='disabled')
  page.evaluate("TauExplorer.navigate({view:'all',id:null,layer:null,selected:null})");page.wait_for_timeout(500)
+def check_proposals(page):
+ # The atlas since 2026-10-21: Tau Ceti's roadmaps, and each roadmap an open pull request to TauCetiRoadmap proposes.
+ record('The atlas holds Tau Ceti\'s roadmaps and every placed proposed one',page.evaluate("""() => { const d=TauExplorer.data,p=d.proposals,tc=Object.keys(d.taucetiProgress.roadmaps);
+  const ids=new Set(d.roadmaps.map(r=>r.id)),u=TauExplorer.getUniverse();
+  return p.roadmaps.length>0 && d.roadmaps.length===tc.length+p.roadmaps.length && [...tc,...p.roadmaps].every(id=>ids.has(id)&&u.byId.has(id))
+   && d.roadmaps.filter(r=>r.origin==='proposed').length===p.roadmaps.length && p.unplaced.every(id=>!ids.has(id)); }"""))
+ record('Proposed layers count in the headline, as not started',page.evaluate("""() => { const d=TauExplorer.data,c=d.taucetiProgress.counts,ids=new Set(d.proposals.roadmaps);
+  const layers=d.stages.filter(s=>ids.has(s.owner));
+  return layers.length>0 && c.proposed===layers.length && d.proposals.layers===layers.length
+   && document.getElementById('atlas-count').textContent.includes(`${layers.length.toLocaleString()} proposed`)
+   && layers.every(s=>TauExplorer.progress.leafState(s.id).status==='unknown'); }"""))
+ proposed=page.evaluate("() => TauExplorer.data.proposals.roadmaps.slice().sort()[0]")
+ page.evaluate("id => TauExplorer.openItem(id)",proposed);page.wait_for_timeout(700)
+ record('A proposed roadmap names its pull request, and links to it and to its README',page.evaluate("""id => { const r=TauExplorer.data.roadmaps.find(x=>x.id===id),links=[...document.querySelectorAll('#inspector-content .report-links a')].map(a=>a.href);
+  return document.getElementById('selection-kind').textContent==='Proposed roadmap'
+   && [...document.querySelectorAll('#inspector-content .section-label')].some(h=>h.textContent==='Pull request')
+   && document.getElementById('inspector-content').textContent.includes('#'+r.pull.number) && links.includes(r.pull.url) && links.includes(r.sourcePath); }""",proposed))
+ # The page carries a proposed roadmap's layers, not its README, which it reads from the pull request's branch: offline,
+ # the reader says so and links to it.
+ page.evaluate("id => TauExplorer.openReader(id)",proposed)
+ try:
+  page.wait_for_function("() => !!document.querySelector('#reader-body a[href^=\"https://github.com/\"]')",timeout=10000);read=True
+ except Exception:
+  read=False
+ record('A proposed roadmap\'s README is read from its branch, and offline the reader links to it',read and page.locator('#reader[open]').is_visible())
+ page.locator('#close-reader').click()
+ page.evaluate("TauExplorer.navigate({view:'all',id:null,layer:null,selected:null,origin:'proposed'})");page.wait_for_timeout(700)
+ record('The pull requests collection shows only the proposed roadmaps',page.evaluate("TauExplorer.graph.debugState().counts.constellations===TauExplorer.data.proposals.roadmaps.length"))
+ page.evaluate("TauExplorer.navigate({view:'all',id:null,layer:null,selected:null,origin:'all'})");page.wait_for_timeout(500)
 def check_performance(page):
  fit_all(page)
  t=time.time();page.evaluate("""() => new Promise(resolve => { const g=TauExplorer.graph,s=g.debugState().transform; let step=0; const tick=()=>{ step++; const k=s.k*Math.pow(1.25,step); g.svg.call(g.zoom.transform,d3.zoomIdentity.translate(g.width/2-(g.width/2-s.x)/s.k*k,g.height/2-(g.height/2-s.y)/s.k*k).scale(k)); if(step<16)requestAnimationFrame(tick); else requestAnimationFrame(resolve); }; requestAnimationFrame(tick); })""")
@@ -593,7 +633,20 @@ with sync_playwright() as p:
   page.route('https://**/*',abort_offline)
  page.goto(url,wait_until='load');page.wait_for_function('!!window.TauExplorer',timeout=15000)
  # The example star comes from the data: a layer the audit finds already built is not drawn.
- STAR=page.evaluate("(() => { const s=TauExplorer.getUniverse().stars.filter(x=>x.id.startsWith('AnalyticNumberTheory:')&&x.planetIds.length).map(x=>x.id).sort(); return s[0]; })()")
+ # The example roadmap comes from the data: the campaign's AnalyticNumberTheory while the map has it; on the atlas
+ # (Tau Ceti's roadmaps and those proposed in pull requests, since 2026-10-21), the Tau Ceti roadmap with ten or more
+ # layers that have planets and the most links to other roadmaps, since the click journey picks one out on the chart,
+ # and no parent roadmap, since its back steps lead through the area (a sub-roadmap's lead through its parent).
+ ROADMAP=page.evaluate("""() => { const u=TauExplorer.getUniverse(); if(u.byId.has('AnalyticNumberTheory'))return 'AnalyticNumberTheory';
+  const rich=new Map(),links=new Map(); for(const s of u.stars)if(s.planetIds.length)rich.set(s.constellationId,(rich.get(s.constellationId)||0)+1);
+  for(const e of TauExplorer.data.edges)for(const id of [e.source,e.target])links.set(id,(links.get(id)||0)+1);
+  return TauExplorer.data.roadmaps.filter(r=>r.origin==='tauceti'&&!r.parentRoadmapId&&rich.get(r.id)>=10).map(r=>r.id)
+   .sort((a,b)=>(links.get(b)||0)-(links.get(a)||0)||rich.get(b)-rich.get(a)||(a<b?-1:1))[0]; }""")
+ CAMPAIGN=page.evaluate("TauExplorer.data.roadmaps.some(r=>r.id==='ArithmeticKTheory')")
+ PAPERS=page.evaluate("TauExplorer.data.papers.length>0")
+ REFINED=page.evaluate("TauExplorer.data.stages.some(s=>s.expansion&&!s.expansion.blueprint)")
+ PROPOSALS=page.evaluate("!!TauExplorer.data.proposals")
+ STAR=page.evaluate("id => { const s=TauExplorer.getUniverse().stars.filter(x=>x.constellationId===id&&x.planetIds.length).map(x=>x.id).sort(); return s[0]; }",ROADMAP)
  if overview_only:
   run_overview_checks(page,browser)
   record('No application exceptions',not errors)
@@ -611,29 +664,35 @@ with sync_playwright() as p:
  record('No placeholder areas are drawn',page.evaluate("TauExplorer.data.opportunities.areas.length===0") and page.locator('.tau-unmapped-node').count()==0 and page.locator('#show-unmapped').count()==0)
  # Recorded and audited statuses change as the data grows, so the blank cases are chosen from the data.
  record('A roadmap without status data has a blank progress indicator',page.evaluate("() => {const r=TauExplorer.data.roadmaps.find(r=>{const s=TauExplorer.progress.roadmap(r.id);return s.total>0&&s.unknown===s.total;});if(!r)return false;const node=TauExplorer.getGraph().nodes.find(n=>n.id===r.id);return node.progress===null && node.progressLabel===''}"))
- check_zoom_journey(page,'Desktop');check_click_journey(page,'Desktop');check_paper_artefacts(page,'Desktop');check_catalogue_selection(page,'Desktop');check_refinements(page)
+ check_zoom_journey(page,'Desktop');check_click_journey(page,'Desktop')
+ if PAPERS:check_paper_artefacts(page,'Desktop')
+ check_catalogue_selection(page,'Desktop')
+ if REFINED:check_refinements(page)
+ if PROPOSALS:check_proposals(page)
  page.evaluate("TauExplorer.navigate({view:'all',id:null,layer:null,selected:null})");page.wait_for_timeout(500)
  record('Mathematical planets exclude procedural labels',page.evaluate("TauExplorer.landmarks.every(x=>!/^(Dependency|Canonical owner|API to develop|the|Tests|Suggested home)$/i.test(x.title))"))
  record('All roadmap summaries use mathematical prose',page.evaluate("TauExplorer.data.roadmaps.every(r=>r.summary.split(/\\s+/).length>=40 && !/portfolio audit|component implements|silently attributed/.test(r.summary))"))
- page.evaluate("TauExplorer.navigate({view:'roadmap',id:'ArithmeticKTheory',layer:null,selected:null,origin:'all',activity:'all',unmapped:true})");page.wait_for_timeout(600)
- record('Administrative readiness checkpoint is not a star',page.evaluate("!TauExplorer.isMathematicalStage('ArithmeticKTheory:KU-finitegeneration') && !TauExplorer.getUniverse().byId.has('ArithmeticKTheory:KU-finitegeneration') && TauExplorer.getUniverse().stars.every(s=>TauExplorer.isMathematicalStage(s.id))"))
- record('Hidden administrative layer retains its raw source and progress',page.evaluate("() => {const id='ArithmeticKTheory:KU-finitegeneration',raw=TauExplorer.data.stages.find(s=>s.id===id);return raw.title==='Arithmetic K-theory finite generation' && raw.description.includes('readiness checkpoints') && TauExplorer.progress.stage(id).status!==undefined}"))
- # 'readme' explicitly: a promoted blueprint is the default reading for a roadmap that has
- # one, and the roadmap's own document still has to be reachable, because that is where the
- # sections the graph hides are written.
- page.evaluate("TauExplorer.openReader('ArithmeticKTheory','readme')")
- record('Full source document preserves hidden administrative instructions','readiness checkpoints' in page.locator('#reader-body').text_content())
- # Only when the atlas is served: a blueprint reading is fetched from the published site, and
- # the offline pass asserts that nothing reaches for the network.
- if not url.startswith('file:'):
-  record('A blueprint reading offers its way back to the source document',page.evaluate("() => {const r=TauExplorer.data.roadmaps.find(x=>x.blueprint&&x.blueprint.documents&&x.blueprint.documents.length);if(!r)return true;TauExplorer.openReader(r.id);return true;}"))
-  page.evaluate("() => {const d=document.getElementById('reader');if(d&&d.open)d.close();}")
- page.locator('#close-reader').click()
+ if CAMPAIGN:
+  page.evaluate("TauExplorer.navigate({view:'roadmap',id:'ArithmeticKTheory',layer:null,selected:null,origin:'all',activity:'all',unmapped:true})");page.wait_for_timeout(600)
+  record('Administrative readiness checkpoint is not a star',page.evaluate("!TauExplorer.isMathematicalStage('ArithmeticKTheory:KU-finitegeneration') && !TauExplorer.getUniverse().byId.has('ArithmeticKTheory:KU-finitegeneration') && TauExplorer.getUniverse().stars.every(s=>TauExplorer.isMathematicalStage(s.id))"))
+  record('Hidden administrative layer retains its raw source and progress',page.evaluate("() => {const id='ArithmeticKTheory:KU-finitegeneration',raw=TauExplorer.data.stages.find(s=>s.id===id);return raw.title==='Arithmetic K-theory finite generation' && raw.description.includes('readiness checkpoints') && TauExplorer.progress.stage(id).status!==undefined}"))
+  # 'readme' explicitly: a promoted blueprint is the default reading for a roadmap that has
+  # one, and the roadmap's own document still has to be reachable, because that is where the
+  # sections the graph hides are written.
+  page.evaluate("TauExplorer.openReader('ArithmeticKTheory','readme')")
+  record('Full source document preserves hidden administrative instructions','readiness checkpoints' in page.locator('#reader-body').text_content())
+  # Only when the atlas is served: a blueprint reading is fetched from the published site, and
+  # the offline pass asserts that nothing reaches for the network.
+  if not url.startswith('file:'):
+   record('A blueprint reading offers its way back to the source document',page.evaluate("() => {const r=TauExplorer.data.roadmaps.find(x=>x.blueprint&&x.blueprint.documents&&x.blueprint.documents.length);if(!r)return true;TauExplorer.openReader(r.id);return true;}"))
+   page.evaluate("() => {const d=document.getElementById('reader');if(d&&d.open)d.close();}")
+  page.locator('#close-reader').click()
  # A retired roadmap has left the atlas; an old link to it opens the whole atlas.
  page.evaluate("TauExplorer.navigate({view:'roadmap',id:'FoundationsAndLibraryIntegration',layer:null,selected:null})");page.wait_for_timeout(400)
  record('A retired roadmap is gone and its old links open the atlas',page.evaluate("TauExplorer.getState().view==='all' && !TauExplorer.data.roadmaps.some(r=>r.id==='FoundationsAndLibraryIntegration') && TauExplorer.data.meta.retiredRoadmaps.includes('FoundationsAndLibraryIntegration')"))
- page.evaluate("TauExplorer.openReader('ArithmeticKTheory')")
- page.locator('#close-reader').click()
+ if CAMPAIGN:
+  page.evaluate("TauExplorer.openReader('ArithmeticKTheory')")
+  page.locator('#close-reader').click()
  pinned_group='tauceti:TauCetiRoadmap/ReductiveGroups#layer-9-pinned-chevalleydemazure-group-schemes-over-ℤ'
  page.evaluate("TauExplorer.openItem('tauceti:TauCetiRoadmap/ReductiveGroups')");page.wait_for_timeout(600)
  record('Mathematical pinned group schemes remain visible',page.evaluate("id => TauExplorer.isMathematicalStage(id) && TauExplorer.getUniverse().byId.has(id) && TauExplorer.getUniverse().byId.get(id).label===TauExplorer.stageTitle(id)",pinned_group))
@@ -658,8 +717,10 @@ with sync_playwright() as p:
   return /\\|\$|\^|_\{/.test(item.title)&&item.description===item.sourceExcerpt&&roadmap.readme.includes(item.sourceExcerpt)&&roadmap.readme.split('\n').slice(item.sourceLine-1).join('\n').startsWith(item.sourceExcerpt);
  }""",named['id']))
  page.screenshot(path=str(ROOT/'preview-formula-planet.png'),animations='disabled')
- S=page.evaluate("() => { const u=TauExplorer.getUniverse(); const star=u.stars.find(x=>x.id.startsWith('AnalyticNumberTheory:')&&x.planetIds.length&&TauExplorer.progress.stage(x.id).status==='unknown'); window.__blankStage=star?star.id:null; return window.__blankStage; }")
- record('A layer of the test roadmap has no recorded status',bool(S))
+ # A layer with no recorded status: the example roadmap's if it has one, else the first such layer with planets of a
+ # roadmap whose README the page carries (on the atlas a proposed roadmap's is read from GitHub, and this pass is offline).
+ S=page.evaluate("() => { const u=TauExplorer.getUniverse(),blank=x=>x.planetIds.length&&TauExplorer.progress.stage(x.id).status==='unknown',carried=x=>!!(TauExplorer.data.roadmaps.find(r=>r.id===x.constellationId)||{}).readme; const star=u.stars.find(x=>x.constellationId==="+json.dumps(ROADMAP)+"&&blank(x))||u.stars.filter(x=>blank(x)&&carried(x)).sort((a,b)=>a.id<b.id?-1:1)[0]; window.__blankStage=star?star.id:null; return window.__blankStage; }")
+ record('A layer with no recorded status is on the map',bool(S))
  page.evaluate("TauExplorer.openStage(window.__blankStage)");page.wait_for_timeout(600)
  record('Central layer star exposes progress controls',page.get_by_label('Layer status',exact=True).is_visible())
  record('A stage without status data shows no badge and keeps its raw status',page.evaluate("TauExplorer.progress.stage(window.__blankStage).status==='unknown' && TauExplorer.graph.debugState().stars.find(n=>n.id===window.__blankStage).progress===null") and page.locator('#inspector .status-chip').count()==0)
@@ -689,7 +750,8 @@ with sync_playwright() as p:
  record('Tau Ceti collection filter',page.evaluate("TauExplorer.getState().origin==='tauceti' && TauExplorer.graph.debugState().counts.constellations===TauExplorer.data.roadmaps.filter(r=>r.origin==='tauceti').length"))
  page.evaluate("TauExplorer.openItem('tauceti:Completed/EffectiveBounds')");page.wait_for_timeout(500)
  record('Maintainer completed area is green',page.evaluate("TauExplorer.progress.roadmap('tauceti:Completed/EffectiveBounds').percent===100"))
- page.evaluate("TauExplorer.openItem('tauceti:TauCetiRoadmap/RepresentationTheory')");page.wait_for_timeout(600)
+ # With every collection shown: on the atlas, some of its sub-roadmaps are proposed in pull requests.
+ page.evaluate("TauExplorer.navigate({origin:'all'})");page.evaluate("TauExplorer.openItem('tauceti:TauCetiRoadmap/RepresentationTheory')");page.wait_for_timeout(600)
  record('Nested roadmap collection frames all its child constellations',page.evaluate("TauExplorer.getState().view==='collection' && TauExplorer.getUniverse().constellations.filter(c=>c.parentRoadmapId==='tauceti:TauCetiRoadmap/RepresentationTheory').length===TauExplorer.data.roadmaps.filter(r=>r.parentRoadmapId==='tauceti:TauCetiRoadmap/RepresentationTheory').length && TauExplorer.data.roadmaps.filter(r=>r.parentRoadmapId==='tauceti:TauCetiRoadmap/RepresentationTheory').length>=11"))
  page.evaluate("TauExplorer.navigate({view:'all',id:null,layer:null,selected:null,origin:'all',unmapped:false})");page.wait_for_timeout(500)
  record('All roadmaps and all roadmap edges available',page.evaluate('TauExplorer.getGraph().nodes.length===%d && TauExplorer.getGraph().edges.length===%d'%(BUILD['roadmaps'],BUILD.get('roadmapEdges',1011))))
@@ -708,7 +770,7 @@ with sync_playwright() as p:
  page.locator('#activity-filter').select_option('active');page.wait_for_timeout(400)
  record('Activity filter shows only active roadmaps',page.evaluate("TauExplorer.getGraph().nodes.length>0 && TauExplorer.getGraph().nodes.length<"+str(BUILD['roadmaps'])+" && TauExplorer.getGraph().nodes.every(n=>TauExplorer.progress.roadmap(n.id).active>0)"))
  page.locator('#activity-filter').select_option('all');page.wait_for_timeout(400)
- page.evaluate("TauExplorer.navigate({view:'roadmap',id:'AnalyticNumberTheory',selected:'AnalyticNumberTheory',tab:'links'})");page.wait_for_timeout(600)
+ page.evaluate("TauExplorer.navigate({view:'roadmap',id:"+json.dumps(ROADMAP)+",selected:"+json.dumps(ROADMAP)+",tab:'links'})");page.wait_for_timeout(600)
  page.locator('.connection-card').first.locator('summary').click()
  record('Roadmap connections expose supporting layer pairs',page.locator('.connection-witness').count()>0)
  related='tauceti:TauCetiRoadmap/RepresentationTheory/LieHighestWeight'
@@ -717,13 +779,13 @@ with sync_playwright() as p:
  record('Related-plan links appear on request, dotted and without prerequisite arrows',page.locator('.tau-reference-edge').count()>0 and page.evaluate("Array.from(document.querySelectorAll('.tau-reference-edge')).every(e=>!e.getAttribute('marker-end') && e.getAttribute('stroke-dasharray'))"))
  page.get_by_label('Show related-plan links',exact=True).uncheck();page.wait_for_timeout(300)
  record('Related-plan links disappear when switched off',page.locator('.tau-reference-edge').count()==0)
- page.evaluate("TauExplorer.navigate({view:'roadmap',id:'AnalyticNumberTheory',layer:null,selected:'AnalyticNumberTheory',tab:'overview'})");page.wait_for_timeout(500)
+ page.evaluate("TauExplorer.navigate({view:'roadmap',id:"+json.dumps(ROADMAP)+",layer:null,selected:"+json.dumps(ROADMAP)+",tab:'overview'})");page.wait_for_timeout(500)
  page.locator('.pin-button').click()
  record('Roadmap can be pinned',page.locator('#pinned-list .pin-item').count()==1)
  page.reload(wait_until='load');page.wait_for_function('!!window.TauExplorer');page.wait_for_timeout(500)
  record('Pinned roadmap persists',page.locator('.pin-button').get_attribute('aria-pressed')=='true')
  page.locator('#activity-filter').select_option('pinned');page.wait_for_timeout(400)
- record('Pinned filter returns saved roadmap',page.evaluate("TauExplorer.getGraph().nodes.length===1 && TauExplorer.getGraph().nodes[0].id==='AnalyticNumberTheory'"))
+ record('Pinned filter returns saved roadmap',page.evaluate("TauExplorer.getGraph().nodes.length===1 && TauExplorer.getGraph().nodes[0].id==="+json.dumps(ROADMAP)+""))
  page.locator('#activity-filter').select_option('all');page.wait_for_timeout(400)
  page.evaluate("TauExplorer.openReader('tauceti:TauCetiRoadmap/ModularForms')")
  internal=page.locator('#reader-body [data-doc-link]').all();linked=False
@@ -734,8 +796,8 @@ with sync_playwright() as p:
    if page.locator('#reader-title').inner_text()!=before:linked=True;break
  record('Embedded roadmap document links resolve',linked)
  page.locator('#close-reader').click()
- if page.evaluate('(TauExplorer.data.documents||[]).length'):
-  page.evaluate("TauExplorer.openReader('AnalyticNumberTheory')")
+ if CAMPAIGN and page.evaluate('(TauExplorer.data.documents||[]).length'):
+  page.evaluate("TauExplorer.openReader("+json.dumps(ROADMAP)+")")
   page.locator('#reader-body [data-doc-link]').filter(has_text='campaign execution protocol').click()
   record('Campaign execution guide is embedded and linked','execution' in page.locator('#reader-title').inner_text().lower())
   page.locator('#close-reader').click()
@@ -759,9 +821,9 @@ with sync_playwright() as p:
   box=mp.locator('#graph').bounding_box();before=mp.evaluate('TauExplorer.getState().view')
   touch_swipe(mp,touch,(box['x']+20,box['y']+25),(box['x']+65,box['y']+65))
   record('One-finger pan does not open anything',mp.evaluate('TauExplorer.getState().view')==before=='all' and mp.evaluate('TauExplorer.getState().selected===null'))
-  fit_all(mp,touch=True);center_on(mp,'AnalyticNumberTheory')
-  mp.locator('[data-node-id="AnalyticNumberTheory"] .tau-hit').tap()
-  mp.wait_for_function("TauExplorer.getState().view==='roadmap' && TauExplorer.getState().id==='AnalyticNumberTheory'");mp.wait_for_timeout(600)
+  fit_all(mp,touch=True);center_on(mp,ROADMAP)
+  mp.locator('[data-node-id='+json.dumps(ROADMAP)+'] .tau-hit').tap()
+  mp.wait_for_function("TauExplorer.getState().view==='roadmap' && TauExplorer.getState().id==="+json.dumps(ROADMAP)+"");mp.wait_for_timeout(600)
   record('Phone tap enters a roadmap constellation',mp.evaluate("TauExplorer.graph.debugState().visible.stars>=10"))
   mp.locator('[data-node-id='+json.dumps(STAR)+'] .tau-hit').tap()
   mp.wait_for_function("TauExplorer.getState().layer==="+json.dumps(STAR)+"");mp.wait_for_timeout(600)
@@ -791,10 +853,10 @@ with sync_playwright() as p:
   mp.set_viewport_size({'width':375,'height':812});mp.wait_for_timeout(500);fit_all(mp,touch=True)
   check_overview(mp,'Narrow phone',touch=True)
   mp.screenshot(path=str(ROOT/'preview-phone-narrow-overview.png'),animations='disabled')
-  home=mp.evaluate("TauExplorer.data.roadmaps.find(r=>r.id==='AnalyticNumberTheory').group")
+  home=mp.evaluate("TauExplorer.data.roadmaps.find(r=>r.id==="+json.dumps(ROADMAP)+").group")
   center_on(mp,home)
   record('Two-finger pinch enters a galaxy on a narrow phone',pinch_until(mp,touch,'.tau-galaxy[data-node-id="%s"] ellipse'%home,3,"TauExplorer.getState().view==='group' && TauExplorer.getState().id==='%s'"%home))
-  record('Two-finger pinch enters a roadmap on a narrow phone',pinch_until(mp,touch,'[data-node-id="AnalyticNumberTheory"] .tau-hit',3,"TauExplorer.getState().view==='roadmap' && TauExplorer.getState().id==='AnalyticNumberTheory'"))
+  record('Two-finger pinch enters a roadmap on a narrow phone',pinch_until(mp,touch,'[data-node-id='+json.dumps(ROADMAP)+'] .tau-hit',3,"TauExplorer.getState().view==='roadmap' && TauExplorer.getState().id==="+json.dumps(ROADMAP)+""))
   record('Two-finger pinch enters a star system on a narrow phone',pinch_until(mp,touch,'[data-node-id='+json.dumps(STAR)+'] .tau-hit',3,"TauExplorer.getState().layer==="+json.dumps(STAR)+""))
   mp.screenshot(path=str(ROOT/'preview-phone-star-system.png'),animations='disabled')
   # A moderate pinch steps out one level; a strong one may pass the roadmap by.
@@ -803,8 +865,8 @@ with sync_playwright() as p:
   mp.set_viewport_size({'width':844,'height':390});mp.wait_for_timeout(600);fit_all(mp,touch=True)
   check_overview(mp,'Landscape phone',touch=True)
   mp.screenshot(path=str(ROOT/'preview-phone-landscape-overview.png'),animations='disabled')
-  center_on(mp,'AnalyticNumberTheory')
-  mp.locator('[data-node-id="AnalyticNumberTheory"] .tau-hit').tap();mp.wait_for_function("TauExplorer.getState().view==='roadmap'");mp.wait_for_timeout(500)
+  center_on(mp,ROADMAP)
+  mp.locator('[data-node-id='+json.dumps(ROADMAP)+'] .tau-hit').tap();mp.wait_for_function("TauExplorer.getState().view==='roadmap'");mp.wait_for_timeout(500)
   mp.locator('[data-node-id='+json.dumps(STAR)+'] .tau-hit').tap();mp.wait_for_function("TauExplorer.getState().layer==="+json.dumps(STAR)+"");mp.wait_for_timeout(500)
   planet=mp.evaluate("TauExplorer.getUniverse().stars.find(s=>s.id==="+json.dumps(STAR)+").planetIds[0]")
   mp.locator('[data-node-id="'+planet+'"] .tau-hit').tap()
@@ -842,8 +904,8 @@ with sync_playwright() as p:
    sc=safari.new_context(viewport={'width':390,'height':844},is_mobile=True,has_touch=True)
    sp=sc.new_page();sp.on('pageerror',lambda e:errors.append('webkit: '+str(e)))
    sp.goto(url,wait_until='load');sp.wait_for_function('!!window.TauExplorer');sp.wait_for_timeout(600)
-   center_on(sp,'AnalyticNumberTheory')
-   sp.locator('[data-node-id="AnalyticNumberTheory"] .tau-hit').tap();sp.wait_for_function("TauExplorer.getState().view==='roadmap'");sp.wait_for_timeout(600)
+   center_on(sp,ROADMAP)
+   sp.locator('[data-node-id='+json.dumps(ROADMAP)+'] .tau-hit').tap();sp.wait_for_function("TauExplorer.getState().view==='roadmap'");sp.wait_for_timeout(600)
    sp.locator('[data-node-id='+json.dumps(STAR)+'] .tau-hit').tap();sp.wait_for_function("TauExplorer.getState().layer==="+json.dumps(STAR)+"");sp.wait_for_timeout(600)
    planet=sp.evaluate("TauExplorer.getUniverse().stars.find(s=>s.id==="+json.dumps(STAR)+").planetIds[0]")
    sp.locator('[data-node-id="'+planet+'"] .tau-hit').tap()
@@ -853,12 +915,12 @@ with sync_playwright() as p:
     opened=False
    record('Installed WebKit supports mobile galaxy, layer and planet taps',opened and sp.locator('.cosmic-back').is_visible())
    sp.screenshot(path=str(ROOT/'preview-webkit-phone.png'),animations='disabled');safari.close()
- page.evaluate("TauExplorer.openItem('AnalyticNumberTheory')")
+ page.evaluate("TauExplorer.openItem("+json.dumps(ROADMAP)+")")
  page.set_viewport_size({'width':900,'height':800});page.wait_for_timeout(600);page.screenshot(path=str(ROOT/'preview-narrow.png'),animations='disabled')
  record('Narrow desktop view usable',page.locator('#inspector').is_visible())
  record('Markdown rejects unsafe HTML and schemes',page.evaluate("""() => {const f=TauMarkdown.render('<img src=x onerror=alert(1)>\\n\\n[x](javascript:alert(1))');const d=document.createElement('div');d.append(f);return !d.querySelector('img,script,iframe')&&!Array.from(d.querySelectorAll('a')).some(a=>a.href.startsWith('javascript'))}"""))
- page.evaluate("TauExplorer.openItem('GeometricSatakeAndFusion')");page.wait_for_timeout(600)
- record('Layer order respects internal prerequisites',page.evaluate("() => {const u=TauExplorer.getUniverse(),stars=u.stars.filter(s=>s.constellationId==='GeometricSatakeAndFusion'),ids=new Set(stars.map(s=>s.id)),rank=new Map(stars.map(s=>[s.id,s.rank]));return stars.every(s=>s.dependencyOrderValid) && TauExplorer.data.stageEdges.filter(e=>ids.has(e.source)&&ids.has(e.target)).every(e=>rank.get(e.source)<rank.get(e.target));}"))
+ page.evaluate("id => TauExplorer.openItem(id)",ROADMAP);page.wait_for_timeout(600)
+ record('Layer order respects internal prerequisites',page.evaluate("() => {const u=TauExplorer.getUniverse(),stars=u.stars.filter(s=>s.constellationId==="+json.dumps(ROADMAP)+"),ids=new Set(stars.map(s=>s.id)),rank=new Map(stars.map(s=>[s.id,s.rank]));return stars.every(s=>s.dependencyOrderValid) && TauExplorer.data.stageEdges.filter(e=>ids.has(e.source)&&ids.has(e.target)).every(e=>rank.get(e.source)<rank.get(e.target));}"))
  page.evaluate("TauExplorer.navigate({view:'all',id:null,selected:null,origin:'all'})");page.wait_for_timeout(500)
  svg=page.evaluate('TauExplorer.graph.exportSVG()');svgpath=ROOT/'verified-universe.svg';svgpath.write_text(svg)
  record('SVG export contains the universe and no scripts','tau-galaxy-disc' in svg and '<script' not in svg and 'file:///' not in svg)

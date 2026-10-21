@@ -1,10 +1,11 @@
 """Browser checks for promoted blueprints (scripts/blueprints.py, src/app.js).
 
-Builds the atlas with the small reviewed blueprint in tests/fixtures/blueprints,
-serves it the way the published site serves data/blueprints/, and checks what a
-reader sees: the planets its workers chose on their layers, every declaration
-listed under its layer, a declaration's details read on demand, the roadmap's
-blueprint summary and its document in the reader.
+Builds the explorer's own planned map (the campaign build, which draws blueprints and
+has not been published since 2026-10-21) with the small reviewed blueprint in
+tests/fixtures/blueprints, serves it the way the published site served data/blueprints/,
+and checks what a reader sees: the planets its workers chose on their layers, every
+declaration listed under its layer, a declaration's details read on demand, the
+roadmap's blueprint summary and its document in the reader.
 
   /Users/mcu22seu/miniforge3/bin/python tests/validate_blueprints_browser.py
 
@@ -34,7 +35,7 @@ def build_page(folder: Path) -> None:
     report = REPO / "BUILD.json"
     kept = report.read_bytes()
     try:
-        build(folder / "index.html", FIXTURE)
+        build(folder / "index.html", FIXTURE, "campaign")
     finally:
         report.write_bytes(kept)
     (folder / "data" / "blueprints").mkdir(parents=True)
