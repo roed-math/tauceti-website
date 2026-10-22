@@ -24,7 +24,7 @@ from tauceti_progress import add_new_roadmaps as add_new_tauceti_roadmaps, apply
 from tauceti_progress import load as load_tauceti_progress, load_readmes as load_tauceti_readmes, tauceti_only  # noqa: E402
 from tauceti_prs import add_proposed, load as load_tauceti_prs  # noqa: E402
 from tauceti_progress import REPOSITORY as TAUCETI_BLOB, load_arxiv_areas, matches as tauceti_rows  # noqa: E402
-from roadmap_dependencies import add_dependencies  # noqa: E402
+from roadmap_dependencies import add_dependencies, follow_pull_requests  # noqa: E402
 from arxiv_groups import UNCLASSIFIED, group_by_arxiv  # noqa: E402
 from atlas_distances import measure as measure_page_distances  # noqa: E402
 
@@ -271,11 +271,16 @@ def build(output: Path, blueprints: Path | None = None, variant: str | None = No
                     readmes[r["id"]] = (entry.get("readme") or "", folder(r["id"]), r.get("sourcePath") or "")
                     declared[r["id"]] = entry.get("arxiv")
         atlas["meta"]["readmePrerequisites"] = add_dependencies(atlas, readmes)
-        # Every roadmap on the page is measured by the distance function, over the page's own prerequisites
-        # (scripts/atlas_distances.py): the map lays each one out as far from Mathlib as the theory it still needs.
+        if variant is None:
+            # The prerequisites a pull request's description states outrank its README's.
+            atlas["meta"]["pullPrerequisites"] = follow_pull_requests(atlas, proposals["pulls"])
+        # Every roadmap on the page lies as far from Mathlib as the work in the roadmaps it rests on (scripts/atlas_distances.py).
         distances = atlas["roadmapDistances"]
-        distances["roadmaps"] = measure_page_distances(atlas, distances, load_coverage(ROOT))
+        distances["roadmaps"] = measure_page_distances(atlas)
         distances["bases"] = dict(Counter(entry["basis"] for entry in distances["roadmaps"].values()))
+        distances["method"] = {"distance": "A roadmap's distance from Mathlib is the work still to do in the roadmaps it rests on: every roadmap "
+                               "its README or its pull request names as a prerequisite, every roadmap those rest on, and itself, each counting "
+                               "the share of its layers not yet done. It is placed on a 0-10 scale in proportion, 10 being the farthest roadmap on the page."}
         atlas["meta"]["arxivGroups"] = group_by_arxiv(atlas, declared, load_arxiv_areas(), json.loads(read_text("data/arxiv-subareas.json")))
     retired, link_packets = context["retired"], context["linkPackets"]
     # Layers that are not source refinements: the snapshot's, and those of any roadmap added above.

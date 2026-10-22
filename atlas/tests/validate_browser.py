@@ -295,13 +295,13 @@ def labels_are_clean(page,minimum_font=8):
  # No two drawn labels overlap, every drawn label is legible and inside the chart.
  chart=page.locator('#graph').bounding_box();boxes=label_boxes(page);collisions=[]
  discs=page.evaluate("""() => Array.from(document.querySelectorAll('.tau-planet-body, .tau-star-core')).map(c=>{const b=c.getBoundingClientRect(),g=c.closest('[data-node-id]');return {id:g?g.getAttribute('data-node-id'):'',x:b.left+b.width/2,y:b.top+b.height/2,r:b.width/2};}).filter(d=>d.r>=3)""")
- overlays=page.evaluate("""() => Array.from(document.querySelectorAll('.graph-tools, .graph-hint')).map(e=>e.getBoundingClientRect()).filter(b=>b.width>0&&b.height>0).map(b=>({x:b.left,y:b.top,w:b.width,h:b.height}))""")
+ overlays=page.evaluate("""() => Array.from(document.querySelectorAll('.graph-tools, .graph-hint, .atlas-progress')).map(e=>e.getBoundingClientRect()).filter(b=>b.width>0&&b.height>0).map(b=>({x:b.left,y:b.top,w:b.width,h:b.height}))""")
  for i,a in enumerate(boxes):
   if a['font']<minimum_font:collisions.append({'first':a['id'],'second':'illegible','font':a['font']})
   if a['x']<chart['x']-2 or a['x']+a['w']>chart['x']+chart['width']+2 or a['y']<chart['y']-2 or a['y']+a['h']>chart['y']+chart['height']+2:collisions.append({'first':a['id'],'second':'chart boundary'})
   for b in boxes[i+1:]:
    if min(a['x']+a['w'],b['x']+b['w'])-max(a['x'],b['x'])>1 and min(a['y']+a['h'],b['y']+b['h'])-max(a['y'],b['y'])>1:collisions.append({'first':a['id'],'second':b['id']})
-  # Text never runs across another object's disc, nor behind the corner controls.
+  # Text never runs across another object's disc, nor behind the corner controls or the progress card.
   for d in discs:
    if d['id']!=a['id'] and math.hypot(max(a['x'],min(d['x'],a['x']+a['w']))-d['x'],max(a['y'],min(d['y'],a['y']+a['h']))-d['y'])<d['r']-1:collisions.append({'first':a['id'],'second':'disc '+d['id']})
   for o in overlays:
@@ -348,19 +348,24 @@ def check_overview(page,scope,touch=False):
   # a divided category as a field, the others as galaxies, each in capitals over its identifier, which keeps arXiv's
   # case (math.NT); the areas of a divided category are named once the camera opens it (check_fields). A heading
   # waits for room rather than overlap: on a large chart the smallest categories, up to a third of them, may wait;
-  # a phone shows part of the map at desktop scale, where every sector meets at Mathlib, and names at least six.
+  # a phone shows part of the map at desktop scale, where every sector meets at Mathlib, beside the progress card that
+  # covers a third of it, and names at least four. A divided category wider than the chart gives way to its areas,
+  # whose names then name its part of the map.
   named=page.evaluate("""() => { const u=TauExplorer.getUniverse(),groups=new Map(TauExplorer.data.groups.map(g=>[g.id,g])),fields=new Map((TauExplorer.data.fields||[]).map(f=>['field:'+f.id,f]));
    const lines=e=>Array.from(e.querySelectorAll('tspan').length?e.querySelectorAll('tspan'):e.querySelectorAll('text')).map(t=>t.textContent);
-   const wanted=[...u.fields.filter(f=>f.labelVisible).map(f=>f.id),...u.galaxies.filter(g=>g.headingVisible&&!g.fieldId).map(g=>g.id)];
+   const categories=[...u.fields.filter(f=>f.labelVisible).map(f=>f.id),...u.galaxies.filter(g=>g.headingVisible&&!g.fieldId).map(g=>g.id)];
+   const given=new Set(u.fields.filter(f=>!f.labelVisible).map(f=>f.id)),wanted=[...categories,...u.galaxies.filter(g=>g.headingVisible&&given.has(g.fieldId)).map(g=>g.id)];
    const drawn=Array.from(document.querySelectorAll('.tau-label-field, .tau-label-galaxy')).map(e=>({id:e.getAttribute('data-label-for'),lines:lines(e)})).filter(d=>wanted.includes(d.id));
+   const named=drawn.filter(d=>categories.includes(d.id));
    const code=id=>(fields.get(id)||{}).code||(groups.get(id)||{}).arxiv;
    const dust=id=>{const e=document.querySelector('.tau-galaxy[data-node-id="'+CSS.escape(id)+'"] .tau-dust-far');return e?Number(e.getAttribute('opacity')):1;};
    return {categories:[...groups.values()].every(g=>g.id==='unclassified'?!g.arxiv:/^math\\.[A-Z]{2}(\\/[a-z]+)?$/.test(g.id)&&g.id.startsWith(g.arxiv)),
-           wanted:wanted.length,drawn:drawn.length,faded:drawn.filter(d=>groups.has(d.id)&&dust(d.id)<.95).length,
-           cased:drawn.length>=3&&drawn.every(d=>d.lines[0]===d.lines[0].toUpperCase()&&(d.lines.length===1||!code(d.id)||d.lines.includes(code(d.id))))}; }""")
-  allowed=math.ceil(named['wanted']*.34) if box['width']>=600 and box['height']>=400 else named['wanted']-min(named['wanted'],6)
+           wanted:wanted.length,drawn:drawn.length,faded:named.filter(d=>groups.has(d.id)&&dust(d.id)<.95).length,
+           named:named.length,cased:named.every(d=>d.lines[0]===d.lines[0].toUpperCase()&&(d.lines.length===1||!code(d.id)||d.lines.includes(code(d.id))))}; }""")
+  large=box['width']>=600 and box['height']>=400
+  allowed=math.ceil(named['wanted']*.34) if large else named['wanted']-min(named['wanted'],4)
   record(scope+' overview names each arXiv category once, in capitals over its identifier, without overlap',
-         named['categories'] and named['cased'] and named['drawn']>=named['wanted']-allowed and labels_are_clean(page) and names_are_unique(page))
+         named['categories'] and named['cased'] and named['named']>=(3 if large else 1) and named['drawn']>=named['wanted']-allowed and labels_are_clean(page) and names_are_unique(page))
   record(scope+' named areas show their progress colours',named['faded']==0)
   # The sector map opens on Mathlib at a scale that shows the nearer roadmaps; the reader explores the rest.
   record(scope+' overview opens on Mathlib, the rest of the map to explore',page.evaluate("""() => { const g=TauExplorer.graph,t=g.debugState().transform,u=TauExplorer.getUniverse(),target=g.overviewTransform();
@@ -470,13 +475,17 @@ def check_zoom_journey(page,scope):
  # galaxy, one constellation and one star system, and the address follows.
  fit_all(page)
  home=page.evaluate("TauExplorer.data.roadmaps.find(r=>r.id==="+json.dumps(ROADMAP)+").group")
- # The camera enters the area in the middle of the view, so the reader first drags the area there.
- center_on(page,home)
+ # The camera enters the area in the middle of the view, so the reader first drags the area there. On the sector
+ # map an area is a long sector, whose middle may lie far from the example roadmap: the reader drags the roadmap
+ # there, and the wheel turns over it.
+ sectors=page.evaluate("TauExplorer.getUniverse().layout")=='sectors'
+ aim=('[data-node-id=%s] .tau-hit'%json.dumps(ROADMAP)) if sectors else ('.tau-galaxy[data-node-id="%s"] .tau-galaxy-disc'%home)
+ center_on(page,ROADMAP if sectors else home)
  # One notch at a time: a three-notch jump can reach a large neighbouring area's zoom before this one's, and then
  # this one's constellations, without the camera ever being in this area alone (2026-10-21, the atlas's Curves area).
- record(scope+' wheel zoom enters a galaxy',wheel_until(page,'.tau-galaxy[data-node-id="%s"] .tau-galaxy-disc'%home,-100,"TauExplorer.getState().view==='group' && TauExplorer.getState().id==='%s'"%home,attempts=24))
+ record(scope+' wheel zoom enters a galaxy',wheel_until(page,aim,-100,"TauExplorer.getState().view==='group' && TauExplorer.getState().id==='%s'"%home,attempts=24))
  page.wait_for_timeout(400)
- record(scope+' inside a galaxy its constellations resolve into stars',wheel_until(page,'.tau-galaxy[data-node-id="%s"] .tau-galaxy-disc'%home,-200,"(() => { const d=TauExplorer.graph.debugState(); return d.visible.resolved>0 && d.visible.stars>0; })()",attempts=6))
+ record(scope+' inside a galaxy its constellations resolve into stars',wheel_until(page,aim,-200,"(() => { const d=TauExplorer.graph.debugState(); return d.visible.resolved>0 && d.visible.stars>0; })()",attempts=6))
  # One real wheel notch at a time (deltaY 100): a three-notch jump can carry the
  # camera past the roadmap straight into a star, which is allowed.
  record(scope+' wheel zoom enters a roadmap constellation',wheel_until(page,'[data-node-id='+json.dumps(ROADMAP)+'] .tau-hit',-100,"TauExplorer.getState().view==='roadmap' && TauExplorer.getState().id==="+json.dumps(ROADMAP)+" && !TauExplorer.getState().layer",attempts=24))
@@ -528,8 +537,9 @@ def check_click_journey(page,scope):
  kind={'tauceti':'Tau Ceti roadmap','proposed':'Proposed roadmap'}.get(page.evaluate("id => TauExplorer.data.roadmaps.find(r=>r.id===id).origin",ROADMAP),'Campaign roadmap')
  record(scope+' clicking a roadmap point travels into its constellation',arrived and page.locator('#selection-kind').inner_text()==kind)
  record(scope+' the selected roadmap shows its own links',page.locator('.tau-link').count()==page.evaluate("TauExplorer.data.edges.filter(e=>e.source==="+json.dumps(ROADMAP)+"||e.target==="+json.dumps(ROADMAP)+").length"))
- # Selecting a link names the two things it joins, and either name opens its end.
- spot=page.evaluate("""() => { for (const h of document.querySelectorAll('.tau-link-hit')) { const p=h.getPointAtLength(h.getTotalLength()/2), m=h.getScreenCTM(), x=m.a*p.x+m.c*p.y+m.e, y=m.b*p.x+m.d*p.y+m.f; if (document.elementFromPoint(x,y)===h) return {x, y, source:h.dataset.source, target:h.dataset.target}; } return null; }""")
+ # Selecting a link names the two things it joins, and either name opens its end. On the sector map a link may run
+ # to another sector, its middle off the chart: the reader picks it out wherever it is in view.
+ spot=page.evaluate("""() => { for (const h of document.querySelectorAll('.tau-link-hit')) for (const share of [.5,.4,.6,.3,.7,.2,.8,.1,.9]) { const p=h.getPointAtLength(h.getTotalLength()*share), m=h.getScreenCTM(), x=m.a*p.x+m.c*p.y+m.e, y=m.b*p.x+m.d*p.y+m.f; if (document.elementFromPoint(x,y)===h) return {x, y, source:h.dataset.source, target:h.dataset.target}; } return null; }""")
  record(scope+' a link can be picked out on the chart',spot is not None)
  page.mouse.click(spot['x'],spot['y']);page.wait_for_timeout(300)
  ends=page.evaluate("Array.from(document.querySelectorAll('.tau-link-card [data-end]')).map(e=>e.dataset.nodeId)")

@@ -5,7 +5,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
-from tauceti_prs import add_proposed, arxiv, open_pulls, proposed  # noqa: E402
+from tauceti_prs import add_proposed, arxiv, open_pulls, proposed, stated  # noqa: E402
 
 
 def pull(number, updated, *files, **extra):
@@ -35,6 +35,19 @@ class Proposals(unittest.TestCase):
         self.assertIsNone(arxiv(""))
         self.assertIsNone(arxiv("topic = [1, 2]\n"))
         self.assertIsNone(arxiv("topic = \n"))
+
+    def test_a_description_states_what_must_merge_first_and_which_of_those_its_readme_cites(self):
+        body = ("Adds the roadmap.\n\n<!-- merge-order -->\n**Merge order.** #848 (ComplexComparisonPartII) → #1104 (AbhyankarLemma, tdupu) → "
+                "#873 (LefschetzPencils) → **this pull request** (#1048). It also depends on other authors' pull requests that add roadmaps "
+                "it cites, which must merge first: #1104.\n<!-- /merge-order -->\n\nDependencies (cited in the README by roadmap name and "
+                "section). In open pull requests of ours: #873 (LefschetzPencils, LPV.2 §2.8). GlobalGaloisDeformations (#920) is a "
+                "downstream consumer, not a prerequisite.\n\nValidation: #999 builds.\n")
+        self.assertEqual(stated(body, 1048), {"before": [848, 873, 1104], "prerequisites": [873, 1104]})
+        self.assertEqual(stated("<!-- merge-order -->**Merge order.** **this pull request** (#7). It depends on no other author's open pull "
+                                "request.<!-- /merge-order -->\n\nDependencies. In open pull requests of ours: none.", 7),
+                         {"before": [], "prerequisites": []})
+        self.assertIsNone(stated("Dependencies: #12 and #13.", 14))
+        self.assertIsNone(stated(None, 14))
 
     def test_every_page_of_open_pull_requests_is_read(self):
         pages = [{"data": {"repository": {"pullRequests": {"pageInfo": {"hasNextPage": True, "endCursor": "c1"}, "nodes": [{"number": 1}]}}}},

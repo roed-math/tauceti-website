@@ -14,6 +14,11 @@ change with every push, so they stay out of the repository, in a cache keyed by 
 (data/tauceti-prs-readmes.json), and the page carries each roadmap's layers but reads its README from
 GitHub when it is opened. A build fails rather than drop proposals whose READMEs are not cached.
 
+A pull request opened with Tau Ceti's roadmap tooling states its prerequisites in its description, in a
+merge-order block: every open pull request that must merge before it, and which of those add roadmaps its
+README cites. The copy keeps both (`stated`), and the atlas holds the README's prerequisites to them
+(scripts/roadmap_dependencies.py, follow_pull_requests).
+
 Usage: tauceti_prs.py --fetch   list the open pull requests (with gh) and download their roadmaps
 """
 from __future__ import annotations
@@ -37,7 +42,7 @@ RAW = "https://raw.githubusercontent.com/"
 README = re.compile(r"^(TauCetiRoadmap/(?:[^/]+/)*[^/]+)/README\.md$")
 QUERY = """query($cursor: String) { repository(owner: "TauCetiProject", name: "TauCetiRoadmap") {
   pullRequests(states: OPEN, first: 40, after: $cursor) { pageInfo { hasNextPage endCursor }
-    nodes { number title url isDraft createdAt updatedAt author { login } labels(first: 20) { nodes { name } }
+    nodes { number title url isDraft createdAt updatedAt body author { login } labels(first: 20) { nodes { name } }
       headRefOid headRepository { nameWithOwner } files(first: 100) { nodes { path changeType } } } } } }"""
 
 
@@ -67,6 +72,28 @@ def proposed(pulls: list, on_main: set) -> dict:
             if folder not in chosen or pull["updatedAt"] > chosen[folder]["updatedAt"]:
                 chosen[folder] = pull
     return chosen
+
+
+MERGE_ORDER = re.compile(r"<!-- merge-order -->(.*?)<!-- /merge-order -->", re.S)
+DEPENDENCIES = re.compile(r"^Dependencies\b.*?(?=\n\s*\n|\Z)", re.M | re.S)
+# A sentence that names the pull requests whose roadmaps this one cites: its author's own ("In open pull requests of
+# ours: #848 (ComplexComparisonPartII), ...") and other authors' ("It also depends on other authors' pull requests
+# that add roadmaps it cites, which must merge first: #1104.").
+CITING = re.compile(r"in open (?:roadmap )?pull requests|other authors?(?:'s?|’s?)|another author", re.I)
+
+
+def stated(body: str, number: int) -> dict | None:
+    """The prerequisites a pull request's description states, if it has a merge-order block: `before`, every open pull
+    request the block says must merge first, and `prerequisites`, those that add roadmaps its README cites."""
+    block = MERGE_ORDER.search(body or "")
+    if not block:
+        return None
+    cited = set()
+    for paragraph in [block.group(1)] + DEPENDENCIES.findall(body):
+        for sentence in re.split(r"(?<=\.)\s+", paragraph):
+            if CITING.search(sentence):
+                cited.update(int(n) for n in re.findall(r"#(\d+)", sentence))
+    return {"before": sorted({int(n) for n in re.findall(r"#(\d+)", block.group(1))} - {number}), "prerequisites": sorted(cited - {number})}
 
 
 def arxiv(metadata: str) -> str | None:
@@ -114,7 +141,8 @@ def fetch(copy: Path = COPY, cache: Path = CACHE, board: Path = ROOT / "data" / 
                                                  "author": (pull.get("author") or {}).get("login"), "draft": pull["isDraft"],
                                                  "labels": sorted(label["name"] for label in pull["labels"]["nodes"]),
                                                  "head": pull["headRepository"]["nameWithOwner"], "sha": pull["headRefOid"],
-                                                 "createdAt": pull["createdAt"], "updatedAt": pull["updatedAt"]}
+                                                 "createdAt": pull["createdAt"], "updatedAt": pull["updatedAt"],
+                                                 **({"stated": said} if (said := stated(pull.get("body"), pull["number"])) else {})}
                                                 for pull in sorted(pulls, key=lambda pull: pull["number"]) if pull["number"] in shown],
             "openPulls": len(pulls), "roadmaps": roadmaps}
     copy.write_text(json.dumps(data, ensure_ascii=False, indent=1, sort_keys=True) + "\n", encoding="utf-8")

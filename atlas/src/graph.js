@@ -352,7 +352,10 @@
       const graph = this;
       galaxies.each(function (galaxy) {
         const g = d3.select(this), far = g.append('g').attr('class', 'tau-dust tau-dust-far'), near = g.append('g').attr('class', 'tau-dust tau-dust-near');
-        const farRadius = Math.max(3, Math.max(galaxy.rx, galaxy.ry) * .019), nearRadius = Math.max(.4, Math.max(galaxy.rx, galaxy.ry) * .0018);
+        // A sector's dust is sized by its width across, so that it stays fine beside the roadmaps however long the sector is.
+        const across = galaxy.sector ? (galaxy.a1 - galaxy.a0) * galaxy.hubRadius : 0;
+        const farRadius = across ? Math.max(1.6, across * .007) : Math.max(3, Math.max(galaxy.rx, galaxy.ry) * .019);
+        const nearRadius = across ? Math.max(.3, across * .001) : Math.max(.4, Math.max(galaxy.rx, galaxy.ry) * .0018);
         [0, 1, 2].forEach(cls => {
           const points = galaxy.dust.filter(p => p.cls === cls);
           far.append('path').attr('class', 'tau-dust-path').attr('data-class', cls).attr('d', graph.dustPath(points, farRadius * (cls === 2 ? 1.2 : cls === 1 ? .95 : .7)));
@@ -576,11 +579,15 @@
       // until it grows to fill most of the chart, on every screen alike. A
       // short chart (a phone held sideways) counts as 600 pixels, so the map at
       // desktop scale keeps its colours there too.
-      // A sector's size is its width across, where most of its roadmaps lie, not its length out from Mathlib.
-      const shorter = Math.max(600, Math.min(this.width, this.height)), size = g => (g.sector ? (g.a1 - g.a0) * g.hubRadius : g.w) * k / shorter;
-      const farFade = g => Math.max(0, Math.min(1, (1.1 - size(g)) / .6));
+      const shorter = Math.max(600, Math.min(this.width, this.height)), size = g => g.w * k / shorter;
+      // On the sector map the dust follows instead the size on screen of a typical roadmap, 30 units in radius, so that the
+      // colours clear from round the roadmaps as soon as they can be told apart, in a narrow sector as in a wide one: the
+      // coarse dust is gone by the time a roadmap is seven pixels in radius, and the fine dust before roadmaps open into stars.
+      const radius = 30 * k;
+      const farFade = g => g.sector ? Math.max(0, Math.min(1, (7 - radius) / 2.5)) : Math.max(0, Math.min(1, (1.1 - size(g)) / .6));
       // The fine dust rises before the coarse has faded, so a galaxy never dims in the hand-over.
-      const nearFade = g => .6 * Math.max(0, Math.min(1, (size(g) - .3) / .5)) * Math.max(0, Math.min(1, (9 - k) / 4));
+      const nearFade = g => g.sector ? .34 * Math.max(0, Math.min(1, (radius - 2.5) / 2)) * Math.max(0, Math.min(1, (20 - radius) / 6))
+        : .6 * Math.max(0, Math.min(1, (size(g) - .3) / .5)) * Math.max(0, Math.min(1, (9 - k) / 4));
       galaxySelection.select('.tau-dust-far').attr('opacity', farFade).attr('display', g => farFade(g) > 0 ? null : 'none');
       galaxySelection.select('.tau-dust-near').attr('opacity', nearFade).attr('display', g => nearFade(g) > 0 ? null : 'none');
       this.positionLive();
@@ -819,13 +826,18 @@
     }
 
     overlayBoxes() {
-      // The corner controls, in chart coordinates, padded by a few pixels.
+      // The corner controls and the progress card, in chart coordinates, padded by a few pixels.
       const host = this.container && this.container.parentNode;
       if (!host) return [];
+      // The card grows and shrinks with what it reports (src/app.js): a change of its size clears the boxes kept.
+      if (!this.overlayWatch && typeof ResizeObserver === 'function') {
+        this.overlayWatch = new ResizeObserver(() => { this.overlayCache = null; this.scheduleRender(); });
+        host.querySelectorAll('.atlas-progress').forEach(el => this.overlayWatch.observe(el));
+      }
       const hint = host.querySelector('.graph-hint'), key = this.width + 'x' + this.height + '|' + (hint ? hint.textContent : '');
       if (this.overlayCache && this.overlayCache.key === key) return this.overlayCache.boxes;
       const base = this.container.getBoundingClientRect();
-      const boxes = Array.from(host.querySelectorAll('.graph-tools, .graph-hint')).map(el => el.getBoundingClientRect()).filter(b => b.width > 0 && b.height > 0)
+      const boxes = Array.from(host.querySelectorAll('.graph-tools, .graph-hint, .atlas-progress')).map(el => el.getBoundingClientRect()).filter(b => b.width > 0 && b.height > 0)
         .map(b => ({ x: b.left - base.left - 4, y: b.top - base.top - 4, w: b.width + 8, h: b.height + 8 }));
       this.overlayCache = { key, boxes };
       return boxes;
@@ -1144,6 +1156,7 @@
     destroy() {
       this.destroyed = true; clearTimeout(this.focusTimer);
       if (this.observer) this.observer.disconnect(); else window.removeEventListener('resize', this.resize);
+      if (this.overlayWatch) this.overlayWatch.disconnect();
       this.svg.interrupt().on('.zoom', null).remove();
     }
 

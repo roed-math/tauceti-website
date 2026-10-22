@@ -1,62 +1,62 @@
-import math
 import sys
 import unittest
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
-from atlas_distances import measure, readme_links, scale_factor  # noqa: E402
-
-WEIGHTS = {"lnMissingTargets": 0.9569, "depth": 0.0375}
+from atlas_distances import acyclic, measure, unfinished  # noqa: E402
 
 
-def raw(targets, depth):
-    return WEIGHTS["lnMissingTargets"] * math.log1p(targets) + WEIGHTS["depth"] * depth
+def atlas(edges, statuses=None, completed=()):
+    """Roadmaps A..E of two layers each, every layer still to do unless statuses says otherwise."""
+    names = sorted({name for edge in edges for name in edge[:2]} | set(completed) | set("ABE"))
+    return {"roadmaps": [{"id": name, "lifecycle": "completed" if name in completed else "active"} for name in names],
+            "stages": [{"id": f"{name}:{index}", "owner": name} for name in names for index in (1, 2)],
+            "edges": [{"source": source, "target": target, "kind": "readme", "weight": weight} for source, target, weight in edges],
+            "progress": {"stages": {sid: {"status": status} for sid, status in (statuses or {}).items()}}}
 
 
-def recorded(**roadmaps):
-    # One roadmap measured on the 0-10 scale at half its log-odds measurement: the factor is 0.5.
-    return {"pairwise": {"weights": WEIGHTS},
-            "roadmaps": {"campaign:X": {"structure": {"missingTargets": 10, "depth": 2}, "measurement": raw(10, 2) / 2, "basis": "measured"}, **roadmaps}}
+class Cycles(unittest.TestCase):
+    """The READMEs say some dependencies both ways; the distances read them without cycles."""
+
+    def test_of_two_roadmaps_naming_each_other_the_clearly_surer_direction_stays_an_even_pair_goes(self):
+        self.assertEqual(acyclic({("A", "B"): 6, ("B", "A"): 2, ("C", "D"): 3, ("D", "C"): 3}), {("A", "B")})
+
+    def test_a_longer_cycle_loses_its_least_sure_link(self):
+        self.assertEqual(acyclic({("A", "B"): 5, ("B", "C"): 5, ("C", "A"): 1, ("C", "D"): 2}), {("A", "B"), ("B", "C"), ("C", "D")})
 
 
-def atlas():
-    # P and R are two-layer roadmaps still to be built, R's README naming P as a prerequisite; S is built.
-    return {"roadmaps": [{"id": "tauceti:P", "origin": "tauceti"}, {"id": "tauceti:R", "origin": "proposed"}, {"id": "tauceti:S", "origin": "tauceti"}],
-            "stages": [{"id": f"{name}:{index}", "owner": f"tauceti:{name}"} for name in ("P", "R", "S") for index in (1, 2)],
-            "stageEdges": [{"source": f"{name}:1", "target": f"{name}:2"} for name in ("P", "R", "S")],
-            "edges": [{"source": "tauceti:P", "target": "tauceti:R", "kind": "readme"}],
-            "progress": {"stages": {"S:1": {"status": "complete"}, "S:2": {"status": "complete"}}},
-            "stagePresentation": {}}
+class Distances(unittest.TestCase):
+    """A roadmap lies as far out as the unfinished work in what it rests on, and in itself."""
 
+    def test_a_roadmap_counts_its_share_of_layers_not_yet_done(self):
+        left = unfinished(atlas([], {"A:1": "complete", "B:1": "in_progress"}, completed=("C",)))
+        self.assertEqual(left, {"A": .5, "B": .75, "C": 0.0, "E": 1.0})
 
-class PageDistances(unittest.TestCase):
-    """Every roadmap on the published page measured by the distance function, on the snapshot's scale."""
+    def test_the_distance_is_the_work_it_rests_on_in_proportion_to_the_farthest(self):
+        # A <- B <- C, and D on its own; A is half done.
+        out = measure(atlas([("A", "B", 3), ("B", "C", 3), ("D", "E", 3)], {"A:1": "complete"}))
+        self.assertEqual({rid: out[rid]["structure"]["restsOn"] for rid in out}, {"A": 0, "B": 1, "C": 2, "D": 0, "E": 1})
+        # C: .5 + 1 + 1 = 2.5, the farthest, at 10; B: 1.5; A: .5.
+        self.assertEqual({rid: out[rid]["distance"] for rid in "ABC"}, {"A": 2.0, "B": 6.0, "C": 10.0})
+        self.assertEqual((out["C"]["structure"]["chain"], out["C"]["structure"]["prerequisites"], out["C"]["basis"]), (3, 1, "dependencies"))
 
-    def test_the_scale_is_read_back_from_the_measured_roadmaps(self):
-        self.assertAlmostEqual(scale_factor(recorded()), .5)
+    def test_a_link_a_pull_request_states_outweighs_the_readmes_and_proposed_roadmaps_are_counted(self):
+        map_ = atlas([("A", "B", 9), ("B", "A", 9)])
+        map_["edges"][1]["kind"] = "pull"
+        map_["roadmaps"][0]["origin"] = "proposed"
+        out = measure(map_)
+        self.assertEqual([edge.get("cyclic", False) for edge in map_["edges"]], [True, False])
+        self.assertEqual((out["A"]["structure"]["restsOn"], out["A"]["structure"]["proposed"]), (1, 0))
+        self.assertEqual((out["B"]["structure"]["restsOn"], out["B"]["structure"]["proposed"]), (0, 0))
+        map_["roadmaps"][1]["origin"] = "proposed"
+        self.assertEqual(measure(map_)["A"]["structure"]["proposed"], 1)
 
-    def test_a_readme_prerequisite_puts_all_of_the_other_roadmap_before_the_dependents_first_layer(self):
-        self.assertEqual(readme_links(atlas()), [{"source": "P:2", "target": "R:1"}])
-        # A pair a layer link already joins needs none.
-        joined = atlas()
-        joined["stageEdges"].append({"source": "P:1", "target": "R:2"})
-        self.assertEqual(readme_links(joined), [])
-
-    def test_each_roadmap_is_measured_over_its_prerequisites_and_a_built_one_sits_at_zero(self):
-        out = measure(atlas(), recorded(), {})
-        self.assertEqual(out["tauceti:R"]["structure"]["missingLayers"], 4)
-        self.assertEqual((out["tauceti:R"]["structure"]["depth"], out["tauceti:P"]["structure"]["depth"]), (4, 2))
-        # No audit counts the targets: a layer still to be built counts one.
-        self.assertEqual(out["tauceti:R"]["distance"], round(raw(4, 4) / 2, 2))
-        self.assertEqual(out["tauceti:P"]["distance"], round(raw(2, 2) / 2, 2))
-        self.assertEqual((out["tauceti:S"]["distance"], out["tauceti:S"]["basis"]), (0.0, "built"))
-        self.assertEqual(out["tauceti:R"]["basis"], "measured")
-
-    def test_a_roadmap_the_swarm_judged_keeps_its_judged_distance(self):
-        judged = {"distance": 7.1, "basis": "judged", "judgements": 12}
-        out = measure(atlas(), recorded(**{"tauceti:P": judged}), {})
-        self.assertIs(out["tauceti:P"], judged)
+    def test_a_link_set_aside_to_break_a_cycle_is_marked_and_stays(self):
+        map_ = atlas([("A", "B", 3), ("B", "A", 3)])
+        out = measure(map_)
+        self.assertEqual([edge.get("cyclic") for edge in map_["edges"]], [True, True])
+        self.assertEqual(out["A"]["structure"]["restsOn"], 0)
 
 
 if __name__ == "__main__":

@@ -130,7 +130,7 @@
   // the whole map, at the angle in its sector nearest its share of the sector that is clear of the roadmaps already
   // placed, as in a beeswarm plot. Only when no angle is clear does a roadmap step out or in, by at most half a
   // unit of distance. The map is wider than a screen: the reader explores it.
-  const SECTOR_CORE = 420, SECTOR_STEP = 520, SECTOR_NUDGE = 32;
+  const SECTOR_CORE = 1200, SECTOR_STEP = 560, SECTOR_NUDGE = 35;
   const sectorRadius = distance => SECTOR_CORE + SECTOR_STEP * Math.max(0, Math.min(10, distance));
   const NUDGES = [0, 1, -1, 2, -2, 3, -3, 4, -4, 5, -5, 6, -6, 7, -7, 8, -8];
   const GOLDEN_SHARE = (Math.sqrt(5) - 1) / 2;
@@ -166,7 +166,9 @@
       const preferred = galaxy.a0 + span * ((index * GOLDEN_SHARE + .5) % 1);
       let best = null;
       search: for (const nudge of NUDGES) {
-        const radius = Math.max(CORE_RADIUS * 3, c.target + nudge * SECTOR_NUDGE);
+        // Never nearer Mathlib than distance 0.
+        const radius = c.target + nudge * SECTOR_NUDGE;
+        if (radius < SECTOR_CORE) continue;
         const margin = (c.r + 12) / radius, low = Math.min(galaxy.a0 + margin, (galaxy.a0 + galaxy.a1) / 2), high = Math.max(galaxy.a1 - margin, low);
         const step = Math.max(.0015, c.r * .45 / radius), start = Math.max(low, Math.min(high, preferred));
         for (let k = 0; k * step <= high - low + step; k++) {
@@ -241,9 +243,9 @@
     let guard = 0;
     while (points.length < count && guard++ < count * 6) {
       if (members.length && random() < .6) {
-        const c = members[Math.floor(random() * members.length)], spread = c.r * (1 + 1.7 * Math.pow(random(), 1.6)), angle = random() * Math.PI * 2;
+        const c = members[Math.floor(random() * members.length)], spread = c.r * (1.3 + 1.7 * Math.pow(random(), 1.4)), angle = random() * Math.PI * 2;
         const x = c.x + Math.cos(angle) * spread, y = c.y + Math.sin(angle) * spread, shine = random();
-        if (inside(x, y)) points.push({ x, y, radial: spread / (c.r * 3.5), cls: spread < c.r * 1.7 && shine > .35 ? 2 : shine > .5 ? 1 : 0 });
+        if (inside(x, y)) points.push({ x, y, radial: spread / (c.r * 3), cls: spread < c.r * 1.8 && shine > .35 ? 2 : shine > .5 ? 1 : 0 });
       } else {
         const radius = Math.sqrt(galaxy.r0 * galaxy.r0 + random() * (galaxy.r1 * galaxy.r1 - galaxy.r0 * galaxy.r0)), angle = galaxy.a0 + random() * (galaxy.a1 - galaxy.a0);
         points.push({ x: Math.cos(angle) * radius, y: Math.sin(angle) * radius, radial: 1, cls: random() > .72 ? 1 : 0 });

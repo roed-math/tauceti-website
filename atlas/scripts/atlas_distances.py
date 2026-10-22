@@ -1,90 +1,126 @@
-"""Each roadmap's distance from Mathlib on the published pages.
+"""Each roadmap's distance from Mathlib on the published pages, by the roadmaps it rests on.
 
-scripts/measure_distances.py measures the roadmaps of the explorer's own snapshot: w_T ln(1 + T) + w_D D
-over the prerequisite closure of a roadmap's layers, T the targets still missing from Mathlib and Tau
-Ceti and D the longest chain of layers still to be built, with weights fitted to the swarm's pairwise
-judgements and placed on a 0-10 scale. The published pages draw roadmaps it never saw: those Tau Ceti
-has accepted since, and those open pull requests propose. This module applies the same function, with
-the same weights and on the same scale, to every roadmap on the page, over the page's own prerequisite
-graph, so that a roadmap's place on the map says how much theory it still needs.
+A roadmap rests on every roadmap it builds on, and on everything those rest on in turn: its prerequisite
+closure, over the prerequisites the READMEs name (scripts/roadmap_dependencies.py) and those the snapshot
+declares. Its distance is the work still to do there, counted in roadmaps: each roadmap of the closure, itself
+included, counts the share of its layers not yet done (half for a layer in progress), so a finished roadmap
+counts nothing and a proposed one counts in full. The distances are placed on a 0-10 scale in proportion,
+10 being the farthest roadmap on the page, so a roadmap resting on twice the work lies twice as far out.
 
-A roadmap added from its README has no layer links to other roadmaps, only the prerequisites its
-README names (scripts/roadmap_dependencies.py); each counts as its first layers needing all of the
-roadmap it builds on. A roadmap the swarm judged keeps its judged distance.
+The READMEs say some dependencies both ways: two roadmaps each naming the other, or a longer cycle. A
+dependency is said more surely by its dependent's README than by its supplier's, in a dependency section than
+in a sentence, by several READMEs than by one (each edge's `weight`); a link the snapshot declares is sure, and
+one a pull request's description states (kind "pull") surer than anything the READMEs say against it.
+Of two roadmaps naming each other, the direction said clearly more surely stays and an even pair goes; any
+cycle left loses its least sure link. The links set aside stay on the map; only the distances leave them out.
 """
 from __future__ import annotations
 
-import math
-import statistics
 from collections import defaultdict
 
-from library_coverage import already_available
-from theory_graph import TheoryGraph
+from roadmap_dependencies import DECLARED, STATED
+
+# Of two roadmaps naming each other, a direction said this many times more surely stands.
+CLEARLY = 1.5
 
 
-def raw_measurement(structure: dict, weights: dict) -> float:
-    return weights["lnMissingTargets"] * math.log1p(structure["missingTargets"]) + weights["depth"] * structure["depth"]
+def acyclic(weights: dict) -> set:
+    """The (prerequisite, dependent) pairs kept once every cycle is broken: of a pair naming each other, the clearly
+    surer direction, or neither; then, while a cycle remains, all but its least sure link."""
+    keep = dict(weights)
+    for (source, target), weight in weights.items():
+        back = weights.get((target, source))
+        if back is None or source > target:
+            continue
+        if weight >= CLEARLY * back:
+            keep.pop((target, source), None)
+        elif back >= CLEARLY * weight:
+            keep.pop((source, target), None)
+        else:
+            keep.pop((source, target), None)
+            keep.pop((target, source), None)
+    while True:
+        cycle = find_cycle(keep)
+        if not cycle:
+            return set(keep)
+        del keep[min(cycle, key=lambda edge: (keep[edge], edge))]
 
 
-def scale_factor(recorded: dict) -> float:
-    """measure_distances.py's factor from its log-odds scale to the atlas's 0-10 scale, read back from its roadmaps."""
-    weights = recorded["pairwise"]["weights"]
-    ratios = [entry["measurement"] / raw for entry in recorded.get("roadmaps", {}).values()
-              if entry.get("structure") and entry.get("measurement") and (raw := raw_measurement(entry["structure"], weights)) > .5]
-    return statistics.median(ratios) if ratios else 1.0
+def find_cycle(edges) -> list:
+    """The links of one cycle of a directed graph given by its (source, target) pairs, or []."""
+    succ = defaultdict(list)
+    for source, target in sorted(edges):
+        succ[source].append(target)
+    state, parent = {}, {}
+    for root in sorted(succ):
+        if root in state:
+            continue
+        state[root], stack = 1, [(root, iter(succ[root]))]
+        while stack:
+            node, rest = stack[-1]
+            following = next(rest, None)
+            if following is None:
+                state[node] = 2
+                stack.pop()
+            elif state.get(following) == 1:
+                cycle, step = [following], node
+                while step != following:
+                    cycle.append(step)
+                    step = parent[step]
+                cycle.reverse()
+                return [(cycle[i - 1], cycle[i]) for i in range(len(cycle))]
+            elif following not in state:
+                state[following], parent[following] = 1, node
+                stack.append((following, iter(succ[following])))
+    return []
 
 
-def readme_links(atlas: dict) -> list:
-    """Layer links standing for the roadmap prerequisites no layer link records: the prerequisite's last layers
-    before the dependent's first ones."""
-    owner = {stage["id"]: stage["owner"] for stage in atlas["stages"] if not stage.get("expansion")}
-    inside, linked = defaultdict(set), set()
-    for edge in atlas.get("stageEdges", []):
-        a, b = owner.get(edge["source"]), owner.get(edge["target"])
-        if a and b and a == b:
-            inside[a].add((edge["source"], edge["target"]))
-        elif a and b:
-            linked.add((a, b))
+def unfinished(atlas: dict) -> dict:
+    """Each roadmap's share of its layers not yet done: a done layer counts 0, one in progress a half, any other 1.
+    A finished roadmap (in Completed/) counts nothing."""
+    statuses = {sid: (entry or {}).get("status") for sid, entry in atlas.get("progress", {}).get("stages", {}).items()}
     layers = defaultdict(list)
-    for sid, rid in owner.items():
-        layers[rid].append(sid)
-    first = {rid: [sid for sid in sids if not any(target == sid for _, target in inside[rid])] for rid, sids in layers.items()}
-    last = {rid: [sid for sid in sids if not any(source == sid for source, _ in inside[rid])] for rid, sids in layers.items()}
-    links = []
+    for stage in atlas["stages"]:
+        if not stage.get("expansion"):
+            layers[stage["owner"]].append({"complete": 0.0, "in_progress": .5}.get(statuses.get(stage["id"]), 1.0))
+    return {roadmap["id"]: 0.0 if roadmap.get("lifecycle") == "completed" else
+            (sum(layers[roadmap["id"]]) / len(layers[roadmap["id"]]) if layers[roadmap["id"]] else 1.0)
+            for roadmap in atlas["roadmaps"]}
+
+
+def measure(atlas: dict) -> dict:
+    """roadmap id -> its distance record: the distance, and what it rests on."""
+    ids = {roadmap["id"] for roadmap in atlas["roadmaps"]}
+    weights = {}
     for edge in atlas.get("edges", []):
-        source, target = edge["source"], edge["target"]
-        if source == target or (source, target) in linked or not layers.get(source) or not layers.get(target):
-            continue
-        links += [{"source": a, "target": b} for a in sorted(last[source]) for b in sorted(first[target])]
-    return links
-
-
-def measure(atlas: dict, recorded: dict, coverage: dict) -> dict:
-    """roadmap id -> its distance record, as data/roadmap-distances.json keeps one: judged ones as recorded."""
-    weights, factor = recorded["pairwise"]["weights"], scale_factor(recorded)
-    statuses = {sid: entry.get("status") for sid, entry in atlas.get("progress", {}).get("stages", {}).items()}
-    hidden = {sid for sid, item in atlas.get("stagePresentation", {}).items() if isinstance(item, dict) and item.get("hidden")}
-    hidden |= set(already_available(coverage, atlas))
-    graph = TheoryGraph({"stages": atlas["stages"], "stageEdges": atlas.get("stageEdges", []) + readme_links(atlas)}, statuses, hidden, coverage=coverage)
-    members = defaultdict(list)
-    for roadmap in atlas["roadmaps"]:
-        members[roadmap["id"]].append(roadmap["id"])
-        if roadmap.get("parentRoadmapId"):
-            members[roadmap["parentRoadmapId"]].append(roadmap["id"])
-    out = {}
-    for roadmap in atlas["roadmaps"]:
-        rid = roadmap["id"]
-        known = recorded.get("roadmaps", {}).get(rid)
-        if known and known.get("basis") == "judged":
-            out[rid] = known
-            continue
-        layers = [sid for member in members[rid] for sid in graph.by_owner.get(member, ())]
-        needed = set().union(*(graph.roadmap_closure(member) for member in members[rid]))
-        structure = {"layers": sum(1 for sid in layers if sid not in graph.aggregate), "missingOwn": round(graph.missing(layers), 1),
-                     "missingLayers": round(graph.missing(needed), 1), "missingTargets": round(graph.missing_targets(needed), 1),
-                     "depth": max((graph.depth(sid) for sid in layers), default=0),
-                     "suppliers": len({graph.owner[sid] for sid in needed if graph.weight[sid] > 0} - set(members[rid]))}
-        built = not structure["missingLayers"] and not structure["missingTargets"]
-        distance = 0.0 if built else round(max(0.0, min(10.0, raw_measurement(structure, weights) * factor)), 2)
-        out[rid] = {"structure": structure, "measurement": distance, "distance": distance, "judgements": 0, "basis": "built" if built else "measured"}
-    return out
+        if edge["source"] in ids and edge["target"] in ids and edge["source"] != edge["target"]:
+            key = (edge["source"], edge["target"])
+            kind = edge.get("kind")
+            weights[key] = weights.get(key, 0) + ((edge.get("weight") or 0) if kind == "readme" else STATED if kind == "pull" else DECLARED)
+    kept = acyclic(weights)
+    for edge in atlas.get("edges", []):
+        if (edge["source"], edge["target"]) in weights and (edge["source"], edge["target"]) not in kept:
+            edge["cyclic"] = True
+    prerequisites = defaultdict(set)
+    for source, target in kept:
+        prerequisites[target].add(source)
+    left, proposed = unfinished(atlas), {roadmap["id"] for roadmap in atlas["roadmaps"] if roadmap.get("origin") == "proposed"}
+    work, rests, chain = {}, {}, {}
+    for roadmap_id in sorted(ids):
+        seen, stack = set(), list(prerequisites[roadmap_id])
+        while stack:
+            other = stack.pop()
+            if other not in seen:
+                seen.add(other)
+                stack.extend(prerequisites[other])
+        rests[roadmap_id] = seen
+        work[roadmap_id] = left[roadmap_id] + sum(left[other] for other in seen)
+    # The longest chain of unfinished roadmaps that ends at each roadmap, in an order where prerequisites come first.
+    for roadmap_id in sorted(ids, key=lambda rid: len(rests[rid])):
+        below = max((chain[other] for other in prerequisites[roadmap_id] if other in chain), default=0)
+        chain[roadmap_id] = below + (1 if left[roadmap_id] > 0 else 0)
+    top = max(work.values(), default=0) or 1.0
+    return {roadmap_id: {"distance": round(10 * work[roadmap_id] / top, 2), "basis": "dependencies",
+                         "structure": {"restsOn": len(rests[roadmap_id]), "proposed": len(rests[roadmap_id] & proposed), "unfinished": round(work[roadmap_id], 1),
+                                       "prerequisites": len(prerequisites[roadmap_id]), "chain": chain[roadmap_id]}}
+            for roadmap_id in sorted(ids)}
