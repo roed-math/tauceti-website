@@ -399,7 +399,7 @@
       const along = guides.rules.filter(rule => rule.major).reduce((best, rule) => offTop(rule.angle) < offTop(best.angle) ? rule : best, { angle: -Math.PI / 2 }).angle;
       field.selectAll('text.tau-ring-label').data(guides.rings.filter(ring => ring.distance % 2 === 0)).enter().append('text').attr('class', 'tau-ring-label')
         .attr('x', d => Math.cos(along) * d.radius).attr('y', d => Math.sin(along) * d.radius).attr('dx', '.4em').attr('dy', '-.35em')
-        .attr('fill', '#8a97a5').attr('opacity', .75).text(d => 'distance ' + d.distance);
+        .attr('fill', '#8a97a5').attr('opacity', .75).text(d => 'zone ' + d.distance);
     }
 
     // Mathlib at the centre as the sun: a disc that darkens towards its rim,
