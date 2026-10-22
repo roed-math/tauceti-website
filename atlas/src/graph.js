@@ -19,9 +19,9 @@
   const isDefinitionKind = kind => kind === 'definition' || kind === 'construction' || !kind;
   const planetFill = d => isDefinitionKind(d.kind) ? OCEAN : SAND;
   const nameHash = text => Array.from(String(text)).reduce((seed, character) => ((seed * 31 + character.charCodeAt(0)) >>> 0), 7);
-  // The area, in map units, each landed pull request's star takes in the halo round its roadmap (drawLanded): the
-  // 641 of Elliptic curves reach about three times its radius.
-  const LANDED_AREA = 39;
+  // The area, in map units, each landed pull request's star takes in the cloud round its roadmap (cloudShape): the
+  // 641 of Elliptic curves reach about four times its radius.
+  const LANDED_AREA = 120;
   // A small seeded generator (mulberry32), so that a drawing comes out the same every time.
   const seededRandom = seed => () => {
     seed = (seed + 0x6D2B79F5) >>> 0;
@@ -29,6 +29,36 @@
     t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
     return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
   };
+  // About normally distributed, from four uniform draws.
+  const gaussian = random => (random() + random() + random() + random() - 2) * Math.sqrt(3);
+  // The cloud a roadmap's landed pull requests make round it: a few soft lumps of stars spread round the roadmap, each
+  // stretched and turned its own way, so that no cloud is a circle and no two share a shape. Its size shows their
+  // number: outside the roadmap's disc it covers about LANDED_AREA map units a star.
+  function cloudShape(node, count) {
+    const random = seededRandom(nameHash(node.id + '#cloud'));
+    const reach = Math.sqrt(node.r * node.r + LANDED_AREA * Math.max(count, 4) / Math.PI) - node.r * .92;
+    const number = 3 + Math.floor(random() * 3), first = random() * Math.PI * 2;
+    const lumps = Array.from({ length: number }, (_, index) => {
+      const angle = first + (index + (random() - .5) * .8) * 2 * Math.PI / number, distance = node.r + reach * (.15 + random() * .5);
+      return { x: Math.cos(angle) * distance, y: Math.sin(angle) * distance, weight: .4 + random(),
+               spread: reach * (.28 + random() * .22), stretch: 1 + random() * 1.4, turn: random() * Math.PI };
+    });
+    return { lumps, total: lumps.reduce((sum, lump) => sum + lump.weight, 0) };
+  }
+  // One star of such a cloud, drawn with `random`; an open pull request is a star on its outskirts (`rim`). The
+  // roadmap's disc hides what is behind it, so a star that would fall there is drawn again.
+  function cloudStar(node, shape, random, rim) {
+    for (let attempt = 0; ; attempt++) {
+      let pick = random() * shape.total, lump = shape.lumps[shape.lumps.length - 1];
+      for (const each of shape.lumps) if ((pick -= each.weight) <= 0) { lump = each; break; }
+      let u = gaussian(random), v = gaussian(random);
+      if (rim) { const length = Math.hypot(u, v) || 1, out = 1.5 + random() * .8; u = u / length * out; v = v / length * out; }
+      const along = u * lump.spread * Math.sqrt(lump.stretch), across = v * lump.spread / Math.sqrt(lump.stretch);
+      const x = node.x + lump.x + along * Math.cos(lump.turn) - across * Math.sin(lump.turn);
+      const y = node.y + lump.y + along * Math.sin(lump.turn) + across * Math.cos(lump.turn);
+      if (attempt >= 8 || Math.hypot(x - node.x, y - node.y) > node.r * 1.08) return [x, y];
+    }
+  }
   // Two continents on a unit disc, kept well inside its rim.
   const LAND_PATH = 'M-.55,-.35Q-.3,-.75 .05,-.55Q.3,-.4 .1,-.15Q-.1,.05 -.35,-.05Q-.7,0 -.55,-.35Z' +
     'M.2,.25Q.55,.1 .65,.35Q.6,.65 .3,.7Q.05,.6 .2,.25Z';
@@ -126,8 +156,10 @@
         .tau-graph .tau-live circle { transform-box: fill-box; transform-origin: center; }
         .tau-graph .tau-live .tau-live-core { fill: #fff3c4; }
         .tau-graph .tau-landed path, .tau-graph .tau-dust-speck { fill: none; stroke-linecap: round; pointer-events: none; }
-        .tau-graph .tau-landed-glow { stroke: #7aa3ff; stroke-opacity: .17; }
-        .tau-graph .tau-landed-core { stroke: #e6efff; stroke-opacity: .82; }
+        .tau-graph .tau-landed-glow { stroke: #7aa3ff; stroke-opacity: .22; }
+        .tau-graph .tau-landed-bright { stroke: #f6f9ff; stroke-opacity: .95; }
+        .tau-graph .tau-landed-medium { stroke: #d6e2ff; stroke-opacity: .78; }
+        .tau-graph .tau-landed-faint { stroke: #9fb8ec; stroke-opacity: .6; }
         .tau-graph .tau-live .tau-live-halo, .tau-graph .tau-live .tau-live-core { animation: tau-live-twinkle var(--twinkle, 7s) ease-in-out infinite; }
         .tau-graph .tau-live-new { animation: tau-live-appear 3s ease-out 1 both; }
         .tau-graph .tau-live.tau-live-merged circle { animation: tau-live-nova 8s ease-out 1 forwards; }
@@ -160,7 +192,7 @@
       // A star of the live galaxy, an open pull request: yellow-white light that reddens into its halo. Those that
       // have landed are blue-white (drawLanded).
       const liveStar = defs.append('radialGradient').attr('id', this.id + '-live-star');
-      [[0, '#fffbe8', 1], [.16, '#ffe27a', .95], [.4, '#ffb03b', .5], [.7, '#ff6a2b', .16], [1, '#ff4422', 0]]
+      [[0, '#fffbe8', 1], [.14, '#ffe27a', .95], [.36, '#ffa13b', .62], [.66, '#ff5a2b', .24], [1, '#ff3a1e', 0]]
         .forEach(([offset, colour, opacity]) => liveStar.append('stop').attr('offset', offset).attr('stop-color', colour).attr('stop-opacity', opacity));
       this.viewport = this.svg.append('g').attr('class', 'tau-viewport');
       this.layers = {};
@@ -256,17 +288,18 @@
           umbrella = node; node = kids[nameHash(String(item.number)) % kids.length];
         }
         if (!node || !Number.isFinite(node.x)) return;
-        const h = nameHash(item.key), angle = (h % 3600) / 3600 * 2 * Math.PI, ring = 1.3 + ((h >>> 12) % 1000) / 1000 * .9;
+        // On the outskirts of the roadmap's cloud of landed pull requests (drawLanded).
+        const h = nameHash(item.key), [x, y] = cloudStar(node, cloudShape(node, (this.landedOwners || new Map()).get(node.id) || 0), seededRandom(h), true);
         const period = 5 + ((h >>> 8) % 4000) / 1000;
-        placed.push(Object.assign({}, item, { x: node.x + Math.cos(angle) * node.r * ring, y: node.y + Math.sin(angle) * node.r * ring,
+        placed.push(Object.assign({}, item, { x, y,
                                                period, phase: -((h >>> 4) % 9000) / 1000,
                                                umbrella: umbrella ? normalizeText(umbrella.label) : null }));
       });
       const join = this.layers.live.selectAll('g.tau-live').data(placed, d => d.key);
       join.exit().remove();
       const enter = join.enter().append('g');
-      enter.append('circle').attr('class', 'tau-live-halo').attr('r', 4).attr('fill', `url(#${this.id}-live-star)`);
-      enter.append('circle').attr('class', 'tau-live-core').attr('r', .85);
+      enter.append('circle').attr('class', 'tau-live-halo').attr('r', 5.5).attr('fill', `url(#${this.id}-live-star)`);
+      enter.append('circle').attr('class', 'tau-live-core').attr('r', 1.15);
       enter.append('title');
       enter.on('click', d => { d3.event.stopPropagation(); window.open(d.url, '_blank', 'noopener'); });
       const all = enter.merge(join)
@@ -290,10 +323,9 @@
 
     // ----- landed pull requests ------------------------------------------------
     // Every pull request that has landed for a Tau Ceti roadmap (the Progress page's count) is a small blue-white
-    // star round it, as an open one twinkles there in red and yellow, so a roadmap's halo grows with the work merged
-    // for it. The stars fill the ring outside its disc at a constant density, as a sunflower's seeds, so the ring's
-    // area is in proportion to their number. They keep their size on screen, and a roadmap's stars are two paths, a
-    // glow and a core, however many there are. An umbrella's stars are shared among its sub-roadmaps.
+    // star in a cloud round it (cloudShape), as an open one twinkles on its outskirts in red and yellow, so the cloud
+    // grows with the work merged for it. The stars keep their size on screen, and a roadmap's are four paths, a glow
+    // and three brightnesses, however many there are. An umbrella's stars are shared among its sub-roadmaps.
     setLanded(counts) { this.landedCounts = counts instanceof Map ? counts : new Map(Object.entries(counts || {})); this.drawLanded(); return this; }
 
     drawLanded() {
@@ -307,21 +339,22 @@
         if (kids && kids.length) kids.forEach((kid, index) => owners.set(kid, (owners.get(kid) || 0) + Math.floor(count / kids.length) + (index < count % kids.length ? 1 : 0)));
         else if (Number.isFinite(node.x)) owners.set(node, (owners.get(node) || 0) + count);
       });
-      const golden = Math.PI * (3 - Math.sqrt(5)), data = [];
+      this.landedOwners = new Map([...owners].map(([node, count]) => [node.id, count]));
+      const data = [];
       owners.forEach((count, node) => {
-        // Each star is shaken a little off its seed, so that a halo reads as a cluster rather than a pattern.
-        const inner = node.r * 1.25, turn = (nameHash(node.id) % 3600) / 3600 * 2 * Math.PI, shake = seededRandom(nameHash(node.id));
-        let d = '';
+        // A few bright stars, more of middling brightness and many faint ones.
+        const shape = cloudShape(node, count), random = seededRandom(nameHash(node.id + '#stars')), paths = { bright: '', medium: '', faint: '' };
         for (let index = 0; index < count; index++) {
-          const radius = Math.sqrt(inner * inner + (index + .5 + (shake() - .5) * 6) * LANDED_AREA / Math.PI), angle = turn + index * golden + (shake() - .5) * .9;
-          d += `M${(node.x + Math.cos(angle) * radius).toFixed(1)},${(node.y + Math.sin(angle) * radius).toFixed(1)}h0`;
+          const [x, y] = cloudStar(node, shape, random, false), shine = random();
+          paths[shine < .1 ? 'bright' : shine < .55 ? 'medium' : 'faint'] += `M${x.toFixed(1)},${y.toFixed(1)}h0`;
         }
-        data.push({ id: node.id, count, d });
+        data.push({ id: node.id, count, paths });
       });
       const groups = layer.selectAll('g.tau-landed').data(data, d => d.id).enter().append('g').attr('class', 'tau-landed')
         .attr('data-node-id', d => d.id).attr('data-count', d => d.count);
-      groups.append('path').attr('class', 'tau-landed-glow').attr('d', d => d.d).attr('vector-effect', 'non-scaling-stroke').attr('stroke-width', 3.4);
-      groups.append('path').attr('class', 'tau-landed-core').attr('d', d => d.d).attr('vector-effect', 'non-scaling-stroke').attr('stroke-width', 1.25);
+      groups.append('path').attr('class', 'tau-landed-glow').attr('d', d => d.paths.bright).attr('vector-effect', 'non-scaling-stroke').attr('stroke-width', 4.2);
+      [['bright', 1.8], ['medium', 1.2], ['faint', .8]].forEach(([shine, width]) => groups.append('path').attr('class', 'tau-landed-star tau-landed-' + shine)
+        .attr('d', d => d.paths[shine]).attr('vector-effect', 'non-scaling-stroke').attr('stroke-width', width));
     }
 
     setProgress(values) {

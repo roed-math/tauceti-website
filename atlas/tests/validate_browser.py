@@ -371,8 +371,9 @@ def check_overview(page,scope,touch=False):
   # that is no umbrella's part holds as many stars as the Progress page counts for it, and the legend names them.
   landed=page.evaluate("""() => { const boards=(TauExplorer.data.taucetiProgress||{}).roadmaps||{},u=TauExplorer.getUniverse();
    const own=Object.entries(boards).map(([id,b])=>[id,(b.activity||{}).total||0]).filter(([id,n])=>n>0&&u.byId.has(id)&&(u.byId.get(id).starIds||[]).length&&!u.byId.get(id).parentRoadmapId).sort((a,b)=>b[1]-a[1])[0];
-   if(!own)return null; const g=document.querySelector('.tau-landed[data-node-id="'+CSS.escape(own[0])+'"]'),core=g&&g.querySelector('.tau-landed-core');
-   return {want:own[1],count:g?Number(g.dataset.count):0,stars:core?(core.getAttribute('d').match(/h0/g)||[]).length:0,legend:!document.getElementById('landed-legend').hidden}; }""")
+   if(!own)return null; const g=document.querySelector('.tau-landed[data-node-id="'+CSS.escape(own[0])+'"]');
+   const stars=g?Array.from(g.querySelectorAll('.tau-landed-star')).reduce((a,e)=>a+((e.getAttribute('d')||'').match(/h0/g)||[]).length,0):0;
+   return {want:own[1],count:g?Number(g.dataset.count):0,stars,legend:!document.getElementById('landed-legend').hidden}; }""")
   record(scope+' every landed pull request is a star round its roadmap',landed is None or (landed['count']==landed['want']==landed['stars'] and landed['legend']))
   # The sector map opens on Mathlib at a scale that shows the nearer roadmaps; the reader explores the rest.
   record(scope+' overview opens on Mathlib, the rest of the map to explore',page.evaluate("""() => { const g=TauExplorer.graph,t=g.debugState().transform,u=TauExplorer.getUniverse(),target=g.overviewTransform();
