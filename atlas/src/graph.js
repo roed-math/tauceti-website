@@ -19,6 +19,16 @@
   const isDefinitionKind = kind => kind === 'definition' || kind === 'construction' || !kind;
   const planetFill = d => isDefinitionKind(d.kind) ? OCEAN : SAND;
   const nameHash = text => Array.from(String(text)).reduce((seed, character) => ((seed * 31 + character.charCodeAt(0)) >>> 0), 7);
+  // The area, in map units, each landed pull request's star takes in the halo round its roadmap (drawLanded): the
+  // 641 of Elliptic curves reach about three times its radius.
+  const LANDED_AREA = 39;
+  // A small seeded generator (mulberry32), so that a drawing comes out the same every time.
+  const seededRandom = seed => () => {
+    seed = (seed + 0x6D2B79F5) >>> 0;
+    let t = seed;
+    t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
   // Two continents on a unit disc, kept well inside its rim.
   const LAND_PATH = 'M-.55,-.35Q-.3,-.75 .05,-.55Q.3,-.4 .1,-.15Q-.1,.05 -.35,-.05Q-.7,0 -.55,-.35Z' +
     'M.2,.25Q.55,.1 .65,.35Q.6,.65 .3,.7Q.05,.6 .2,.25Z';
@@ -114,7 +124,10 @@
         .tau-graph .tau-route { fill: none; stroke: #6f8496; }
         .tau-graph .tau-live { cursor: pointer; }
         .tau-graph .tau-live circle { transform-box: fill-box; transform-origin: center; }
-        .tau-graph .tau-live .tau-live-core { fill: #f4f8ff; }
+        .tau-graph .tau-live .tau-live-core { fill: #fff3c4; }
+        .tau-graph .tau-landed path, .tau-graph .tau-dust-speck { fill: none; stroke-linecap: round; pointer-events: none; }
+        .tau-graph .tau-landed-glow { stroke: #7aa3ff; stroke-opacity: .17; }
+        .tau-graph .tau-landed-core { stroke: #e6efff; stroke-opacity: .82; }
         .tau-graph .tau-live .tau-live-halo, .tau-graph .tau-live .tau-live-core { animation: tau-live-twinkle var(--twinkle, 7s) ease-in-out infinite; }
         .tau-graph .tau-live-new { animation: tau-live-appear 3s ease-out 1 both; }
         .tau-graph .tau-live.tau-live-merged circle { animation: tau-live-nova 8s ease-out 1 forwards; }
@@ -144,14 +157,15 @@
       const corona = defs.append('radialGradient').attr('id', this.id + '-corona');
       [[.46, '#ffd06e', .55], [.52, '#ffb54a', .3], [.7, '#ff9b3d', .09], [1, '#ff9b3d', 0]]
         .forEach(([offset, colour, opacity]) => corona.append('stop').attr('offset', offset).attr('stop-color', colour).attr('stop-opacity', opacity));
-      // A star of the live galaxy: blue-white light that thins into a soft blue halo.
+      // A star of the live galaxy, an open pull request: yellow-white light that reddens into its halo. Those that
+      // have landed are blue-white (drawLanded).
       const liveStar = defs.append('radialGradient').attr('id', this.id + '-live-star');
-      [[0, '#ffffff', 1], [.16, '#e6efff', .95], [.4, '#a7c6ff', .42], [.7, '#7aa3ff', .12], [1, '#6690ff', 0]]
+      [[0, '#fffbe8', 1], [.16, '#ffe27a', .95], [.4, '#ffb03b', .5], [.7, '#ff6a2b', .16], [1, '#ff4422', 0]]
         .forEach(([offset, colour, opacity]) => liveStar.append('stop').attr('offset', offset).attr('stop-color', colour).attr('stop-opacity', opacity));
       this.viewport = this.svg.append('g').attr('class', 'tau-viewport');
       this.layers = {};
-      ['field', 'core', 'galaxy', 'route', 'constellation', 'figure', 'link', 'star', 'planet', 'artefact', 'live', 'label'].forEach(name => { this.layers[name] = this.viewport.append('g').attr('class', 'tau-layer-' + name); });
-      this.liveItems = [];
+      ['field', 'core', 'galaxy', 'landed', 'route', 'constellation', 'figure', 'link', 'star', 'planet', 'artefact', 'live', 'label'].forEach(name => { this.layers[name] = this.viewport.append('g').attr('class', 'tau-layer-' + name); });
+      this.liveItems = []; this.landedCounts = new Map();
       // Drawn in screen space, above everything: the card of a selected link.
       this.overlay = this.svg.append('g').attr('class', 'tau-overlay');
       this.selectedLinkId = null; this.hoveredLinkId = null;
@@ -206,7 +220,7 @@
       this.layers.field.selectAll('*').remove(); this.layers.core.selectAll('*').remove(); this.layers.galaxy.selectAll('*').remove(); this.layers.route.selectAll('*').remove();
       this.layers.constellation.selectAll('*').remove(); this.layers.figure.selectAll('*').remove(); this.layers.link.selectAll('*').remove();
       this.layers.star.selectAll('*').remove(); this.layers.planet.selectAll('*').remove(); this.layers.artefact.selectAll('*').remove(); this.layers.label.selectAll('*').remove();
-      this.drawField(); this.drawCore(); this.drawGalaxies();
+      this.drawField(); this.drawCore(); this.drawGalaxies(); this.drawLanded();
       if (settings.camera) this.restoreCamera(settings.camera);
       else if (settings.keepCamera && this.transform !== d3.zoomIdentity) this.scheduleRender();
       else { this.awaitingFit = true; this.resize(); }
@@ -220,16 +234,21 @@
     // own; a merged one flares and fades, a closed one fades. They keep their size on screen.
     setLive(items) { this.liveItems = items || []; this.drawLive(); return this; }
 
-    drawLive() {
-      if (!this.universe || this.destroyed) return;
-      const byId = this.universe.byId, placed = [];
-      // An umbrella roadmap with no layers of its own (Tau Ceti's Representation theory) has its label on
-      // pull requests for any of its sub-roadmaps, and the label does not say which. Such a pull request
-      // twinkles beside one of the sub-roadmaps, picked by its number, rather than around an empty disc.
+    // An umbrella roadmap with no layers of its own (Tau Ceti's Representation theory) has its label on pull
+    // requests for any of its sub-roadmaps, and the label does not say which: its pull requests are shown beside
+    // its sub-roadmaps, rather than round an empty disc. Umbrella id -> its sub-roadmaps that have layers.
+    umbrellaChildren() {
       const children = new Map();
       (this.universe.constellations || []).forEach(c => {
         if (c.parentRoadmapId && (c.starIds || []).length) (children.get(c.parentRoadmapId) || children.set(c.parentRoadmapId, []).get(c.parentRoadmapId)).push(c);
       });
+      return children;
+    }
+
+    drawLive() {
+      if (!this.universe || this.destroyed) return;
+      const byId = this.universe.byId, placed = [], children = this.umbrellaChildren();
+      // An umbrella's pull request twinkles beside one of its sub-roadmaps, picked by its number.
       this.liveItems.forEach(item => {
         let node = byId.get(item.roadmapId), umbrella = null;
         if (node && !(node.starIds || []).length && children.has(node.id)) {
@@ -267,6 +286,42 @@
     positionLive() {
       const k = this.transform.k;
       this.layers.live.selectAll('g.tau-live').attr('transform', d => `translate(${d.x},${d.y}) scale(${1 / k})`);
+    }
+
+    // ----- landed pull requests ------------------------------------------------
+    // Every pull request that has landed for a Tau Ceti roadmap (the Progress page's count) is a small blue-white
+    // star round it, as an open one twinkles there in red and yellow, so a roadmap's halo grows with the work merged
+    // for it. The stars fill the ring outside its disc at a constant density, as a sunflower's seeds, so the ring's
+    // area is in proportion to their number. They keep their size on screen, and a roadmap's stars are two paths, a
+    // glow and a core, however many there are. An umbrella's stars are shared among its sub-roadmaps.
+    setLanded(counts) { this.landedCounts = counts instanceof Map ? counts : new Map(Object.entries(counts || {})); this.drawLanded(); return this; }
+
+    drawLanded() {
+      const layer = this.layers.landed;
+      layer.selectAll('*').remove();
+      if (!this.universe || this.destroyed || !this.landedCounts.size) return;
+      const byId = this.universe.byId, children = this.umbrellaChildren(), owners = new Map();
+      this.landedCounts.forEach((count, id) => {
+        const node = byId.get(id), kids = node && !(node.starIds || []).length ? children.get(node.id) : null;
+        if (!node || !(count > 0)) return;
+        if (kids && kids.length) kids.forEach((kid, index) => owners.set(kid, (owners.get(kid) || 0) + Math.floor(count / kids.length) + (index < count % kids.length ? 1 : 0)));
+        else if (Number.isFinite(node.x)) owners.set(node, (owners.get(node) || 0) + count);
+      });
+      const golden = Math.PI * (3 - Math.sqrt(5)), data = [];
+      owners.forEach((count, node) => {
+        // Each star is shaken a little off its seed, so that a halo reads as a cluster rather than a pattern.
+        const inner = node.r * 1.25, turn = (nameHash(node.id) % 3600) / 3600 * 2 * Math.PI, shake = seededRandom(nameHash(node.id));
+        let d = '';
+        for (let index = 0; index < count; index++) {
+          const radius = Math.sqrt(inner * inner + (index + .5 + (shake() - .5) * 6) * LANDED_AREA / Math.PI), angle = turn + index * golden + (shake() - .5) * .9;
+          d += `M${(node.x + Math.cos(angle) * radius).toFixed(1)},${(node.y + Math.sin(angle) * radius).toFixed(1)}h0`;
+        }
+        data.push({ id: node.id, count, d });
+      });
+      const groups = layer.selectAll('g.tau-landed').data(data, d => d.id).enter().append('g').attr('class', 'tau-landed')
+        .attr('data-node-id', d => d.id).attr('data-count', d => d.count);
+      groups.append('path').attr('class', 'tau-landed-glow').attr('d', d => d.d).attr('vector-effect', 'non-scaling-stroke').attr('stroke-width', 3.4);
+      groups.append('path').attr('class', 'tau-landed-core').attr('d', d => d.d).attr('vector-effect', 'non-scaling-stroke').attr('stroke-width', 1.25);
     }
 
     setProgress(values) {
@@ -338,6 +393,11 @@
       return points.map(p => `M${(p.x + radius).toFixed(1)},${p.y.toFixed(1)}a${radius},${radius} 0 1,0 ${-2 * radius},0a${radius},${radius} 0 1,0 ${2 * radius},0`).join('');
     }
 
+    // Specks that keep their size on screen: each a round cap on a stroke of no length.
+    speckPath(points) {
+      return points.map(p => `M${p.x.toFixed(1)},${p.y.toFixed(1)}h0`).join('');
+    }
+
     drawGalaxies() {
       const galaxies = this.layers.galaxy.selectAll('g.tau-galaxy').data(this.universe.galaxies, d => d.id).enter().append('g')
         .attr('class', 'tau-galaxy').attr('data-node-id', d => d.id);
@@ -352,14 +412,18 @@
       const graph = this;
       galaxies.each(function (galaxy) {
         const g = d3.select(this), far = g.append('g').attr('class', 'tau-dust tau-dust-far'), near = g.append('g').attr('class', 'tau-dust tau-dust-near');
-        // A sector's dust is sized by its width across, so that it stays fine beside the roadmaps however long the sector is.
-        const across = galaxy.sector ? (galaxy.a1 - galaxy.a0) * galaxy.hubRadius : 0;
-        const farRadius = across ? Math.max(1.6, across * .007) : Math.max(3, Math.max(galaxy.rx, galaxy.ry) * .019);
-        const nearRadius = across ? Math.max(.3, across * .001) : Math.max(.4, Math.max(galaxy.rx, galaxy.ry) * .0018);
+        // A sector's dust is specks of a fixed size on screen (speckPath): as the camera closes in they draw apart
+        // round the roadmaps, keeping the sector's progress colours, rather than swell into blots that hide them.
+        const farRadius = Math.max(3, Math.max(galaxy.rx, galaxy.ry) * .019), nearRadius = Math.max(.4, Math.max(galaxy.rx, galaxy.ry) * .0018);
         [0, 1, 2].forEach(cls => {
-          const points = galaxy.dust.filter(p => p.cls === cls);
+          const points = galaxy.dust.filter(p => p.cls === cls), sparse = points.filter((_, index) => index % 3 === 0);
+          if (galaxy.sector) {
+            far.append('path').attr('class', 'tau-dust-path tau-dust-speck').attr('data-class', cls).attr('d', graph.speckPath(points)).attr('vector-effect', 'non-scaling-stroke');
+            near.append('path').attr('class', 'tau-dust-path tau-dust-speck').attr('data-class', cls).attr('d', graph.speckPath(sparse)).attr('vector-effect', 'non-scaling-stroke');
+            return;
+          }
           far.append('path').attr('class', 'tau-dust-path').attr('data-class', cls).attr('d', graph.dustPath(points, farRadius * (cls === 2 ? 1.2 : cls === 1 ? .95 : .7)));
-          near.append('path').attr('class', 'tau-dust-path').attr('data-class', cls).attr('d', graph.dustPath(points.filter((_, index) => index % 3 === 0), nearRadius * (cls === 2 ? 1.3 : 1)));
+          near.append('path').attr('class', 'tau-dust-path').attr('data-class', cls).attr('d', graph.dustPath(sparse, nearRadius * (cls === 2 ? 1.3 : 1)));
         });
       });
       this.paintDust();
@@ -377,7 +441,9 @@
       this.layers.galaxy.selectAll('g.tau-galaxy').each(function (galaxy) {
         const lit = hasProgress(galaxy), colour = lit ? accentOf(galaxy) : DUST;
         const base = lit ? .4 + .45 * (progressValue(galaxy.progress) / 100) : .34;
-        d3.select(this).selectAll('.tau-dust-path').attr('fill', colour).attr('opacity', function () {
+        // A speck is a stroke, coloured as the other dust is filled.
+        d3.select(this).selectAll('.tau-dust-path').attr('fill', function () { return this.classList.contains('tau-dust-speck') ? 'none' : colour; })
+          .attr('stroke', function () { return this.classList.contains('tau-dust-speck') ? colour : null; }).attr('opacity', function () {
           const cls = Number(this.getAttribute('data-class')); return Math.min(.95, base * (cls === 2 ? 1.5 : cls === 1 ? 1 : .5));
         });
       });
@@ -580,16 +646,22 @@
       // short chart (a phone held sideways) counts as 600 pixels, so the map at
       // desktop scale keeps its colours there too.
       const shorter = Math.max(600, Math.min(this.width, this.height)), size = g => g.w * k / shorter;
-      // On the sector map the dust follows instead the size on screen of a typical roadmap, 30 units in radius, so that the
-      // colours clear from round the roadmaps as soon as they can be told apart, in a narrow sector as in a wide one: the
-      // coarse dust is gone by the time a roadmap is seven pixels in radius, and the fine dust before roadmaps open into stars.
-      const radius = 30 * k;
-      const farFade = g => g.sector ? Math.max(0, Math.min(1, (7 - radius) / 2.5)) : Math.max(0, Math.min(1, (1.1 - size(g)) / .6));
+      // On the sector map the dust follows instead the size on screen of a typical roadmap, 30 units in radius. Its
+      // specks never grow, so its colours can stay while the roadmaps are told apart: the coarse dust shrinks from the
+      // overview's grain to a fine one as they grow to twelve pixels, and goes as they open into stars; the fine dust
+      // stays faintly behind them.
+      const radius = 30 * k, grain = 1 + .6 * Math.max(0, Math.min(1, (12 - radius) / 8));
+      const farFade = g => g.sector ? Math.max(0, Math.min(1, (22 - radius) / 8)) : Math.max(0, Math.min(1, (1.1 - size(g)) / .6));
       // The fine dust rises before the coarse has faded, so a galaxy never dims in the hand-over.
-      const nearFade = g => g.sector ? .34 * Math.max(0, Math.min(1, (radius - 2.5) / 2)) * Math.max(0, Math.min(1, (20 - radius) / 6))
+      const nearFade = g => g.sector ? .34 * Math.max(0, Math.min(1, (radius - 2.5) / 2)) * Math.max(0, Math.min(1, (60 - radius) / 20))
         : .6 * Math.max(0, Math.min(1, (size(g) - .3) / .5)) * Math.max(0, Math.min(1, (9 - k) / 4));
-      galaxySelection.select('.tau-dust-far').attr('opacity', farFade).attr('display', g => farFade(g) > 0 ? null : 'none');
-      galaxySelection.select('.tau-dust-near').attr('opacity', nearFade).attr('display', g => nearFade(g) > 0 ? null : 'none');
+      galaxySelection.select('.tau-dust-far').attr('opacity', farFade).attr('display', g => farFade(g) > 0 ? null : 'none')
+        .selectAll('.tau-dust-speck').attr('stroke-width', function () { return [1.2, 1.6, 2][Number(this.getAttribute('data-class'))] * grain; });
+      galaxySelection.select('.tau-dust-near').attr('opacity', nearFade).attr('display', g => nearFade(g) > 0 ? null : 'none')
+        .selectAll('.tau-dust-speck').attr('stroke-width', .9);
+      // The landed pull requests' halos are dense from far away: half as bright there, so the progress colours
+      // still show through, and at full strength once the roadmaps can be told apart.
+      this.layers.landed.attr('opacity', .5 + .5 * Math.max(0, Math.min(1, (radius - 4) / 8)));
       this.positionLive();
     }
 

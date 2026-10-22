@@ -367,6 +367,13 @@ def check_overview(page,scope,touch=False):
   record(scope+' overview names each arXiv category once, in capitals over its identifier, without overlap',
          named['categories'] and named['cased'] and named['named']>=(3 if large else 1) and named['drawn']>=named['wanted']-allowed and labels_are_clean(page) and names_are_unique(page))
   record(scope+' named areas show their progress colours',named['faded']==0)
+  # Every pull request landed for a Tau Ceti roadmap is a star round it (src/graph.js, drawLanded): the busiest roadmap
+  # that is no umbrella's part holds as many stars as the Progress page counts for it, and the legend names them.
+  landed=page.evaluate("""() => { const boards=(TauExplorer.data.taucetiProgress||{}).roadmaps||{},u=TauExplorer.getUniverse();
+   const own=Object.entries(boards).map(([id,b])=>[id,(b.activity||{}).total||0]).filter(([id,n])=>n>0&&u.byId.has(id)&&(u.byId.get(id).starIds||[]).length&&!u.byId.get(id).parentRoadmapId).sort((a,b)=>b[1]-a[1])[0];
+   if(!own)return null; const g=document.querySelector('.tau-landed[data-node-id="'+CSS.escape(own[0])+'"]'),core=g&&g.querySelector('.tau-landed-core');
+   return {want:own[1],count:g?Number(g.dataset.count):0,stars:core?(core.getAttribute('d').match(/h0/g)||[]).length:0,legend:!document.getElementById('landed-legend').hidden}; }""")
+  record(scope+' every landed pull request is a star round its roadmap',landed is None or (landed['count']==landed['want']==landed['stars'] and landed['legend']))
   # The sector map opens on Mathlib at a scale that shows the nearer roadmaps; the reader explores the rest.
   record(scope+' overview opens on Mathlib, the rest of the map to explore',page.evaluate("""() => { const g=TauExplorer.graph,t=g.debugState().transform,u=TauExplorer.getUniverse(),target=g.overviewTransform();
    const cx=u.core.x*t.k+t.x,cy=u.core.y*t.k+t.y; return Math.abs(t.k-target.k)<1e-6*target.k+1e-9&&Math.abs(cx-g.width/2)<g.width*.1&&cy>0&&cy<g.height; }"""))

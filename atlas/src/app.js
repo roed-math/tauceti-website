@@ -503,6 +503,11 @@ progress.subscribe(()=>{renderInspector();renderCatalogue();renderStats();if(sta
 $('roadmap-total').textContent=DATA.roadmaps.length.toLocaleString();$('stage-total').textContent=DATA.stages.length.toLocaleString();document.querySelector('[data-view="subjects"] small').textContent=allGroups.length;document.querySelector('[data-view="all"] small').textContent=DATA.roadmaps.length;
 if(DATA.variant==='tauceti'){document.body.classList.add('variant-tauceti');document.title='Tau Ceti roadmaps — Tau Ceti Atlas';}if(DATA.variant==='atlas')document.body.classList.add('variant-atlas');
 [...$('source-filter').options].filter(o=>o.value!=='all'&&!DATA.roadmaps.some(r=>(r.origin||'campaign')===o.value)).forEach(o=>o.remove());if(!(DATA.papers||[]).length)$('papers-guide').remove();
+// The pull requests that have landed for each Tau Ceti roadmap, by the Progress page's count, are stars round it.
+const landed=new Map(Object.entries(DATA.taucetiProgress?.roadmaps||{}).map(([id,board])=>[id,board.activity?.total||0]).filter(([,count])=>count>0));
+if(landed.size){graph.setLanded(landed);const total=[...landed.values()].reduce((a,b)=>a+b,0);
+ if($('landed-legend')){$('landed-legend').hidden=false;$('landed-legend').title=`${total.toLocaleString()} pull requests landed on ${landed.size} roadmaps`;}
+ if($('landed-guide'))$('landed-guide').hidden=false;}
 // The live galaxy (the Tau Ceti build): open pull requests twinkle beside their roadmaps until they merge (src/live.js).
 const startLive=()=>{if(!DATA.live||!window.TauLive)return;const button=$('live-status'),count=button&&button.querySelector('b'),legend=$('live-legend'),guide=$('live-guide');
  if(guide)guide.hidden=false;
