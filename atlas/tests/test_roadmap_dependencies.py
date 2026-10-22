@@ -58,6 +58,24 @@ class Dependencies(unittest.TestCase):
         self.assertEqual(found(text), [("Sheaves", "Curves", ""), ("Curves", "Residues", ""), ("EllipticCurves", "Curves", ""),
                                        ("ClassFieldTheory", "Curves", "")])
 
+    def test_a_roadmap_named_before_a_verb_uses_this_one_only_as_its_subject(self):
+        text = "# Curves\n\n## Layer 1\n\nThis layer extends the transform of `Sheaves` and develops the toolbox the constructions use here. " \
+               "Identify it with EllipticCurves §4; construct the rest here from `Toric` Layer B. " \
+               "ClassFieldTheory Layer 7 and `Chebotarev` §2 use this roadmap's divisors.\n"
+        self.assertEqual(found(text), [("Toric", "Curves", ""), ("Curves", "Chebotarev", ""), ("Curves", "ClassFieldTheory", "")])
+
+    def test_a_roadmap_cited_for_what_is_supplied_does_not_receive_it(self):
+        text = "# Curves\n\n## Layer 1\n\nRigidity gives unramifiedness (EllipticCurves R11.1). The trace supplies a comparison with " \
+               "ClassFieldTheory §3. The descent feeds `Toric` Layer 2.\n"
+        self.assertEqual(found(text), [("Curves", "Toric", "")])
+
+    def test_only_a_heading_about_consumers_makes_its_roadmaps_consumers(self):
+        text = "# Curves\n\n## Layer 6: Exports for Serre\n\nSpecialize EllipticCurves §1.5's descent. *Needs:* `Sheaves` §2.\n\n" \
+               "## Boundary and comparison suppliers used by the end theorems\n\n`Toric` Layer 3.\n\n" \
+               "## 8.3 Lower shriek and independence of compactification\n\n`Residues` §2.\n\n## Consumers and boundaries\n\nClassFieldTheory §7.\n"
+        self.assertEqual(found(text), [("Sheaves", "Curves", ""), ("Toric", "Curves", "Boundary and comparison suppliers used by the end theorems"),
+                                       ("Curves", "ClassFieldTheory", "Consumers and boundaries")])
+
     def test_a_hard_wrapped_paragraph_is_read_whole(self):
         text = "# Curves\n\n## Layer 1\n\nThe divisor map needs the Picard scheme of\nEllipticCurves Layer 2.\n"
         self.assertEqual(found(text), [("EllipticCurves", "Curves", "")])

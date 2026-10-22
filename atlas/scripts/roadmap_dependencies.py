@@ -10,9 +10,10 @@ capitals as a word, and a one-word name (`Chebotarev`) only in code marks.
 
 A README's paragraphs are hard-wrapped, so its lines are joined into paragraphs, and each paragraph is
 read clause by clause. The verb nearest a name decides which way the dependency runs: a roadmap named
-after "uses" or "needs" is used, one named before "supplies" supplies, one named after "used by" or
-"supplies" (as its object) uses this one; a clause that says the roadmap does not need, or avoids, the
-other is not read. With no verb, the section decides. Each dependency is a prerequisite edge, recorded
+after "uses", "needs" or "from" is used, one named before "supplies", as its subject, supplies, one
+named after "used by" or "supplies" (as its object) uses this one, and one that is the subject of "uses"
+uses this one when the clause says so ("EllipticCurves uses this roadmap's divisors"); a clause that says
+the roadmap does not need, or avoids, the other is not read. With no verb, the section decides. Each dependency is a prerequisite edge, recorded
 with the README line its paragraph starts on.
 
 A pull request's description can say more surely than its README which roadmaps it builds on
@@ -27,10 +28,15 @@ REPOSITORY = "TauCetiProject/TauCetiRoadmap"
 HEADING = re.compile(r"^(#{1,6})\s+(.*?)\s*#*\s*$")
 LINK = re.compile(r"\[[^\]]*\]\(([^)\s]+)(?:\s+\"[^\"]*\")?\)")
 GITHUB = re.compile(r"^https?://(?:github\.com/" + REPOSITORY + r"/(?:blob|tree)/[^/]+|raw\.githubusercontent\.com/" + REPOSITORY + r"/[^/]+)/(.*)$")
-# Sections of what the roadmap gives others, and of what it takes from them.
-DOWNSTREAM = re.compile(r"downstream|consumers|\bused by\b|\bfeeds\b|\bunlocks\b|suppl(?:ied|ies) to|(?:to|for) other roadmaps|\bexport", re.I)
-UPSTREAM = re.compile(r"dependenc|\bdepends\b|prerequisite|builds? on|\bconsum|upstream|\brequires?\b|\brelies\b|\binputs?\b"
-                      r"|from other roadmaps|existing foundations|\bsuppl(?:y|ier|iers|ies|ied)\b", re.I)
+# Sections of what the roadmap gives others, and of what it takes from them. A heading that says both is read by
+# what it says first ("Boundary and comparison suppliers used by the end theorems" is about suppliers), and a layer's
+# own heading ("Layer 6: Exports for Serre and elliptic curves") is no section of consumers: its text mostly cites
+# the layer's suppliers.
+DOWNSTREAM = re.compile(r"\bdownstream\b|\bconsumers?\b|\bused by\b|\bfeeds\b|\bunlocks\b|\bsuppl(?:ied|ies) to\b|\b(?:to|for) other roadmaps\b"
+                        r"|\bexports?\b", re.I)
+UPSTREAM = re.compile(r"(?<!in)dependenc|\bdepends\b|prerequisite|builds? on|\bconsum(?:es|ed|ing|ption)?\b|upstream|\brequire[sd]?\b|\brelies\b"
+                      r"|\binputs?\b|from other roadmaps|existing foundations|\bsuppl(?:y|ier|iers|ies)\b|\bsupplied\b(?! to\b)", re.I)
+LAYER_HEADING = re.compile(r"^\s*(?:Layer|Stage|Milestone|Part|Step)\b|^\s*§|^\s*[A-Z]{0,4}[.\d]*\d[\w.–-]*[.:)]?\s", re.I)
 NEGATED = re.compile(r"\bnot\b|n't\b|\bindependent(?:ly)?\b|\bwithout\b|\binstead of\b|\brather than\b|\bavoids?\b|\bno longer\b|\bnothing\b", re.I)
 # A clause: a sentence, a table cell, a dash aside, or one of two clauses joined by ", and".
 CLAUSE = re.compile(r"(?<=[.;!?])\s+(?=[A-Z*`(\[§])|\s+\|\s+|\s+[—–]\s+|,\s+and\s+(?=[A-Z*`\[])")
@@ -42,10 +48,23 @@ DOWNSTREAM_WORDS = re.compile(r"\bdownstream\b|\bconsumers?\b", re.I)
 VERBS = [
     (re.compile(r"\b(?:supplied|provided|given|delivered|proved|proven|constructed|defined|built) (?:by|from)\b", re.I), "up", None),
     (re.compile(r"\b(?:consumed|used|needed|required|imported|cited) by\b", re.I), "down", None),
-    (re.compile(r"\b(?:supplies|supply|provides|provide|gives|give|delivers|exports|feeds|unlocks)\b", re.I), "down", "up"),
+    # A roadmap named after "supplies" or "gives" is, in these READMEs, mostly a source cited for what is supplied
+    # ("... gives #H¹(K_v, M) = ... (ClassFieldTheory Layer 5)"), not its receiver.
+    (re.compile(r"\b(?:supplies|supply|provides|provide|gives|give|delivers)\b", re.I), None, "up"),
+    (re.compile(r"\b(?:exports|feeds|unlocks)\b", re.I), "down", "up"),
     (re.compile(r"\b(?:consum(?:e|es|ing)|uses?|using|needs?|requires?|requiring|builds? on|built on|depends? on|dependent on|relies on"
-                r"|relying on|imports?|reuses?|invokes?|draws? on|applies|apply|cites?|from)\b", re.I), "up", "self"),
+                r"|relying on|imports?|reuses?|invokes?|draws? on|applies|apply|cites?)\b", re.I), "up", "self"),
+    (re.compile(r"\bfrom\b", re.I), "up", None),
 ]
+# What may stand between a roadmap's name and a verb it is the subject of: its layers or sections, a parenthesis, a
+# link, or more names ("EllipticCurves Layer 4 supplies", "A, B and C consume"). A name further from its verb, as in
+# "the Amice transform of PadicMeasures ... that the constructions use", is not the verb's subject. Likewise a
+# roadmap that receives what this one exports must follow the verb ("used by the HamiltonianReduction roadmap"): in
+# "the PL tools used by PlanarTopology" the tools are not this roadmap's.
+_BETWEEN = (r"\s|,|\band\b|\bor\b|\balso\b|\broadmaps?\b|\b[Ll]ayers?\b|['’]s\b|§+[^\s,;]*|\b[A-Z]{0,3}\d[^\s,;]*|\([^)]*\)|`[^`]*`"
+            r"|\[[^\]]*\]\([^)]*\)|[*_]+|\b[A-Z][a-z0-9]*[A-Z][A-Za-z0-9]*(?:/[A-Za-z0-9]+)*\b")
+SUBJECT = re.compile(f"(?:{_BETWEEN})*")
+OBJECT = re.compile(f"(?:{_BETWEEN}|\\b[Tt]he\\b)*")
 # A roadmap named as the subject of "uses" uses this one only when the clause says what of this one it uses.
 SELF = re.compile(r"\bthis (?:roadmap|layer|section)\b|\bhere\b|\bours?\b|\bwe\b", re.I)
 
@@ -85,40 +104,54 @@ def by_name(folders: dict, folder: str) -> dict:
 
 
 def placed(clause: str, folder: str, folders: dict, names: dict) -> set:
-    """(roadmap, position) for each roadmap a clause names: by a link to its folder, or by its folder's name."""
+    """(roadmap, start, end) for each roadmap a clause names: by a link to its folder, or by its folder's name."""
     found = {}
     for match in LINK.finditer(clause):
         path = target_folder(match.group(1), folder)
         other = roadmap_at(path, folders) if path else None
         if other:
-            found.setdefault(other, match.start())
+            found.setdefault(other, match.span())
     plain = LINK.sub(lambda match: " " * len(match.group(0)), clause)
     for match in NAMED.finditer(plain):
         other = names.get((match.group(1) or match.group(2)).split("/")[-1])
         if other:
-            found.setdefault(other, match.start())
-    return set(found.items())
+            found.setdefault(other, match.span())
+    return {(other, start, end) for other, (start, end) in found.items()}
 
 
-def direction(clause: str, at: int):
-    """Whether a roadmap named at position `at` of a clause is a prerequisite of the README's roadmap ("up"), one that
-    builds on it ("down"), or neither, by the verb nearest it."""
+def direction(clause: str, at: int, end: int | None = None):
+    """Whether a roadmap named from position `at` to `end` of a clause is a prerequisite of the README's roadmap ("up"),
+    one that builds on it ("down"), or neither, by the verb nearest it. Named before its verb, it must be the verb's
+    subject."""
     if DOWNSTREAM_WORDS.search(clause):
         return "down"
+    end = at if end is None else end
     nearest = None
     for pattern, after, before in VERBS:
         for match in pattern.finditer(clause):
             gap = at - match.end() if match.end() <= at else match.start() - at
             if gap >= 0 and (nearest is None or gap < nearest[0]):
-                nearest = (gap, match.end() <= at, after, before)
+                nearest = (gap, match.end() <= at, after, before, match.span())
     if nearest is None:
         return None
-    _, named_after, after, before = nearest
+    _, named_after, after, before, (verb, verb_end) = nearest
     if named_after:
-        return after
+        return None if after == "down" and not OBJECT.fullmatch(clause[verb_end:at]) else after
+    if not SUBJECT.fullmatch(clause[end:verb]):
+        return None
     if before == "self":
         return "down" if SELF.search(clause) else None
     return before
+
+
+def heading_way(title: str):
+    """Whether a heading opens a section of the roadmaps this one gives to ("down"), of those it takes from ("up"),
+    or neither."""
+    down = None if LAYER_HEADING.search(title) else DOWNSTREAM.search(title)
+    up = UPSTREAM.search(title)
+    if down and up:
+        return "down" if down.start() < up.start() else "up"
+    return "down" if down else "up" if up else None
 
 
 def paragraphs(text: str):
@@ -162,15 +195,15 @@ def dependencies(text: str, folder: str, folders: dict) -> list:
     found = []
     for number, paragraph, headings in paragraphs(text):
         titles = [title for _, title in headings]
-        section = next((title for title in reversed(titles) if DOWNSTREAM.search(title) or UPSTREAM.search(title)), None)
-        downstream = bool(section and DOWNSTREAM.search(section))
+        section = next((title for title in reversed(titles) if heading_way(title)), None)
+        downstream = section is not None and heading_way(section) == "down"
         for clause in CLAUSE.split(paragraph):
             if NEGATED.search(clause):
                 continue
-            for other, at in sorted(placed(clause, folder, folders, names)):
+            for other, at, end in sorted(placed(clause, folder, folders, names)):
                 if other == own:
                     continue
-                way = direction(clause, at)
+                way = direction(clause, at, end)
                 if way is None and section:
                     way = "down" if downstream else "up"
                 if way == "up":
