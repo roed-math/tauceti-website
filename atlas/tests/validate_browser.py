@@ -349,15 +349,26 @@ def check_overview(page,scope,touch=False):
  areas=page.evaluate("() => { const g=TauExplorer.graph,t=g.transform; return TauExplorer.getUniverse().galaxies.filter(n=>{const x=n.x*t.k+t.x,y=n.y*t.k+t.y;return x>0&&x<g.width&&y>0&&y<g.height;}).length; }")
  allowed=math.ceil(areas*.4) if box['height']<400 else math.ceil(areas*.25) if box['width']<600 else math.ceil(areas*.1)
  record(scope+' every subject heading is drawn once, legibly, without overlap',headings>=areas-allowed and labels_are_clean(page) and names_are_unique(page))
- # Names in two tiers from the overview on: fields in capitals, and the areas
- # inside them, while the areas' progress colours are in view.
- tiers=page.evaluate("""() => { const d=TauExplorer.graph.debugState(),inside=new Set(d.fields.flatMap(f=>f.galaxyIds));
-  const named=Array.from(document.querySelectorAll('.tau-label-galaxy')).map(e=>e.getAttribute('data-label-for'));
-  const dust=id=>{const e=document.querySelector('.tau-galaxy[data-node-id="'+CSS.escape(id)+'"] .tau-dust-far');return e?Number(e.getAttribute('opacity')):0;};
-  const fieldNames=Array.from(document.querySelectorAll('.tau-label-field text, .tau-label-galaxy.is-field text'));
-  return {fields:fieldNames.length,areas:named.filter(id=>inside.has(id)).length,
-          faded:named.filter(id=>dust(id)<.95).length,capitals:fieldNames.every(t=>t.textContent===t.textContent.toUpperCase())}; }""")
- record(scope+' overview names fields over their areas, in two tiers',tiers['fields']>=2 and tiers['areas']>=3 and tiers['capitals'])
+ # Names in two tiers from the overview on, where the map has fields (the campaign's areas): fields in
+ # capitals, and the areas inside them, while the areas' progress colours are in view. The published pages
+ # group by arXiv category instead (scripts/arxiv_groups.py), in one tier: each category's name in capitals
+ # over its identifier, which keeps arXiv's case (math.NT), or the name alone on a small chart.
+ if debug(page)['fields']:
+  tiers=page.evaluate("""() => { const d=TauExplorer.graph.debugState(),inside=new Set(d.fields.flatMap(f=>f.galaxyIds));
+   const named=Array.from(document.querySelectorAll('.tau-label-galaxy')).map(e=>e.getAttribute('data-label-for'));
+   const dust=id=>{const e=document.querySelector('.tau-galaxy[data-node-id="'+CSS.escape(id)+'"] .tau-dust-far');return e?Number(e.getAttribute('opacity')):0;};
+   const fieldNames=Array.from(document.querySelectorAll('.tau-label-field text, .tau-label-galaxy.is-field text'));
+   return {fields:fieldNames.length,areas:named.filter(id=>inside.has(id)).length,
+           faded:named.filter(id=>dust(id)<.95).length,capitals:fieldNames.every(t=>t.textContent===t.textContent.toUpperCase())}; }""")
+  record(scope+' overview names fields over their areas, in two tiers',tiers['fields']>=2 and tiers['areas']>=3 and tiers['capitals'])
+ else:
+  tiers=page.evaluate("""() => { const groups=new Map(TauExplorer.data.groups.map(g=>[g.id,g]));
+   const named=Array.from(document.querySelectorAll('.tau-label-galaxy')).map(e=>({group:groups.get(e.getAttribute('data-label-for')),lines:Array.from(e.querySelectorAll('tspan').length?e.querySelectorAll('tspan'):e.querySelectorAll('text')).map(t=>t.textContent)}));
+   const dust=id=>{const e=document.querySelector('.tau-galaxy[data-node-id="'+CSS.escape(id)+'"] .tau-dust-far');return e?Number(e.getAttribute('opacity')):0;};
+   return {categories:[...groups.values()].every(g=>g.id==='unclassified'?!g.arxiv:/^math\\.[A-Z]{2}$/.test(g.id)&&g.arxiv===g.id),
+           headings:named.length>=3&&named.every(n=>n.group&&n.lines[0]===n.lines[0].toUpperCase()&&(n.lines.length===1||!n.group.arxiv||n.lines.includes(n.group.arxiv))),
+           faded:named.filter(n=>dust(n.group.id)<.95).length}; }""")
+  record(scope+' overview names each arXiv category, in capitals over its identifier',tiers['categories'] and tiers['headings'])
  record(scope+' named areas show their progress colours',tiers['faded']==0)
  # A large chart shows the whole universe; a much smaller one keeps the
  # desktop scale with Mathlib in view, and the reader pans.
@@ -391,24 +402,26 @@ def check_fields(page):
  # areas, and each area's own name, while its progress colours are in view.
  fit_all(page)
  d=debug(page)
- inside={gid for f in d['fields'] for gid in f['galaxyIds']}
- shown=page.evaluate("Array.from(document.querySelectorAll('.tau-label-galaxy')).map(e=>e.getAttribute('data-label-for'))")
- fields=page.evaluate("Array.from(document.querySelectorAll('.tau-label-field')).map(e=>e.getAttribute('data-label-for'))")
- # Every field the layout draws is named, and its areas too, but for one in ten held back for room.
- record('Overview names each field above its areas, and the areas',len(d['fields'])>=2 and len(set(fields))==len(d['fields'])
-        and len(inside.intersection(shown))>=len(inside)-math.ceil(len(inside)*.1))
- field='field:algebraic-number-theory'
- label=page.locator('.tau-label-field[data-label-for="%s"]'%field)
- label.hover();page.wait_for_timeout(300)
- members=next(f['galaxyIds'] for f in d['fields'] if f['id']==field)
- lit=page.evaluate("Array.from(document.querySelectorAll('.tau-galaxy')).filter(g=>Number(g.querySelector('.tau-galaxy-ring').getAttribute('opacity'))>0).map(g=>g.getAttribute('data-node-id'))")
- record('Hovering a field\'s name outlines exactly its areas',sorted(lit)==sorted(members))
- label.click();page.wait_for_timeout(900)
- view=page.evaluate("""ids => { const g=TauExplorer.graph,t=g.transform,u=TauExplorer.getUniverse();
-  const named=new Set(Array.from(document.querySelectorAll('.tau-label-galaxy')).map(e=>e.getAttribute('data-label-for')));
-  const members=ids.map(id=>u.byId.get(id));
-  return {inView:members.every(n=>{const x=n.x*t.k+t.x,y=n.y*t.k+t.y;return x>0&&x<g.width&&y>0&&y<g.height;}),named:ids.filter(id=>named.has(id)).length}; }""",members)
- record('Clicking a field\'s name brings all its areas into view, named',view['inView'] and view['named']>=len(members)-2)
+ # Only where the map has fields: the published pages group by arXiv category, one galaxy each (check_overview names them).
+ if d['fields']:
+  inside={gid for f in d['fields'] for gid in f['galaxyIds']}
+  shown=page.evaluate("Array.from(document.querySelectorAll('.tau-label-galaxy')).map(e=>e.getAttribute('data-label-for'))")
+  fields=page.evaluate("Array.from(document.querySelectorAll('.tau-label-field')).map(e=>e.getAttribute('data-label-for'))")
+  # Every field the layout draws is named, and its areas too, but for one in ten held back for room.
+  record('Overview names each field above its areas, and the areas',len(d['fields'])>=2 and len(set(fields))==len(d['fields'])
+         and len(inside.intersection(shown))>=len(inside)-math.ceil(len(inside)*.1))
+  field='field:algebraic-number-theory'
+  label=page.locator('.tau-label-field[data-label-for="%s"]'%field)
+  label.hover();page.wait_for_timeout(300)
+  members=next(f['galaxyIds'] for f in d['fields'] if f['id']==field)
+  lit=page.evaluate("Array.from(document.querySelectorAll('.tau-galaxy')).filter(g=>Number(g.querySelector('.tau-galaxy-ring').getAttribute('opacity'))>0).map(g=>g.getAttribute('data-node-id'))")
+  record('Hovering a field\'s name outlines exactly its areas',sorted(lit)==sorted(members))
+  label.click();page.wait_for_timeout(900)
+  view=page.evaluate("""ids => { const g=TauExplorer.graph,t=g.transform,u=TauExplorer.getUniverse();
+   const named=new Set(Array.from(document.querySelectorAll('.tau-label-galaxy')).map(e=>e.getAttribute('data-label-for')));
+   const members=ids.map(id=>u.byId.get(id));
+   return {inView:members.every(n=>{const x=n.x*t.k+t.x,y=n.y*t.k+t.y;return x>0&&x<g.width&&y>0&&y<g.height;}),named:ids.filter(id=>named.has(id)).length}; }""",members)
+  record('Clicking a field\'s name brings all its areas into view, named',view['inView'] and view['named']>=len(members)-2)
  # Closer in, named areas keep their colours on every screen.
  page.mouse.move(5,5)
  page.evaluate("f => { const g=TauExplorer.graph; g.svg.interrupt(); const t=g.overviewTransform(),k=t.k*f,cx=(g.width/2-t.x)/t.k,cy=(g.height/2-t.y)/t.k; g.svg.call(g.zoom.transform,d3.zoomIdentity.translate(g.width/2-cx*k,g.height/2-cy*k).scale(k)); }",1.7);page.wait_for_timeout(500)

@@ -141,10 +141,12 @@ def load(copy: Path = COPY, cache: Path = CACHE) -> dict | None:
     return data
 
 
-def add_proposed(atlas: dict, data: dict, placements: dict | None = None, categories: dict | None = None) -> list:
+def add_proposed(atlas: dict, data: dict, placements: dict | None = None, categories: dict | None = None,
+                 fallback: str | None = None) -> list:
     """Add each roadmap an open pull request proposes, as tauceti_progress.add_new_roadmaps adds one Tau Ceti has
     accepted, but from the README on the pull request's branch: its layers unassessed, its area, and the roadmaps
-    it names, proposed ones included. They have the origin "proposed" and their pull request. Returns the ids added."""
+    it names, proposed ones included. They have the origin "proposed" and their pull request. Returns the ids added.
+    With `fallback`, a roadmap no rule places goes there instead of waiting off the map."""
     pulls = {pull["number"]: pull for pull in data.get("pulls", [])}
     roadmaps = data.get("roadmaps", {})
     on_map = {roadmap["id"] for roadmap in atlas["roadmaps"]}
@@ -159,7 +161,7 @@ def add_proposed(atlas: dict, data: dict, placements: dict | None = None, catego
                      "readme": f"https://github.com/{pull['head']}/blob/{pull['sha']}/{folder}/README.md",
                      "parent_id": parent if "tauceti:" + parent in on_map or parent in roadmaps else None})
         readmes[folder] = entry["readme"]
-    added = add_new_roadmaps(atlas, {"rows": rows}, readmes, placements, categories)
+    added = add_new_roadmaps(atlas, {"rows": rows}, readmes, placements, categories, fallback)
     # A roadmap added earlier could link only to those before it: with all of them on the map, link each to
     # every roadmap its README names.
     by_id = {roadmap["id"]: roadmap for roadmap in atlas["roadmaps"]}

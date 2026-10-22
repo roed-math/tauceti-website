@@ -22,6 +22,9 @@ from definitions_page import render as definitions_page  # noqa: E402
 from tauceti_progress import add_new_roadmaps as add_new_tauceti_roadmaps, apply as apply_tauceti_progress, fit_to_arxiv  # noqa: E402
 from tauceti_progress import load as load_tauceti_progress, load_readmes as load_tauceti_readmes, tauceti_only  # noqa: E402
 from tauceti_prs import add_proposed, load as load_tauceti_prs  # noqa: E402
+from tauceti_progress import REPOSITORY as TAUCETI_BLOB, load_arxiv_areas, matches as tauceti_rows  # noqa: E402
+from roadmap_dependencies import add_dependencies  # noqa: E402
+from arxiv_groups import UNCLASSIFIED, group_by_arxiv  # noqa: E402
 
 
 def load_decompositions() -> list:
@@ -228,7 +231,8 @@ def build(output: Path, blueprints: Path | None = None, variant: str | None = No
         # proposes, whoever opened it. The explorer's own planned roadmaps are the "campaign" build, not published.
         atlas["variant"] = "atlas"
         proposals = load_tauceti_prs() or {"pulls": [], "roadmaps": {}, "openPulls": 0}
-        proposed = add_proposed(atlas, proposals)
+        # The map groups by arXiv category below, so a proposal no area rule places still joins it.
+        proposed = add_proposed(atlas, proposals, fallback=UNCLASSIFIED)
         owners = set(proposed)
         layers = sum(1 for stage in atlas["stages"] if stage["owner"] in owners)
         # Proposed layers count as not started: the headline is the share done of Tau Ceti's and the proposed layers.
@@ -239,6 +243,33 @@ def build(output: Path, blueprints: Path | None = None, variant: str | None = No
                               "roadmaps": proposed, "layers": layers,
                               "unplaced": sorted("tauceti:" + folder for folder in proposals["roadmaps"] if "tauceti:" + folder not in owners),
                               "updatedAt": max((pull["updatedAt"] for pull in proposals["pulls"]), default=None)}
+    if variant in (None, "tauceti"):
+        # The roadmaps each README says it builds on become prerequisite links, and the published pages group
+        # the roadmaps by the arXiv category each declares (scripts/arxiv_groups.py), not by the campaign's areas.
+        folder = lambda roadmap_id: roadmap_id.split(":", 1)[1]
+        rows = tauceti_rows(atlas, board or {})
+
+        def address(roadmap):
+            """The README as the atlas read it, so a line number points at the right line: main's when the copy is
+            current, else the snapshot's commit."""
+            current = hashlib.sha256(roadmap["readme"].encode("utf-8")).hexdigest() == rows.get(roadmap["id"], {}).get("readme_sha")
+            head, path = (roadmap.get("statusSnapshot") or {}).get("head"), roadmap.get("repositoryPath") or ""
+            if not current and head and path and not path.startswith("http"):
+                return f"https://github.com/TauCetiProject/TauCetiRoadmap/blob/{head}/{path}"
+            return TAUCETI_BLOB + folder(roadmap["id"]) + "/README.md"
+        readmes = {r["id"]: (r["readme"], folder(r["id"]), address(r)) for r in atlas["roadmaps"] if r.get("origin") == "tauceti" and r.get("readme")}
+        # Every row of the board declares a category, those of folders that are not on the map (an umbrella) included.
+        declared = {"tauceti:" + row["id"]: row.get("arxiv") for row in (board or {}).get("rows", [])}
+        declared.update({roadmap_id: row.get("arxiv") for roadmap_id, row in rows.items()})
+        if variant is None:
+            # A proposed roadmap's README is read from the pull request's branch; the page keeps only its address.
+            for r in atlas["roadmaps"]:
+                entry = proposals["roadmaps"].get(folder(r["id"])) if r.get("origin") == "proposed" else None
+                if entry:
+                    readmes[r["id"]] = (entry.get("readme") or "", folder(r["id"]), r.get("sourcePath") or "")
+                    declared[r["id"]] = entry.get("arxiv")
+        atlas["meta"]["readmePrerequisites"] = add_dependencies(atlas, readmes)
+        atlas["meta"]["arxivGroups"] = group_by_arxiv(atlas, declared, load_arxiv_areas())
     retired, link_packets = context["retired"], context["linkPackets"]
     # Layers that are not source refinements: the snapshot's, and those of any roadmap added above.
     original_stage_count = sum(1 for stage in atlas["stages"] if not stage.get("expansion"))

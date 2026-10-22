@@ -69,11 +69,14 @@
   const CORE_RADIUS = 60;
   const RESULT_SCALE = { theorem: 1.25, lemma: 1.1, comparison: 1.1, application: 1.1 };
   const REFERENCE_ASPECT = 1204 / 782;
-  const GALAXY_GAP = 70;
+  const GALAXY_GAP = 150;
   // Distance from the centre grows faster than the distance score, so the
   // subjects farthest from Mathlib stand clearly apart from the rest.
-  const radiusFor = distance => 260 + 95 * distance + 17 * distance * distance;
-  const galaxySize = count => 170 + 80 * Math.sqrt(Math.max(1, count));
+  // Galaxies and the roadmaps in them are given room enough to read each roadmap apart from its neighbours.
+  const radiusFor = distance => 560 + 200 * distance + 36 * distance * distance;
+  const galaxySize = count => 190 + 112 * Math.sqrt(Math.max(1, count));
+  // A roadmap's circle grows with its layers, so its figure can be read where its galaxy is in view.
+  const constellationSize = (constellation, layers) => constellation.unmapped ? 14 : 12 + 6.5 * Math.sqrt(layers);
   const turn = angle => Math.atan2(Math.sin(angle), Math.cos(angle));
 
   function placeGalaxiesRadial(galaxies, constellationsOf, aspect) {
@@ -130,20 +133,20 @@
     const rx = Math.max(40, galaxy.rx * .8), ry = Math.max(30, galaxy.ry * .8);
     constellations.forEach((constellation, index) => {
       const angle = index * GOLDEN + rotation;
-      const spread = constellations.length === 1 ? 0 : Math.sqrt((index + .45) / constellations.length) * .78;
+      const spread = constellations.length === 1 ? 0 : Math.sqrt((index + .45) / constellations.length) * .86;
       const offset = Number.isFinite(constellation.distance) ? Math.max(-.62, Math.min(.62, (constellation.distance - galaxy.distance) * .16)) : 0;
       constellation.x = galaxy.x + Math.cos(angle) * rx * spread + ux * offset * rx;
       constellation.y = galaxy.y + Math.sin(angle) * ry * spread + uy * offset * ry;
     });
     constellations.forEach(constellation => {
       const n = constellation.starIds.length;
-      constellation.wanted = constellation.unmapped ? 14 : 10 + 5.4 * Math.sqrt(n);
+      constellation.wanted = constellationSize(constellation, n);
     });
     for (let pass = 0; pass < 200; pass++) {
       let moved = false;
       constellations.forEach((a, index) => constellations.slice(index + 1).forEach(b => {
         const dx = b.x - a.x, dy = b.y - a.y, distance = Math.max(.001, Math.hypot(dx, dy));
-        const needed = (a.wanted + b.wanted) * 1.02 + 16;
+        const needed = (a.wanted + b.wanted) * 1.25 + 24;
         if (distance >= needed) return;
         const push = (needed - distance) / 2 / distance;
         a.x -= dx * push; a.y -= dy * push; b.x += dx * push; b.y += dy * push; moved = true;
@@ -177,7 +180,7 @@
       constellation.spacing = Number.isFinite(nearest) ? nearest : Math.min(rx, ry);
       // Large roadmaps get proportionally more room, so their layers keep the
       // same spacing as a small roadmap's instead of being squeezed together.
-      const wanted = constellation.unmapped ? 14 : 10 + 5.4 * Math.sqrt(constellation.starIds.length);
+      const wanted = constellationSize(constellation, constellation.starIds.length);
       constellation.r = Math.max(8, Math.min(64, wanted, constellation.spacing * .45));
     });
   }
@@ -332,7 +335,7 @@
 
   function build(input, viewport) {
     const aspect = viewport && viewport.width && viewport.height ? viewport.width / viewport.height : 1.5;
-    const galaxies = input.groups.map(group => ({ id: group.id, level: 'galaxy', label: group.label, short: group.short || '', caption: group.caption || null, direction: group.direction, color: group.color, constellationIds: [], count: 0, unmappedCount: 0, progress: group.progress == null ? null : group.progress, progressLabel: group.progressLabel || '' }));
+    const galaxies = input.groups.map(group => ({ id: group.id, level: 'galaxy', label: group.label, short: group.short || '', caption: group.caption || null, code: group.arxiv || null, direction: group.direction, color: group.color, constellationIds: [], count: 0, unmappedCount: 0, progress: group.progress == null ? null : group.progress, progressLabel: group.progressLabel || '' }));
     const galaxyById = new Map(galaxies.map(galaxy => [galaxy.id, galaxy]));
     const constellations = input.constellations.map(item => ({ ...item, level: 'constellation', starIds: item.starIds || [] }))
       .filter(item => galaxyById.has(item.galaxyId));

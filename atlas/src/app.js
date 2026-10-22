@@ -261,11 +261,15 @@ function stageTree(box,r){
 }
 function connectionCard(box,source,target){
  const pairs=witnesses.get(source+'\n'+target)||[],other=source===state.selected?target:source;
+ // A prerequisite read from a README (scripts/roadmap_dependencies.py) points to the line that states it.
+ const edge=DATA.edges.find(e=>e.source===source&&e.target===target),readme=!pairs.length&&edge?.kind==='readme'?edge.evidence?.[0]:null;
  const card=el('details','connection-card'),summary=el('summary');
- summary.append(el('span','',shortTitle(maps.get(other).title)),el('small','',pairs.length?`${pairs.length} layer connections`:'Declared prerequisite'));
+ summary.append(el('span','',shortTitle(maps.get(other).title)),el('small','',pairs.length?`${pairs.length} layer connections`:readme?'Named in a README':'Declared prerequisite'));
  card.append(summary);
  if(pairs.length){card.append(el('p','detail-note','These recorded layer requirements establish the direction of the link.'));
   for(const edge of pairs){const row=el('div','connection-witness');row.append(btn(stageTitle(edge.source),()=>openStage(edge.source)),el('span','', '→'),btn(stageTitle(edge.target),()=>openStage(edge.target)));card.append(row);}
+ }else if(readme){card.append(el('p','detail-note',`Stated in the README of ${shortTitle(maps.get(readme.roadmap)?.title||readme.roadmap)}${readme.section?`, under “${readme.section}”`:''}, line ${readme.line}. No individual layer pair is recorded.`));
+  if(/^https:\/\/github\.com\//.test(readme.readme)){const a=el('a','topic-link','Read that line ↗');a.href=`${readme.readme}?plain=1#L${readme.line}`;a.target='_blank';a.rel='noopener noreferrer';card.append(a);}
  }else card.append(el('p','detail-note','The roadmap declares this dependency, but no individual layer pair is recorded.'));
  card.append(btn('Open roadmap galaxy',()=>openItem(other),'secondary'));box.append(card);
 }

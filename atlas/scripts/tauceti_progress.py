@@ -315,9 +315,10 @@ def readme_layers(text: str) -> list:
 
 
 def add_new_roadmaps(atlas: dict, progress: dict, readmes: dict, placements: dict | None = None,
-                     categories: dict | None = None) -> list:
+                     categories: dict | None = None, fallback: str | None = None) -> list:
     """Add the roadmaps the board reports and the atlas lacks, built from their READMEs; the ids added.
-    Each goes to an area its arXiv category allows (data/tauceti-arxiv-areas.json), when it declares one."""
+    Each goes to an area its arXiv category allows (data/tauceti-arxiv-areas.json), when it declares one;
+    one that nothing places goes to `fallback`, or is left out without one."""
     placements = load_placements() if placements is None else placements
     categories = load_arxiv_areas() if categories is None else categories
     added = []
@@ -334,6 +335,8 @@ def add_new_roadmaps(atlas: dict, progress: dict, readmes: dict, placements: dic
         group, named, basis = area_for(text, title, atlas, short_name(roadmap_id), choice.get("galaxy"), allowed)
         if not group and default:
             group, basis = default, "arxiv"
+        if not group and fallback:
+            group, basis = fallback, "fallback"
         if not group:
             continue
         lines = text.splitlines()
@@ -384,7 +387,8 @@ def add_new_roadmaps(atlas: dict, progress: dict, readmes: dict, placements: dic
         reason = {"chosen": f"Placed where the maintainers chose: {choice.get('reason', '').strip()}",
                   "title": f"Placed provisionally in the area its title names{within}.",
                   "readme": f"Placed provisionally with most of the Tau Ceti roadmaps its README names ({', '.join(short_name(n) for n in named)}){within}.",
-                  "arxiv": f"Placed by its arXiv category, {category} ({row.get('topic') or category})."}[basis]
+                  "arxiv": f"Placed by its arXiv category, {category} ({row.get('topic') or category}).",
+                  "fallback": "Placed where the map's grouping puts it: no area rule places it."}[basis]
         record = {"basis": "provisional", "rationale": reason}
         if category:
             record["arxiv"] = category

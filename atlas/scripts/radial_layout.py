@@ -33,14 +33,14 @@ import random
 
 # Keep these in step with radiusFor, galaxySize and GALAXY_GAP in src/universe.js.
 def radius_for(distance: float) -> float:
-    return 260 + 95 * distance + 17 * distance * distance
+    return 560 + 200 * distance + 36 * distance * distance
 
 
 def galaxy_size(count: int) -> float:
-    return 170 + 80 * math.sqrt(max(1, count))
+    return 190 + 112 * math.sqrt(max(1, count))
 
 
-GALAXY_GAP = 70
+GALAXY_GAP = 150
 OVERLAP_PENALTY = 4.0
 # How much more the misfit of two areas of one field weighs than any other pair's.
 FIELD_PULL = 6.0

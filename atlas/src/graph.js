@@ -379,7 +379,7 @@
       const small = this.width < 600 || this.height < 300;
       // Fields with several areas open (their areas are named instead of them)
       // once the camera is this many times closer than the overview.
-      return { resolve: 22, constellationName: small ? 40 : 44, starName: small ? 46 : 54, system: 26, planetName: small ? 96 : 120, artefactName: small ? 150 : 180, small };
+      return { resolve: 18, constellationName: small ? 40 : 44, starName: small ? 46 : 54, system: 26, planetName: small ? 96 : 120, artefactName: small ? 150 : 180, small };
     }
 
     render() {
@@ -433,7 +433,8 @@
         if (galaxy.headingVisible) {
           const compact = galaxy.w * k < 150 || T.small, field = !galaxy.fieldId;
           const named = compact ? [galaxy.short || wrapText(galaxy.label, 16, 1)[0]] : (galaxy.caption || wrapText(galaxy.label, 21, 2));
-          const lines = field ? named.map(line => line.toUpperCase()) : named;
+          // An arXiv identifier keeps its own case (math.NT) under a heading in capitals.
+          const lines = field ? named.map(line => line === galaxy.code ? line : line.toUpperCase()) : named;
           const edge = (value, fallback) => Number.isFinite(value) ? value : fallback;
           const top = edge(galaxy.top, galaxy.y - galaxy.ry) - 8 / k, bottom = edge(galaxy.bottom, galaxy.y + galaxy.ry) + 12 / k;
           const left = edge(galaxy.left, galaxy.x - galaxy.rx) - 6 / k, right = edge(galaxy.right, galaxy.x + galaxy.rx) + 6 / k, middle = galaxy.y + 3.5 / k;
@@ -524,7 +525,8 @@
       // desktop scale keeps its colours there too.
       const shorter = Math.max(600, Math.min(this.width, this.height)), size = g => g.w * k / shorter;
       const farFade = g => Math.max(0, Math.min(1, (1.1 - size(g)) / .6));
-      const nearFade = g => .6 * Math.max(0, Math.min(1, (size(g) - .35) / .5)) * Math.max(0, Math.min(1, (9 - k) / 4));
+      // The fine dust rises before the coarse has faded, so a galaxy never dims in the hand-over.
+      const nearFade = g => .6 * Math.max(0, Math.min(1, (size(g) - .3) / .5)) * Math.max(0, Math.min(1, (9 - k) / 4));
       galaxySelection.select('.tau-dust-far').attr('opacity', farFade).attr('display', g => farFade(g) > 0 ? null : 'none');
       galaxySelection.select('.tau-dust-near').attr('opacity', nearFade).attr('display', g => nearFade(g) > 0 ? null : 'none');
       this.positionLive();

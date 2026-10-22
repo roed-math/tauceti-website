@@ -202,11 +202,11 @@ class Layout(unittest.TestCase):
 
     def test_python_and_javascript_share_the_geometry(self):
         source = (ROOT / "src" / "universe.js").read_text()
-        self.assertIn("const radiusFor = distance => 260 + 95 * distance + 17 * distance * distance;", source)
-        self.assertIn("const galaxySize = count => 170 + 80 * Math.sqrt(Math.max(1, count));", source)
+        self.assertIn("const radiusFor = distance => 560 + 200 * distance + 36 * distance * distance;", source)
+        self.assertIn("const galaxySize = count => 190 + 112 * Math.sqrt(Math.max(1, count));", source)
         self.assertEqual(int(re.search(r"const GALAXY_GAP = (\d+);", source).group(1)), GALAXY_GAP)
-        self.assertEqual(radius_for(2), 260 + 190 + 68)
-        self.assertEqual(galaxy_size(4), 330)
+        self.assertEqual(radius_for(2), 560 + 400 + 144)
+        self.assertEqual(galaxy_size(4), 414)
 
 
 if __name__ == "__main__":
