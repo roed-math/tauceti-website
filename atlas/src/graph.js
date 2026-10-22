@@ -317,15 +317,17 @@
     }
 
     positionLive() {
-      const k = this.transform.k;
-      this.layers.live.selectAll('g.tau-live').attr('transform', d => `translate(${d.x},${d.y}) scale(${1 / k})`);
+      // An open pull request grows a little closer in, as the landed ones round it do (render).
+      const k = this.transform.k, grow = Math.max(1, Math.min(3, Math.sqrt(k / .5)));
+      this.layers.live.selectAll('g.tau-live').attr('transform', d => `translate(${d.x},${d.y}) scale(${grow / k})`);
     }
 
     // ----- landed pull requests ------------------------------------------------
     // Every pull request that has landed for a Tau Ceti roadmap (the Progress page's count) is a small blue-white
     // star in a cloud round it (cloudShape), as an open one twinkles on its outskirts in red and yellow, so the cloud
-    // grows with the work merged for it. The stars keep their size on screen, and a roadmap's are four paths, a glow
-    // and three brightnesses, however many there are. An umbrella's stars are shared among its sub-roadmaps.
+    // grows with the work merged for it. The stars keep their size on screen from afar and grow closer in (render),
+    // and a roadmap's are four paths, a glow and three brightnesses, however many there are. An umbrella's stars are
+    // shared among its sub-roadmaps.
     setLanded(counts) { this.landedCounts = counts instanceof Map ? counts : new Map(Object.entries(counts || {})); this.drawLanded(); return this; }
 
     drawLanded() {
@@ -352,9 +354,11 @@
       });
       const groups = layer.selectAll('g.tau-landed').data(data, d => d.id).enter().append('g').attr('class', 'tau-landed')
         .attr('data-node-id', d => d.id).attr('data-count', d => d.count);
-      groups.append('path').attr('class', 'tau-landed-glow').attr('d', d => d.paths.bright).attr('vector-effect', 'non-scaling-stroke').attr('stroke-width', 4.2);
+      const grow = this.landedGrow || 1;
+      groups.append('path').attr('class', 'tau-landed-glow').attr('d', d => d.paths.bright).attr('vector-effect', 'non-scaling-stroke')
+        .attr('data-width', 4.2).attr('stroke-width', 4.2 * grow);
       [['bright', 1.8], ['medium', 1.2], ['faint', .8]].forEach(([shine, width]) => groups.append('path').attr('class', 'tau-landed-star tau-landed-' + shine)
-        .attr('d', d => d.paths[shine]).attr('vector-effect', 'non-scaling-stroke').attr('stroke-width', width));
+        .attr('d', d => d.paths[shine]).attr('vector-effect', 'non-scaling-stroke').attr('data-width', width).attr('stroke-width', width * grow));
     }
 
     setProgress(values) {
@@ -692,9 +696,15 @@
         .selectAll('.tau-dust-speck').attr('stroke-width', function () { return [1.2, 1.6, 2][Number(this.getAttribute('data-class'))] * grain; });
       galaxySelection.select('.tau-dust-near').attr('opacity', nearFade).attr('display', g => nearFade(g) > 0 ? null : 'none')
         .selectAll('.tau-dust-speck').attr('stroke-width', .9);
-      // The landed pull requests' halos are dense from far away: half as bright there, so the progress colours
-      // still show through, and at full strength once the roadmaps can be told apart.
+      // The landed pull requests' clouds are dense from far away: half as bright there, so the progress colours
+      // still show through, and at full strength once the roadmaps can be told apart. Closer in their stars grow, up
+      // to four and a half times, so that a roadmap's cloud stays in view round it as its stars draw apart.
       this.layers.landed.attr('opacity', .5 + .5 * Math.max(0, Math.min(1, (radius - 4) / 8)));
+      const grow = Math.max(1, Math.min(4.5, Math.sqrt(k / .5)));
+      if (grow !== this.landedGrow) {
+        this.landedGrow = grow;
+        this.layers.landed.selectAll('path').attr('stroke-width', function () { return Number(this.getAttribute('data-width')) * grow; });
+      }
       this.positionLive();
     }
 
