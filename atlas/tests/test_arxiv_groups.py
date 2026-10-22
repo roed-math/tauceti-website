@@ -4,7 +4,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
-from arxiv_groups import ORDER, UNCLASSIFIED, area_categories, categories_of, group_by_arxiv  # noqa: E402
+from arxiv_groups import AREA_GAP, FIELD_GAP, ORDER, START, UNCLASSIFIED, area_categories, categories_of, finer_areas, group_by_arxiv  # noqa: E402
 
 AREAS = {"math.NT": {"areas": ["algebraicnt", "padic"], "default": "algebraicnt"}, "math.AG": {"areas": ["algebraicgeometry", "etale", "padic"], "default": "algebraicgeometry"},
          "math.FA": {"areas": ["analysis"], "default": "analysis"}, "math.DS": {"areas": ["analysis"], "default": "analysis"}}
@@ -68,16 +68,22 @@ class Grouping(unittest.TestCase):
                          {"tauceti:Weil": ("math.AG", "math.AG"), "tauceti:Heights": ("math.NT", "math.NT"), "tauceti:Walks": (UNCLASSIFIED, None)})
         self.assertIn("metadata.toml declares", map_["roadmapClassification"]["roadmaps"]["tauceti:Weil"]["rationale"])
 
-    def test_galaxies_go_round_in_the_fixed_order_each_given_a_share_that_grows_with_it(self):
+    def test_galaxies_are_contiguous_sectors_in_the_fixed_order_each_a_share_that_grows_with_it(self):
         self.assertEqual(ORDER[:2], ["math.NT", "math.AG"])
         self.assertEqual(ORDER[ORDER.index("math.RT") - 1:ORDER.index("math.RT") + 1], ["math.QA", "math.RT"])
         roadmaps = [(f"tauceti:N{i}", "x") for i in range(9)] + [("tauceti:G", "x"), ("tauceti:R", "x")]
         map_ = atlas(*roadmaps)
         group_by_arxiv(map_, {**{f"tauceti:N{i}": "math.NT" for i in range(9)}, "tauceti:G": "math.AG", "tauceti:R": "math.RT"})
-        direction = {group["id"]: group["direction"] for group in map_["groups"]}
-        # Shares 4 : 2 : 2 of the circle, from the bottom of the map: number theory's middle is a quarter of the way round.
         self.assertEqual([group["id"] for group in map_["groups"]], ["math.NT", "math.AG", "math.RT"])
-        self.assertEqual(direction, {"math.NT": 180.0, "math.AG": 315.0, "math.RT": 45.0})
+        (a0, a1), (b0, b1), (c0, c1) = (group["sector"] for group in map_["groups"])
+        # From the start, in order, a category gap apart, closing the circle with one more.
+        self.assertEqual(a0, START)
+        self.assertAlmostEqual(b0 - a1, FIELD_GAP, places=1)
+        self.assertAlmostEqual(c0 - b1, FIELD_GAP, places=1)
+        self.assertAlmostEqual(c1 + FIELD_GAP, START + 360, places=1)
+        # Shares grow with the roadmaps: 9 ** .85 + 1 to 1 + 1.
+        self.assertAlmostEqual((a1 - a0) / (b1 - b0), (9 ** .85 + 1) / 2, places=2)
+        self.assertEqual(map_["groups"][0]["direction"], round((a0 + a1) / 2 % 360, 1))
 
     def test_what_uses_a_roadmap_is_counted_again_by_category(self):
         map_ = atlas(("tauceti:A", "x"), ("tauceti:B", "x"), ("tauceti:C", "x"), edges=[("tauceti:A", "tauceti:B"), ("tauceti:A", "tauceti:C")])
@@ -85,6 +91,49 @@ class Grouping(unittest.TestCase):
         group_by_arxiv(map_, {"tauceti:A": "math.NT", "tauceti:B": "math.AG", "tauceti:C": "math.NT"})
         self.assertEqual(map_["roadmapDistances"]["roadmaps"]["tauceti:A"]["usedBy"], [{"galaxy": "math.AG", "roadmaps": 1}])
         self.assertEqual(map_["roadmapDistances"]["galaxies"], {})
+
+
+SUBAREAS = {"least": 2, "order": {"math.NT": ["modular", "padic", "other"]},
+            "first": {"math.NT": {"arithmetic statistics": "other"}},
+            "categories": {"math.NT": [{"id": "padic", "label": "p-adic Hodge theory", "short": "p-adic", "phrases": ["p-adic hodge", "perfectoid*"]},
+                                       {"id": "modular", "label": "Modular forms", "short": "Modular", "phrases": ["modular form*", "hecke"]},
+                                       {"id": "other", "label": "Other number theory", "short": "Other", "phrases": []}]}}
+
+
+class FinerAreas(unittest.TestCase):
+    """The largest categories are divided into finer areas by the phrases their roadmaps' titles carry."""
+
+    def roadmaps(self):
+        return [{"id": "tauceti:A", "title": "`p`-adic Hodge theory"}, {"id": "tauceti:B", "title": "Perfectoid spaces"},
+                {"id": "tauceti:C", "title": "Modular forms — Hecke theory"}, {"id": "tauceti:D", "title": "Galois groups", "summary": "Hecke operators act."},
+                {"id": "tauceti:E", "title": "Arithmetic statistics of Hecke fields"}, {"id": "tauceti:F", "title": "Heights"}]
+
+    def test_a_title_places_a_roadmap_else_its_summary_else_the_catch_all_in_the_order_round_the_map(self):
+        parts = finer_areas(self.roadmaps(), "math.NT", SUBAREAS)
+        self.assertEqual([(area["id"], rids) for area, rids in parts],
+                         [("modular", ["tauceti:C", "tauceti:D"]), ("padic", ["tauceti:A", "tauceti:B"]), ("other", ["tauceti:E", "tauceti:F"])])
+
+    def test_an_area_with_too_few_roadmaps_joins_the_catch_all_and_one_area_is_no_division(self):
+        parts = finer_areas(self.roadmaps()[:3] + self.roadmaps()[5:], "math.NT", SUBAREAS)
+        self.assertEqual([(area["id"], rids) for area, rids in parts], [("padic", ["tauceti:A", "tauceti:B"]), ("other", ["tauceti:C", "tauceti:F"])])
+        self.assertEqual(finer_areas(self.roadmaps()[:2], "math.NT", SUBAREAS), [])
+        self.assertEqual(finer_areas(self.roadmaps(), "math.AG", SUBAREAS), [])
+
+    def test_a_divided_category_is_a_field_of_area_galaxies_with_closer_sectors(self):
+        map_ = atlas(*[(roadmap["id"], "x") for roadmap in self.roadmaps()], ("tauceti:Weil", "etale"))
+        for roadmap, given in zip(map_["roadmaps"], self.roadmaps()):
+            roadmap.update(given)
+        group_by_arxiv(map_, {**{roadmap["id"]: "math.NT" for roadmap in self.roadmaps()}, "tauceti:Weil": "math.AG"}, AREAS, SUBAREAS)
+        self.assertEqual([group["id"] for group in map_["groups"]], ["math.NT/modular", "math.NT/padic", "math.NT/other", "math.AG"])
+        self.assertEqual(map_["fields"], [{"id": "math.NT", "label": "Number Theory (math.NT)", "short": "Number Theory", "caption": ["Number Theory", "math.NT"],
+                                           "code": "math.NT", "color": "#cfe3fb", "groupIds": ["math.NT/modular", "math.NT/padic", "math.NT/other"],
+                                           "roadmaps": 6, "distance": 5.0}])
+        modular = map_["groups"][0]
+        self.assertEqual((modular["label"], modular["caption"], modular["field"], modular["arxiv"]), ("Modular forms", None, "math.NT", "math.NT"))
+        self.assertEqual({r["id"]: (r["group"], r["area"]) for r in map_["roadmaps"]}["tauceti:C"], ("math.NT/modular", "modular"))
+        sector = [group["sector"] for group in map_["groups"]]
+        self.assertAlmostEqual(sector[1][0] - sector[0][1], AREA_GAP, places=1)
+        self.assertAlmostEqual(sector[3][0] - sector[2][1], FIELD_GAP, places=1)
 
 
 if __name__ == "__main__":

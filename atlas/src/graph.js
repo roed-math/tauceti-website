@@ -292,6 +292,22 @@
         x: bounds.x + (((index * 619 + 89) % 2017) / 2017) * bounds.w, y: bounds.y + (((index * 383 + 53) % 1877) / 1877) * bounds.h,
         r: index % 23 === 0 ? 1.4 : index % 7 === 0 ? .9 : .5, opacity: index % 11 === 0 ? .4 : index % 3 === 0 ? .22 : .12 }));
       field.selectAll('circle').data(stars).enter().append('circle').attr('class', 'tau-field').attr('cx', d => d.x).attr('cy', d => d.y).attr('r', d => d.r).attr('fill', '#c7d3df').attr('opacity', d => d.opacity);
+      // The sector map's guides: rings at whole distances from Mathlib, named at the top, and rules between sectors.
+      const guides = this.universe.guides;
+      if (!guides) return;
+      field.selectAll('circle.tau-distance-ring').data(guides.rings).enter().append('circle').attr('class', 'tau-distance-ring').attr('cx', 0).attr('cy', 0)
+        .attr('r', d => d.radius).attr('fill', 'none').attr('stroke', ACCENT).attr('vector-effect', 'non-scaling-stroke').attr('stroke-width', 1)
+        .attr('stroke-opacity', d => d.distance % 2 ? .05 : .1);
+      field.selectAll('line.tau-sector-rule').data(guides.rules).enter().append('line').attr('class', 'tau-sector-rule')
+        .attr('x1', d => Math.cos(d.angle) * guides.inner).attr('y1', d => Math.sin(d.angle) * guides.inner)
+        .attr('x2', d => Math.cos(d.angle) * guides.outer).attr('y2', d => Math.sin(d.angle) * guides.outer)
+        .attr('stroke', ACCENT).attr('vector-effect', 'non-scaling-stroke').attr('stroke-width', 1).attr('stroke-opacity', d => d.major ? .16 : .06);
+      // The rings are named along the rule between categories nearest the top, where no roadmap lies.
+      const offTop = angle => Math.abs(Math.atan2(Math.sin(angle + Math.PI / 2), Math.cos(angle + Math.PI / 2)));
+      const along = guides.rules.filter(rule => rule.major).reduce((best, rule) => offTop(rule.angle) < offTop(best.angle) ? rule : best, { angle: -Math.PI / 2 }).angle;
+      field.selectAll('text.tau-ring-label').data(guides.rings.filter(ring => ring.distance % 2 === 0)).enter().append('text').attr('class', 'tau-ring-label')
+        .attr('x', d => Math.cos(along) * d.radius).attr('y', d => Math.sin(along) * d.radius).attr('dx', '.4em').attr('dy', '-.35em')
+        .attr('fill', '#8a97a5').attr('opacity', .75).text(d => 'distance ' + d.distance);
     }
 
     // Mathlib at the centre as the sun: a disc that darkens towards its rim,
@@ -325,8 +341,10 @@
     drawGalaxies() {
       const galaxies = this.layers.galaxy.selectAll('g.tau-galaxy').data(this.universe.galaxies, d => d.id).enter().append('g')
         .attr('class', 'tau-galaxy').attr('data-node-id', d => d.id);
-      galaxies.append('ellipse').attr('class', 'tau-galaxy-disc').attr('cx', d => d.x).attr('cy', d => d.y).attr('rx', d => d.rx).attr('ry', d => d.ry)
+      galaxies.filter(d => !d.outline).append('ellipse').attr('class', 'tau-galaxy-disc').attr('cx', d => d.x).attr('cy', d => d.y).attr('rx', d => d.rx).attr('ry', d => d.ry)
         .attr('fill', '#9db3c9').attr('opacity', .014);
+      // A sector is tinted faintly over its wedge, so that the sectors read as contiguous regions round Mathlib.
+      galaxies.filter(d => d.outline).append('path').attr('class', 'tau-galaxy-disc').attr('d', d => d.outline).attr('fill', '#9db3c9').attr('opacity', .022);
       // Two dust fields per area: a coarse one that reads as a galaxy from far
       // away and a fine one that stays as a faint background inside it. Each
       // brightness class is one path, so an area costs six elements, not
@@ -342,7 +360,9 @@
         });
       });
       this.paintDust();
-      galaxies.append('ellipse').attr('class', 'tau-ring tau-galaxy-ring').attr('cx', d => d.x).attr('cy', d => d.y).attr('rx', d => d.rx).attr('ry', d => d.ry)
+      galaxies.filter(d => !d.outline).append('ellipse').attr('class', 'tau-ring tau-galaxy-ring').attr('cx', d => d.x).attr('cy', d => d.y).attr('rx', d => d.rx).attr('ry', d => d.ry)
+        .attr('fill', 'none').attr('stroke', ACCENT).attr('vector-effect', 'non-scaling-stroke').attr('stroke-width', 1).attr('opacity', 0);
+      galaxies.filter(d => d.outline).append('path').attr('class', 'tau-ring tau-galaxy-ring').attr('d', d => d.outline)
         .attr('fill', 'none').attr('stroke', ACCENT).attr('vector-effect', 'non-scaling-stroke').attr('stroke-width', 1).attr('opacity', 0);
       const routes = this.layers.route.selectAll('path').data(this.universe.routes).enter().append('path').attr('class', 'tau-route tau-sector-route')
         .attr('data-source-area', d => d.source).attr('data-target-area', d => d.target).attr('data-strong', d => String(!!d.strong))
@@ -385,9 +405,28 @@
     render() {
       if (!this.universe || this.destroyed) return;
       const k = this.transform.k, rect = this.visibleRect(.15), T = this.thresholds(), universe = this.universe;
+      // The distance rings' names keep one size on screen.
+      this.layers.field.selectAll('text.tau-ring-label').attr('font-size', 10 / k);
       const active = this.isCoarse ? (this.selectedId || this.hoveredId) : (this.hoveredId || this.selectedId);
       const activeNode = universe.byId.get(active) || null;
       const intersects = (x, y, r) => x + r > rect.x && x - r < rect.x + rect.w && y + r > rect.y && y - r < rect.y + rect.h;
+      // On the sector map, where a sector's middle line leaves the chart, when the sector reaches that far: a name
+      // waits there, at the edge, pointing the way along its sector.
+      const edgeSpots = (angle, outer, inner) => {
+        const core = universe.core;
+        if (!core || universe.layout !== 'sectors') return [];
+        const font = T.small ? 10 : 11, margin = 6, cx = core.x * k + this.transform.x, cy = core.y * k + this.transform.y, dx = Math.cos(angle), dy = Math.sin(angle);
+        const exits = [];
+        if (Math.abs(dx) > 1e-9) exits.push([((dx > 0 ? this.width - margin : margin) - cx) / dx, dx > 0 ? 'right' : 'left']);
+        if (Math.abs(dy) > 1e-9) exits.push([((dy > 0 ? this.height - margin : margin) - cy) / dy, dy > 0 ? 'bottom' : 'top']);
+        const [reach, side] = exits.filter(([s]) => s > 0).sort((a, b) => a[0] - b[0])[0] || [];
+        if (!(reach > 0) || reach / k > outer) return [];
+        // At the edge, then stepping in along the sector a row at a time, so that neighbouring names can stagger.
+        return [0, 1, 2, 3, 4].map(row => reach - row * 2.6 * (font + 3)).filter(at => at > 0 && at / k > inner).map(at => {
+          const sx = cx + dx * at + (side === 'left' ? 4 : side === 'right' ? -4 : 0), sy = cy + dy * at + (side === 'top' ? font + 4 : side === 'bottom' ? -4 : 0);
+          return { x: (sx - this.transform.x) / k, y: (sy - this.transform.y) / k, above: side !== 'top', anchor: side === 'left' ? 'start' : side === 'right' ? 'end' : 'middle' };
+        });
+      };
       // A name is drawn only for an object whose centre is on the chart: a name
       // beside a disc hidden under the chart's edge would float unexplained.
       const chart = this.visibleRect(0);
@@ -409,9 +448,12 @@
       // inside the field.
       (universe.fields || []).forEach(field => {
         field.labelVisible = false;
-        if (field.w * k > this.width * 1.2 || !intersects(field.x, field.y, Math.max(field.w, field.h) / 2)) return;
+        // A sector is as wide as its arc where most of its roadmaps lie; its name gives way once that fills the chart.
+        const wide = field.labelSpots ? (field.a1 - field.a0) * field.hubRadius * k > this.width * 1.2 : field.w * k > this.width * 1.2;
+        if (wide || (!field.labelSpots && !intersects(field.x, field.y, Math.max(field.w, field.h) / 2))) return;
         field.labelVisible = true;
-        const lines = T.small ? [(field.short || field.label).toUpperCase()] : wrapText(field.label.toUpperCase(), 28, 2);
+        const lines = T.small ? [(field.short || field.label).toUpperCase()]
+          : field.caption ? field.caption.map(line => line === field.code ? line : line.toUpperCase()) : wrapText(field.label.toUpperCase(), 28, 2);
         // Above the field, clear of its top area's name; else above one of its
         // areas, largest first; else below the field, or below one of its
         // areas; else beside the field. In the crowded middle of the map every
@@ -424,12 +466,20 @@
             [{ x: middle, y: field.bottom + 16 / k, above: false }],
             areas.map(g => ({ x: g.x, y: g.bottom + 16 / k, above: false })),
             [{ x: field.right + 10 / k, y: centre, above: false, anchor: 'start' }, { x: field.left - 10 / k, y: centre, above: false, anchor: 'end' }]);
-        labels.push({ id: 'field:' + field.id, nodeId: field.id, kind: 'field', x: spots[0].x, y: spots[0].y, lines, font: T.small ? 10 : 11, anchor: 'middle', above: true,
-          priority: 150 + field.count, active: active === field.id, members: new Set(field.galaxyIds), alternatives: spots.slice(1) });
+        const along = field.labelSpots ? [...edgeSpots((field.a0 + field.a1) / 2, field.r1, field.r0), ...field.labelSpots] : null;
+        labels.push({ id: 'field:' + field.id, nodeId: field.id, kind: 'field', x: (along || spots)[0].x, y: (along || spots)[0].y, lines, font: T.small ? 10 : 11,
+          anchor: along ? along[0].anchor : 'middle', above: along ? along[0].above : true,
+          priority: 150 + field.count, active: active === field.id, members: new Set(field.galaxyIds), alternatives: (along || spots).slice(1) });
       });
+      const framed = new Map();
       galaxies.forEach(galaxy => {
-        const screenW = galaxy.w * k;
-        galaxy.headingVisible = screenW < this.width * 1.6 && intersects(galaxy.x, galaxy.y - galaxy.ry, galaxy.rx);
+        const screenW = galaxy.labelSpots ? (galaxy.a1 - galaxy.a0) * galaxy.hubRadius * k : galaxy.w * k;
+        // On the sector map an area of a divided category is named once the camera has opened its category,
+        // so that the overview names the categories; the area hovered or selected is named anyway.
+        const parent = galaxy.labelSpots && galaxy.fieldId ? universe.byId.get(galaxy.fieldId) : null;
+        if (parent && !framed.has(parent.id)) framed.set(parent.id, k >= this.transformFor(this.footprint(parent.id)).k * .85 && intersects(parent.x, parent.y, 0));
+        const opened = !parent || (parent.a1 - parent.a0) * parent.hubRadius * k > this.width * .5 || active === galaxy.id || active === parent.id || framed.get(parent.id);
+        galaxy.headingVisible = opened && screenW < this.width * 1.6 && (galaxy.labelSpots ? galaxy.labelSpots.some(spot => intersects(spot.x, spot.y, 60 / k)) : intersects(galaxy.x, galaxy.y - galaxy.ry, galaxy.rx));
         if (galaxy.headingVisible) {
           const compact = galaxy.w * k < 150 || T.small, field = !galaxy.fieldId;
           const named = compact ? [galaxy.short || wrapText(galaxy.label, 16, 1)[0]] : (galaxy.caption || wrapText(galaxy.label, 21, 2));
@@ -440,11 +490,14 @@
           const left = edge(galaxy.left, galaxy.x - galaxy.rx) - 6 / k, right = edge(galaxy.right, galaxy.x + galaxy.rx) + 6 / k, middle = galaxy.y + 3.5 / k;
           // Above the galaxy, then below it, then flush with either side of
           // it, then beside it: a heading steps aside rather than vanish.
-          labels.push({ id: 'galaxy:' + galaxy.id, nodeId: galaxy.id, kind: 'galaxy', field, x: galaxy.x, y: top, lines, font: T.small ? 10 : 11, anchor: 'middle', above: true,
-            priority: (field ? 150 : 100) + galaxy.count, active: active === galaxy.id,
-            alternatives: [{ x: galaxy.x, y: bottom, above: false }, { x: left + 6 / k, y: top, above: true, anchor: 'start' }, { x: right - 6 / k, y: top, above: true, anchor: 'end' },
-              { x: right, y: middle, above: false, anchor: 'start' }, { x: left, y: middle, above: false, anchor: 'end' },
-              { x: left + 6 / k, y: bottom, above: false, anchor: 'start' }, { x: right - 6 / k, y: bottom, above: false, anchor: 'end' }] });
+          const around = [{ x: galaxy.x, y: bottom, above: false }, { x: left + 6 / k, y: top, above: true, anchor: 'start' }, { x: right - 6 / k, y: top, above: true, anchor: 'end' },
+            { x: right, y: middle, above: false, anchor: 'start' }, { x: left, y: middle, above: false, anchor: 'end' },
+            { x: left + 6 / k, y: bottom, above: false, anchor: 'start' }, { x: right - 6 / k, y: bottom, above: false, anchor: 'end' }];
+          // A sector is named along its middle, from its outer end inwards, wherever there is room in view.
+          const along = galaxy.labelSpots ? [...edgeSpots((galaxy.a0 + galaxy.a1) / 2, galaxy.r1, galaxy.r0), ...galaxy.labelSpots] : null;
+          const first = along ? along[0] : { x: galaxy.x, y: top, above: true, anchor: 'middle' };
+          labels.push({ id: 'galaxy:' + galaxy.id, nodeId: galaxy.id, kind: 'galaxy', field, x: first.x, y: first.y, lines, font: T.small ? 10 : 11, anchor: first.anchor, above: first.above,
+            priority: (field ? 150 : 100) + galaxy.count, active: active === galaxy.id, alternatives: along ? along.slice(1) : around });
         }
         galaxy.constellationIds.forEach(id => {
           const c = universe.byId.get(id);
@@ -523,7 +576,8 @@
       // until it grows to fill most of the chart, on every screen alike. A
       // short chart (a phone held sideways) counts as 600 pixels, so the map at
       // desktop scale keeps its colours there too.
-      const shorter = Math.max(600, Math.min(this.width, this.height)), size = g => g.w * k / shorter;
+      // A sector's size is its width across, where most of its roadmaps lie, not its length out from Mathlib.
+      const shorter = Math.max(600, Math.min(this.width, this.height)), size = g => (g.sector ? (g.a1 - g.a0) * g.hubRadius : g.w) * k / shorter;
       const farFade = g => Math.max(0, Math.min(1, (1.1 - size(g)) / .6));
       // The fine dust rises before the coarse has faded, so a galaxy never dims in the hand-over.
       const nearFade = g => .6 * Math.max(0, Math.min(1, (size(g) - .3) / .5)) * Math.max(0, Math.min(1, (9 - k) / 4));
@@ -677,8 +731,12 @@
       labels.sort((a, b) => b.priority - a.priority);
       // Other galaxies' discs are obstacles for an area heading: a heading
       // that would sit on a neighbouring galaxy is as misleading as an overlap.
-      const discs = (this.visible ? this.visible.galaxies : []).map(g => ({ id: g.id, x: g.x * k + t.x, y: g.y * k + t.y, rx: g.rx * k, ry: g.ry * k }));
-      const onDisc = (box, own) => discs.some(g => (own instanceof Set ? !own.has(g.id) : g.id !== own) && (((box.x + box.w / 2 - g.x) / g.rx) ** 2 + ((box.y + box.h / 2 - g.y) / g.ry) ** 2) < 1);
+      // On the sector map a galaxy is its wedge, not the ellipse round it.
+      const discs = (this.visible ? this.visible.galaxies : []).map(g => ({ id: g.id, x: g.x * k + t.x, y: g.y * k + t.y, rx: g.rx * k, ry: g.ry * k, wedge: g.sector ? g : null }));
+      const inWedge = (g, sx, sy) => { const x = (sx - t.x) / k, y = (sy - t.y) / k, radius = Math.hypot(x, y); let angle = Math.atan2(y, x);
+        while (angle < g.a0) angle += Math.PI * 2; return radius >= g.r0 && radius <= g.r1 && angle <= g.a1; };
+      const onDisc = (box, own) => discs.some(g => (own instanceof Set ? !own.has(g.id) : g.id !== own)
+        && (g.wedge ? inWedge(g.wedge, box.x + box.w / 2, box.y + box.h / 2) : (((box.x + box.w / 2 - g.x) / g.rx) ** 2 + ((box.y + box.h / 2 - g.y) / g.ry) ** 2) < 1));
       // Planet discs and star cores are solid: text never runs across another
       // object. The zoom buttons and the hint in the chart's corners are
       // solid too, so nothing is drawn behind them.
@@ -947,6 +1005,12 @@
     // smaller than that (a phone) keeps the scale instead of shrinking the map,
     // with Mathlib a third of the way across, and the reader pans to see the rest.
     overviewTransform() {
+      if (this.universe.layout === 'sectors' && this.universe.core) {
+        // At least the scale a desktop window gives it, so a phone shows part of the map as a desktop does, to pan.
+        const core = this.universe.core, reserve = this.width < 600 ? 56 : this.height < 400 ? 24 : 0, across = radius => (radius - 48) / (2 * this.universe.overviewRadius);
+        const k = Math.max(.02, across(Math.min(this.width, this.height - reserve)), across(Math.min(REFERENCE_CHART.width, REFERENCE_CHART.height)));
+        return d3.zoomIdentity.translate(this.width / 2 - core.x * k, (this.height - reserve) / 2 - core.y * k).scale(k);
+      }
       const b = this.universe.bounds, rect = { x: b.x - 40, y: b.y, w: b.w + 80, h: b.h };
       const fit = this.transformWithHeadroom(rect, 48, 12);
       const core = this.universe.core;
@@ -981,6 +1045,14 @@
     // the view, the constellation under its centre, the star whose system is
     // in front of them. This drives the address bar and breadcrumbs without
     // ever relaying out the scene.
+    // How far a point is from a galaxy, in units of its size: within 1 inside it. A sector is measured across its
+    // wedge and along it; any other galaxy by its ellipse.
+    reachOf(g, x, y) {
+      if (!g.sector) return Math.hypot((x - g.x) / g.rx, (y - g.y) / g.ry);
+      const off = Math.atan2(y, x) - (g.a0 + g.a1) / 2, across = Math.abs(Math.atan2(Math.sin(off), Math.cos(off))) / Math.max(1e-6, (g.a1 - g.a0) / 2);
+      return Math.max(across, Math.abs(Math.hypot(x, y) - (g.r0 + g.r1) / 2) / Math.max(1, (g.r1 - g.r0) / 2));
+    }
+
     focus() {
       if (!this.universe) return { level: 'all', id: null };
       const k = this.transform.k, cx = (this.width / 2 - this.transform.x) / k, cy = (this.height / 2 - this.transform.y) / k;
@@ -988,13 +1060,16 @@
       // the scale that fits it and its centre is near the middle of the view.
       const fitScale = id => this.transformFor(this.footprint(id)).k;
       let galaxy = null;
-      this.universe.galaxies.forEach(g => { if (((cx - g.x) / (g.rx * 1.2)) ** 2 + ((cy - g.y) / (g.ry * 1.2)) ** 2 <= 1 && k >= fitScale(g.id) * .6) galaxy = g; });
+      if (this.universe.layout === 'sectors') {
+        let nearest = Infinity;
+        this.universe.galaxies.forEach(g => { const reach = this.reachOf(g, cx, cy); if (reach <= 1.2 && reach < nearest && k >= fitScale(g.id) * .6) { nearest = reach; galaxy = g; } });
+      } else this.universe.galaxies.forEach(g => { if (((cx - g.x) / (g.rx * 1.2)) ** 2 + ((cy - g.y) / (g.ry * 1.2)) ** 2 <= 1 && k >= fitScale(g.id) * .6) galaxy = g; });
       // Between galaxies, a camera that is still well inside the universe
       // belongs to the nearest galaxy; only a wide view, or empty space far
       // from every galaxy, is the whole universe.
       if (!galaxy && !this.atOverview(2.2)) {
         let nearest = Infinity;
-        this.universe.galaxies.forEach(g => { const e = Math.hypot((cx - g.x) / g.rx, (cy - g.y) / g.ry); if (e < nearest && e <= 2.5 && k >= fitScale(g.id) * .6) { nearest = e; galaxy = g; } });
+        this.universe.galaxies.forEach(g => { const e = this.reachOf(g, cx, cy); if (e < nearest && e <= 2.5 && k >= fitScale(g.id) * .6) { nearest = e; galaxy = g; } });
       }
       if (!galaxy) return { level: 'all', id: null };
       let constellation = null, best = Infinity;

@@ -7,6 +7,7 @@ import hashlib
 import json
 import re
 import sys
+from collections import Counter
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -25,6 +26,7 @@ from tauceti_prs import add_proposed, load as load_tauceti_prs  # noqa: E402
 from tauceti_progress import REPOSITORY as TAUCETI_BLOB, load_arxiv_areas, matches as tauceti_rows  # noqa: E402
 from roadmap_dependencies import add_dependencies  # noqa: E402
 from arxiv_groups import UNCLASSIFIED, group_by_arxiv  # noqa: E402
+from atlas_distances import measure as measure_page_distances  # noqa: E402
 
 
 def load_decompositions() -> list:
@@ -269,7 +271,12 @@ def build(output: Path, blueprints: Path | None = None, variant: str | None = No
                     readmes[r["id"]] = (entry.get("readme") or "", folder(r["id"]), r.get("sourcePath") or "")
                     declared[r["id"]] = entry.get("arxiv")
         atlas["meta"]["readmePrerequisites"] = add_dependencies(atlas, readmes)
-        atlas["meta"]["arxivGroups"] = group_by_arxiv(atlas, declared, load_arxiv_areas())
+        # Every roadmap on the page is measured by the distance function, over the page's own prerequisites
+        # (scripts/atlas_distances.py): the map lays each one out as far from Mathlib as the theory it still needs.
+        distances = atlas["roadmapDistances"]
+        distances["roadmaps"] = measure_page_distances(atlas, distances, load_coverage(ROOT))
+        distances["bases"] = dict(Counter(entry["basis"] for entry in distances["roadmaps"].values()))
+        atlas["meta"]["arxivGroups"] = group_by_arxiv(atlas, declared, load_arxiv_areas(), json.loads(read_text("data/arxiv-subareas.json")))
     retired, link_packets = context["retired"], context["linkPackets"]
     # Layers that are not source refinements: the snapshot's, and those of any roadmap added above.
     original_stage_count = sum(1 for stage in atlas["stages"] if not stage.get("expansion"))

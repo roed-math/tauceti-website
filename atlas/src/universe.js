@@ -125,6 +125,133 @@
     galaxies.forEach(galaxy => { galaxy.rx = galaxy.w / 2; galaxy.ry = galaxy.h / 2; });
   }
 
+  // The sector layout (the published pages). Each galaxy is a contiguous sector of the circle round Mathlib (its
+  // `sector`, in degrees), and each roadmap lies exactly as far out as its distance from Mathlib, on one scale for
+  // the whole map, at the angle in its sector nearest its share of the sector that is clear of the roadmaps already
+  // placed, as in a beeswarm plot. Only when no angle is clear does a roadmap step out or in, by at most half a
+  // unit of distance. The map is wider than a screen: the reader explores it.
+  const SECTOR_CORE = 420, SECTOR_STEP = 520, SECTOR_NUDGE = 32;
+  const sectorRadius = distance => SECTOR_CORE + SECTOR_STEP * Math.max(0, Math.min(10, distance));
+  const NUDGES = [0, 1, -1, 2, -2, 3, -3, 4, -4, 5, -5, 6, -6, 7, -7, 8, -8];
+  const GOLDEN_SHARE = (Math.sqrt(5) - 1) / 2;
+
+  function placeSectors(galaxies, constellationsOf) {
+    const cell = 200, grid = new Map(), key = (x, y) => Math.floor(x / cell) + ',' + Math.floor(y / cell);
+    const crowding = (x, y, c) => {
+      let worst = 0;
+      const cx = Math.floor(x / cell), cy = Math.floor(y / cell);
+      for (let i = -1; i <= 1; i++) for (let j = -1; j <= 1; j++) (grid.get((cx + i) + ',' + (cy + j)) || []).forEach(o => {
+        worst = Math.max(worst, (c.wanted + o.wanted) * 1.25 + 24 - Math.hypot(o.x - x, o.y - y));
+      });
+      return worst;
+    };
+    const queue = [];
+    galaxies.forEach(galaxy => {
+      [galaxy.a0, galaxy.a1] = galaxy.sector.map(degrees => degrees * Math.PI / 180);
+      const members = constellationsOf(galaxy), known = members.map(c => c.distance).filter(Number.isFinite);
+      galaxy.distance = known.length ? known.reduce((a, b) => a + b, 0) / known.length : 5;
+      members.forEach(c => {
+        c.wanted = constellationSize(c, c.starIds.length);
+        c.r = Math.max(8, Math.min(64, c.wanted));
+        c.target = sectorRadius(Number.isFinite(c.distance) ? c.distance : galaxy.distance);
+        queue.push([galaxy, c]);
+      });
+    });
+    // The nearest roadmaps first, where the circle is shortest; each sector shares its width out by the golden ratio.
+    queue.sort((p, q) => p[1].target - q[1].target || p[1].id.localeCompare(q[1].id));
+    const turn = new Map();
+    queue.forEach(([galaxy, c]) => {
+      const index = turn.get(galaxy.id) || 0, span = galaxy.a1 - galaxy.a0;
+      turn.set(galaxy.id, index + 1);
+      const preferred = galaxy.a0 + span * ((index * GOLDEN_SHARE + .5) % 1);
+      let best = null;
+      search: for (const nudge of NUDGES) {
+        const radius = Math.max(CORE_RADIUS * 3, c.target + nudge * SECTOR_NUDGE);
+        const margin = (c.r + 12) / radius, low = Math.min(galaxy.a0 + margin, (galaxy.a0 + galaxy.a1) / 2), high = Math.max(galaxy.a1 - margin, low);
+        const step = Math.max(.0015, c.r * .45 / radius), start = Math.max(low, Math.min(high, preferred));
+        for (let k = 0; k * step <= high - low + step; k++) {
+          for (const sign of k ? [1, -1] : [1]) {
+            const angle = start + sign * k * step;
+            if (angle < low - 1e-9 || angle > high + 1e-9) continue;
+            const x = Math.cos(angle) * radius, y = Math.sin(angle) * radius, crowd = crowding(x, y, c);
+            if (!best || crowd < best.crowd - 1e-6) best = { x, y, crowd, angle, radius };
+            if (crowd <= 0) break search;
+          }
+        }
+      }
+      Object.assign(c, { x: best.x, y: best.y, angle: best.angle, radius: best.radius });
+      const at = key(c.x, c.y);
+      if (!grid.has(at)) grid.set(at, []);
+      grid.get(at).push(c);
+    });
+    queue.forEach(([, c]) => {
+      let nearest = Infinity;
+      const cx = Math.floor(c.x / cell), cy = Math.floor(c.y / cell);
+      for (let i = -1; i <= 1; i++) for (let j = -1; j <= 1; j++) (grid.get((cx + i) + ',' + (cy + j)) || []).forEach(o => { if (o !== c) nearest = Math.min(nearest, Math.hypot(o.x - c.x, o.y - c.y)); });
+      c.spacing = Number.isFinite(nearest) ? nearest : 2 * cell;
+    });
+    galaxies.forEach(galaxy => {
+      const members = constellationsOf(galaxy), radii = members.map(c => Math.hypot(c.x, c.y));
+      galaxy.r0 = Math.max(CORE_RADIUS * 2.4, Math.min(...radii.map((r, i) => r - members[i].r)) - 60);
+      galaxy.r1 = Math.max(...radii.map((r, i) => r + members[i].r)) + 60;
+      galaxy.hubRadius = radii.slice().sort((a, b) => a - b)[Math.floor(radii.length / 2)];
+      wedgeBounds(galaxy);
+      galaxy.outline = wedgePath(galaxy.r0, galaxy.r1, galaxy.a0, galaxy.a1);
+      galaxy.labelSpots = spotsAlong((galaxy.a0 + galaxy.a1) / 2, galaxy.r1 + 30, galaxy.r0 - 30, galaxy.a1 - galaxy.a0);
+    });
+  }
+
+  // A sector's bounding box, centre and half-extents, as the camera frames a galaxy.
+  function wedgeBounds(item) {
+    const angles = [item.a0, item.a1];
+    for (let quarter = Math.ceil(item.a0 / (Math.PI / 2)); quarter * Math.PI / 2 < item.a1; quarter++) angles.push(quarter * Math.PI / 2);
+    const xs = [], ys = [];
+    angles.forEach(angle => [item.r0, item.r1].forEach(radius => { xs.push(Math.cos(angle) * radius); ys.push(Math.sin(angle) * radius); }));
+    const left = Math.min(...xs), right = Math.max(...xs), top = Math.min(...ys), bottom = Math.max(...ys);
+    Object.assign(item, { x: (left + right) / 2, y: (top + bottom) / 2, rx: (right - left) / 2, ry: (bottom - top) / 2, w: right - left, h: bottom - top });
+  }
+
+  function wedgePath(inner, outer, from, to) {
+    const point = (radius, angle) => `${(Math.cos(angle) * radius).toFixed(1)},${(Math.sin(angle) * radius).toFixed(1)}`, large = to - from > Math.PI ? 1 : 0;
+    return `M${point(inner, from)}L${point(outer, from)}A${outer.toFixed(1)},${outer.toFixed(1)} 0 ${large} 1 ${point(outer, to)}L${point(inner, to)}A${inner.toFixed(1)},${inner.toFixed(1)} 0 ${large} 0 ${point(inner, from)}Z`;
+  }
+
+  // Places for a sector's name along its middle, from its outer end inwards: the name takes the first one in view
+  // with room, so it stays with the sector wherever the reader is along it.
+  function spotsAlong(angle, outer, inner, width = 0) {
+    const count = Math.max(2, Math.min(24, Math.ceil((outer - inner) / 240) + 1)), spots = [];
+    const anchor = Math.cos(angle) > .3 ? 'start' : Math.cos(angle) < -.3 ? 'end' : 'middle', above = Math.sin(angle) < 0;
+    for (let i = 0; i < count; i++) {
+      const radius = outer - (outer - inner) * i / (count - 1);
+      // On the middle line, then a little to either side of it within the sector.
+      [0, .3, -.3].forEach(side => {
+        const turn = angle + side * width / 2;
+        if (!side || width * radius > 160) spots.push({ x: Math.cos(turn) * radius, y: Math.sin(turn) * radius, above, anchor });
+      });
+    }
+    return spots;
+  }
+
+  // A sector's dust: most of it gathered round its roadmaps, the rest spread thinly over the whole sector.
+  function sectorDust(galaxy, members) {
+    let seed = hash(galaxy.label + '|dust') || 1;
+    const random = () => { seed = (seed + 0x6D2B79F5) >>> 0; let t = seed; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
+    const inside = (x, y) => { let angle = Math.atan2(y, x); while (angle < galaxy.a0) angle += Math.PI * 2; const radius = Math.hypot(x, y); return angle <= galaxy.a1 && radius >= galaxy.r0 && radius <= galaxy.r1; };
+    const count = Math.max(320, Math.min(900, 240 + 18 * galaxy.count)), points = [];
+    let guard = 0;
+    while (points.length < count && guard++ < count * 6) {
+      if (members.length && random() < .6) {
+        const c = members[Math.floor(random() * members.length)], spread = c.r * (1 + 1.7 * Math.pow(random(), 1.6)), angle = random() * Math.PI * 2;
+        const x = c.x + Math.cos(angle) * spread, y = c.y + Math.sin(angle) * spread, shine = random();
+        if (inside(x, y)) points.push({ x, y, radial: spread / (c.r * 3.5), cls: spread < c.r * 1.7 && shine > .35 ? 2 : shine > .5 ? 1 : 0 });
+      } else {
+        const radius = Math.sqrt(galaxy.r0 * galaxy.r0 + random() * (galaxy.r1 * galaxy.r1 - galaxy.r0 * galaxy.r0)), angle = galaxy.a0 + random() * (galaxy.a1 - galaxy.a0);
+        points.push({ x: Math.cos(angle) * radius, y: Math.sin(angle) * radius, radial: 1, cls: random() > .72 ? 1 : 0 });
+      }
+    }
+    return points;
+  }
+
   // Inside an area, a roadmap closer to Mathlib than the area's average sits
   // on the side facing the core, and a farther one on the outer side.
   function placeConstellationsRadial(galaxy, constellations) {
@@ -320,7 +447,8 @@
     const list = Array.from(routes.values()).map(route => {
       const a = byGalaxy.get(route.source), b = byGalaxy.get(route.target);
       // A route leaves from the rim of each galaxy, never across its roadmaps.
-      const rim = (g, toward) => { const ex = toward.x - g.x, ey = toward.y - g.y, scale = 1 / Math.max(1e-6, Math.hypot(ex / g.rx, ey / g.ry)); return { x: g.x + ex * scale, y: g.y + ey * scale }; };
+      const rim = (g, toward) => { if (g.sector) { const angle = (g.a0 + g.a1) / 2; return { x: Math.cos(angle) * g.hubRadius, y: Math.sin(angle) * g.hubRadius }; }
+        const ex = toward.x - g.x, ey = toward.y - g.y, scale = 1 / Math.max(1e-6, Math.hypot(ex / g.rx, ey / g.ry)); return { x: g.x + ex * scale, y: g.y + ey * scale }; };
       const start = rim(a, b), end = rim(b, a);
       const dx = end.x - start.x, dy = end.y - start.y, length = Math.max(1, Math.hypot(dx, dy)), nx = -dy / length, ny = dx / length;
       const bend = ((hash(route.source + route.target) % 2) ? 1 : -1) * Math.min(length * .18, 320);
@@ -335,7 +463,7 @@
 
   function build(input, viewport) {
     const aspect = viewport && viewport.width && viewport.height ? viewport.width / viewport.height : 1.5;
-    const galaxies = input.groups.map(group => ({ id: group.id, level: 'galaxy', label: group.label, short: group.short || '', caption: group.caption || null, code: group.arxiv || null, direction: group.direction, color: group.color, constellationIds: [], count: 0, unmappedCount: 0, progress: group.progress == null ? null : group.progress, progressLabel: group.progressLabel || '' }));
+    const galaxies = input.groups.map(group => ({ id: group.id, level: 'galaxy', label: group.label, short: group.short || '', caption: group.caption || null, code: group.arxiv || null, sector: Array.isArray(group.sector) ? group.sector : null, direction: group.direction, color: group.color, constellationIds: [], count: 0, unmappedCount: 0, progress: group.progress == null ? null : group.progress, progressLabel: group.progressLabel || '' }));
     const galaxyById = new Map(galaxies.map(galaxy => [galaxy.id, galaxy]));
     const constellations = input.constellations.map(item => ({ ...item, level: 'constellation', starIds: item.starIds || [] }))
       .filter(item => galaxyById.has(item.galaxyId));
@@ -358,9 +486,11 @@
     const membersOf = galaxy => galaxy.constellationIds.map(id => constellationById.get(id)).sort((a, b) => a.id.localeCompare(b.id));
     // The Mathlib-centred map is the same on every screen: it is laid out for
     // a desktop chart, and a smaller screen shows part of it at the same scale.
-    if (radial) placeGalaxiesRadial(populated, membersOf, REFERENCE_ASPECT);
+    const sectored = radial && populated.length > 0 && populated.every(galaxy => galaxy.sector);
+    if (sectored) placeSectors(populated, membersOf);
+    else if (radial) placeGalaxiesRadial(populated, membersOf, REFERENCE_ASPECT);
     else placeGalaxies(populated, Array.from(galaxyLinks.values()), aspect);
-    populated.forEach(galaxy => (radial ? placeConstellationsRadial : placeConstellations)(galaxy, membersOf(galaxy)));
+    if (!sectored) populated.forEach(galaxy => (radial ? placeConstellationsRadial : placeConstellations)(galaxy, membersOf(galaxy)));
     const stars = [], planets = [];
     constellations.forEach(constellation => {
       const members = constellation.starIds.map(id => ({ ...input.stars.get(id), id, level: 'star', constellationId: constellation.id, planetIds: (input.planets.get(id) || []).map(planet => planet.id) }));
@@ -390,7 +520,7 @@
     });
     // A galaxy's name sits just above what is drawn of it: its dust and its roadmaps.
     populated.forEach(galaxy => {
-      galaxy.dust = galaxyDust(galaxy);
+      galaxy.dust = sectored ? sectorDust(galaxy, membersOf(galaxy)) : galaxyDust(galaxy);
       const bright = galaxy.dust.filter(p => p.cls), members = membersOf(galaxy);
       const extent = (values, fallbackLow, fallbackHigh) => {
         const sorted = values.slice().sort((a, b) => a - b);
@@ -406,7 +536,7 @@
     // A field groups areas. Zoomed out, a field with several areas is named
     // once, over the extent of its areas; zooming in names the areas.
     const fields = (input.fields || []).map(field => ({
-      id: 'field:' + field.id, level: 'field', label: field.label, short: field.short || '', caption: field.caption || null,
+      id: 'field:' + field.id, level: 'field', label: field.label, short: field.short || '', caption: field.caption || null, code: field.code || null,
       galaxyIds: (field.groupIds || []).filter(id => galaxyById.has(id) && galaxyById.get(id).constellationIds.length)
     })).filter(field => field.galaxyIds.length > 1);
     fields.forEach(field => {
@@ -417,7 +547,28 @@
       field.top = Math.min(...members.map(g => g.top)); field.bottom = Math.max(...members.map(g => g.bottom));
       field.x = (field.left + field.right) / 2; field.y = (field.top + field.bottom) / 2;
       field.w = field.right - field.left; field.h = field.bottom - field.top;
+      // A divided category is one sector made of its areas' sectors; its name runs along its middle, outside theirs.
+      if (sectored) {
+        field.a0 = Math.min(...members.map(g => g.a0)); field.a1 = Math.max(...members.map(g => g.a1));
+        field.r0 = Math.min(...members.map(g => g.r0)); field.r1 = Math.max(...members.map(g => g.r1));
+        field.hubRadius = members.reduce((total, g) => total + g.hubRadius * g.count, 0) / Math.max(1, field.count);
+        field.labelSpots = spotsAlong((field.a0 + field.a1) / 2, field.r1 + 130, field.r0 - 90, field.a1 - field.a0);
+      }
     });
+    // On the sector map, faint guides: a ring at each whole distance from Mathlib, and a rule between neighbouring
+    // sectors, stronger between categories than between the areas of one.
+    let guides = null;
+    if (sectored) {
+      const order = populated.slice().sort((a, b) => a.a0 - b.a0), reach = Math.max(...populated.map(g => g.r1));
+      guides = {
+        rules: order.map((galaxy, index) => {
+          const before = order[(index + order.length - 1) % order.length], end = index ? before.a1 : before.a1 - Math.PI * 2;
+          return { angle: (end + galaxy.a0) / 2, major: !galaxy.fieldId || galaxy.fieldId !== before.fieldId };
+        }),
+        rings: Array.from({ length: 10 }, (_, index) => ({ distance: index + 1, radius: sectorRadius(index + 1) })).filter(ring => ring.radius <= reach + SECTOR_STEP / 2),
+        inner: SECTOR_CORE * .55, outer: reach + 120
+      };
+    }
     const byId = new Map();
     [...fields, ...populated, ...constellations, ...stars, ...planets, ...artefacts].forEach(node => byId.set(node.id, node));
     const core = radial ? { id: 'core:mathlib', level: 'core', x: 0, y: 0, r: CORE_RADIUS, label: 'Mathlib' } : null;
@@ -428,7 +579,9 @@
     const bounds = populated.length ? { x: left, y: top, w: right - left, h: bottom - top } : { x: -100, y: -100, w: 200, h: 200 };
     const starIds = new Set(stars.map(star => star.id));
     return {
-      fields, galaxies: populated, constellations, stars, planets, artefacts, byId, bounds, aspect, core, layout: radial ? 'radial' : 'areas',
+      fields, galaxies: populated, constellations, stars, planets, artefacts, byId, bounds, aspect, core, layout: sectored ? 'sectors' : radial ? 'radial' : 'areas',
+      // The sector map opens on Mathlib with the roadmaps up to this distance from it in view.
+      overviewRadius: sectored ? sectorRadius(4.6) : null, guides,
       routes: routesBetween(populated, constellations, input.constellationEdges),
       constellationEdges: input.constellationEdges.filter(edge => constellationById.has(edge.source) && constellationById.has(edge.target)),
       artefactEdges: (input.artefactEdges || []).filter(edge => constellationById.has(edge.source) && byId.has(edge.target)),

@@ -341,38 +341,63 @@ def check_overview(page,scope,touch=False):
  # and none outside it, is drawn as a point.
  in_view=page.evaluate("() => { const g=TauExplorer.graph,t=g.transform,k=t.k,r=g.visibleRect(.15); return TauExplorer.getUniverse().constellations.filter(c=>c.x+c.r+40/k>r.x&&c.x-c.r-40/k<r.x+r.w&&c.y+c.r+40/k>r.y&&c.y-c.r-40/k<r.y+r.h).length; }")
  record(scope+' overview draws every roadmap in view as a point',page.locator('.tau-constellation').count()==in_view and in_view>0 and page.locator('.tau-unmapped-node').count()==0)
- # A heading waits for room rather than overlap. A large chart holds every
- # subject heading; a phone-width chart may hold back up to a quarter of them
- # and a chart under 400px tall up to 40%, which reappear as the camera closes in.
- # Every area on the chart keeps its own heading; fields are named above them.
- headings=page.locator('.tau-label-galaxy').count();box=page.locator('#graph').bounding_box()
- areas=page.evaluate("() => { const g=TauExplorer.graph,t=g.transform; return TauExplorer.getUniverse().galaxies.filter(n=>{const x=n.x*t.k+t.x,y=n.y*t.k+t.y;return x>0&&x<g.width&&y>0&&y<g.height;}).length; }")
- allowed=math.ceil(areas*.4) if box['height']<400 else math.ceil(areas*.25) if box['width']<600 else math.ceil(areas*.1)
- record(scope+' every subject heading is drawn once, legibly, without overlap',headings>=areas-allowed and labels_are_clean(page) and names_are_unique(page))
- # Names in two tiers from the overview on, where the map has fields (the campaign's areas): fields in
- # capitals, and the areas inside them, while the areas' progress colours are in view. The published pages
- # group by arXiv category instead (scripts/arxiv_groups.py), in one tier: each category's name in capitals
- # over its identifier, which keeps arXiv's case (math.NT), or the name alone on a small chart.
- if debug(page)['fields']:
-  tiers=page.evaluate("""() => { const d=TauExplorer.graph.debugState(),inside=new Set(d.fields.flatMap(f=>f.galaxyIds));
-   const named=Array.from(document.querySelectorAll('.tau-label-galaxy')).map(e=>e.getAttribute('data-label-for'));
-   const dust=id=>{const e=document.querySelector('.tau-galaxy[data-node-id="'+CSS.escape(id)+'"] .tau-dust-far');return e?Number(e.getAttribute('opacity')):0;};
-   const fieldNames=Array.from(document.querySelectorAll('.tau-label-field text, .tau-label-galaxy.is-field text'));
-   return {fields:fieldNames.length,areas:named.filter(id=>inside.has(id)).length,
-           faded:named.filter(id=>dust(id)<.95).length,capitals:fieldNames.every(t=>t.textContent===t.textContent.toUpperCase())}; }""")
-  record(scope+' overview names fields over their areas, in two tiers',tiers['fields']>=2 and tiers['areas']>=3 and tiers['capitals'])
+ sectors=page.evaluate("TauExplorer.getUniverse().layout")=='sectors'
+ box=page.locator('#graph').bounding_box()
+ if sectors:
+  # The sector map (the published pages, scripts/arxiv_groups.py) names its arXiv categories from the overview on:
+  # a divided category as a field, the others as galaxies, each in capitals over its identifier, which keeps arXiv's
+  # case (math.NT); the areas of a divided category are named once the camera opens it (check_fields). A heading
+  # waits for room rather than overlap: on a large chart the smallest categories, up to a third of them, may wait;
+  # a phone shows part of the map at desktop scale, where every sector meets at Mathlib, and names at least six.
+  named=page.evaluate("""() => { const u=TauExplorer.getUniverse(),groups=new Map(TauExplorer.data.groups.map(g=>[g.id,g])),fields=new Map((TauExplorer.data.fields||[]).map(f=>['field:'+f.id,f]));
+   const lines=e=>Array.from(e.querySelectorAll('tspan').length?e.querySelectorAll('tspan'):e.querySelectorAll('text')).map(t=>t.textContent);
+   const wanted=[...u.fields.filter(f=>f.labelVisible).map(f=>f.id),...u.galaxies.filter(g=>g.headingVisible&&!g.fieldId).map(g=>g.id)];
+   const drawn=Array.from(document.querySelectorAll('.tau-label-field, .tau-label-galaxy')).map(e=>({id:e.getAttribute('data-label-for'),lines:lines(e)})).filter(d=>wanted.includes(d.id));
+   const code=id=>(fields.get(id)||{}).code||(groups.get(id)||{}).arxiv;
+   const dust=id=>{const e=document.querySelector('.tau-galaxy[data-node-id="'+CSS.escape(id)+'"] .tau-dust-far');return e?Number(e.getAttribute('opacity')):1;};
+   return {categories:[...groups.values()].every(g=>g.id==='unclassified'?!g.arxiv:/^math\\.[A-Z]{2}(\\/[a-z]+)?$/.test(g.id)&&g.id.startsWith(g.arxiv)),
+           wanted:wanted.length,drawn:drawn.length,faded:drawn.filter(d=>groups.has(d.id)&&dust(d.id)<.95).length,
+           cased:drawn.length>=3&&drawn.every(d=>d.lines[0]===d.lines[0].toUpperCase()&&(d.lines.length===1||!code(d.id)||d.lines.includes(code(d.id))))}; }""")
+  allowed=math.ceil(named['wanted']*.34) if box['width']>=600 and box['height']>=400 else named['wanted']-min(named['wanted'],6)
+  record(scope+' overview names each arXiv category once, in capitals over its identifier, without overlap',
+         named['categories'] and named['cased'] and named['drawn']>=named['wanted']-allowed and labels_are_clean(page) and names_are_unique(page))
+  record(scope+' named areas show their progress colours',named['faded']==0)
+  # The sector map opens on Mathlib at a scale that shows the nearer roadmaps; the reader explores the rest.
+  record(scope+' overview opens on Mathlib, the rest of the map to explore',page.evaluate("""() => { const g=TauExplorer.graph,t=g.debugState().transform,u=TauExplorer.getUniverse(),target=g.overviewTransform();
+   const cx=u.core.x*t.k+t.x,cy=u.core.y*t.k+t.y; return Math.abs(t.k-target.k)<1e-6*target.k+1e-9&&Math.abs(cx-g.width/2)<g.width*.1&&cy>0&&cy<g.height; }"""))
  else:
-  tiers=page.evaluate("""() => { const groups=new Map(TauExplorer.data.groups.map(g=>[g.id,g]));
-   const named=Array.from(document.querySelectorAll('.tau-label-galaxy')).map(e=>({group:groups.get(e.getAttribute('data-label-for')),lines:Array.from(e.querySelectorAll('tspan').length?e.querySelectorAll('tspan'):e.querySelectorAll('text')).map(t=>t.textContent)}));
-   const dust=id=>{const e=document.querySelector('.tau-galaxy[data-node-id="'+CSS.escape(id)+'"] .tau-dust-far');return e?Number(e.getAttribute('opacity')):0;};
-   return {categories:[...groups.values()].every(g=>g.id==='unclassified'?!g.arxiv:/^math\\.[A-Z]{2}$/.test(g.id)&&g.arxiv===g.id),
-           headings:named.length>=3&&named.every(n=>n.group&&n.lines[0]===n.lines[0].toUpperCase()&&(n.lines.length===1||!n.group.arxiv||n.lines.includes(n.group.arxiv))),
-           faded:named.filter(n=>dust(n.group.id)<.95).length}; }""")
-  record(scope+' overview names each arXiv category, in capitals over its identifier',tiers['categories'] and tiers['headings'])
- record(scope+' named areas show their progress colours',tiers['faded']==0)
- # A large chart shows the whole universe; a much smaller one keeps the
- # desktop scale with Mathlib in view, and the reader pans.
- record(scope+' overview shows the universe, or Mathlib at desktop scale',page.evaluate("""() => { const g=TauExplorer.graph,t=g.debugState().transform,box=document.querySelector('#graph').getBoundingClientRect(); const u=TauExplorer.getUniverse(),b=u.bounds; const x0=b.x*t.k+t.x,x1=(b.x+b.w)*t.k+t.x,y0=b.y*t.k+t.y,y1=(b.y+b.h)*t.k+t.y; const fits=x0>=-2&&x1<=box.width+2&&y0>=-2&&y1<=box.height+2; const target=g.overviewTransform(); const cx=u.core.x*t.k+t.x,cy=u.core.y*t.k+t.y; const atScale=Math.abs(t.k-target.k)<1e-6*target.k+1e-9&&cx>0&&cx<box.width&&cy>0&&cy<box.height; return fits||(!fits&&atScale&&box.width<900); }"""))
+  # A heading waits for room rather than overlap. A large chart holds every
+  # subject heading; a phone-width chart may hold back up to a quarter of them
+  # and a chart under 400px tall up to 40%, which reappear as the camera closes in.
+  # Every area on the chart keeps its own heading; fields are named above them.
+  headings=page.locator('.tau-label-galaxy').count();box=page.locator('#graph').bounding_box()
+  areas=page.evaluate("() => { const g=TauExplorer.graph,t=g.transform; return TauExplorer.getUniverse().galaxies.filter(n=>{const x=n.x*t.k+t.x,y=n.y*t.k+t.y;return x>0&&x<g.width&&y>0&&y<g.height;}).length; }")
+  allowed=math.ceil(areas*.4) if box['height']<400 else math.ceil(areas*.25) if box['width']<600 else math.ceil(areas*.1)
+  record(scope+' every subject heading is drawn once, legibly, without overlap',headings>=areas-allowed and labels_are_clean(page) and names_are_unique(page))
+  # Names in two tiers from the overview on, where the map has fields (the campaign's areas): fields in
+  # capitals, and the areas inside them, while the areas' progress colours are in view. The published pages
+  # group by arXiv category instead (scripts/arxiv_groups.py), in one tier: each category's name in capitals
+  # over its identifier, which keeps arXiv's case (math.NT), or the name alone on a small chart.
+  if debug(page)['fields']:
+   tiers=page.evaluate("""() => { const d=TauExplorer.graph.debugState(),inside=new Set(d.fields.flatMap(f=>f.galaxyIds));
+    const named=Array.from(document.querySelectorAll('.tau-label-galaxy')).map(e=>e.getAttribute('data-label-for'));
+    const dust=id=>{const e=document.querySelector('.tau-galaxy[data-node-id="'+CSS.escape(id)+'"] .tau-dust-far');return e?Number(e.getAttribute('opacity')):0;};
+    const fieldNames=Array.from(document.querySelectorAll('.tau-label-field text, .tau-label-galaxy.is-field text'));
+    return {fields:fieldNames.length,areas:named.filter(id=>inside.has(id)).length,
+            faded:named.filter(id=>dust(id)<.95).length,capitals:fieldNames.every(t=>t.textContent===t.textContent.toUpperCase())}; }""")
+   record(scope+' overview names fields over their areas, in two tiers',tiers['fields']>=2 and tiers['areas']>=3 and tiers['capitals'])
+  else:
+   tiers=page.evaluate("""() => { const groups=new Map(TauExplorer.data.groups.map(g=>[g.id,g]));
+    const named=Array.from(document.querySelectorAll('.tau-label-galaxy')).map(e=>({group:groups.get(e.getAttribute('data-label-for')),lines:Array.from(e.querySelectorAll('tspan').length?e.querySelectorAll('tspan'):e.querySelectorAll('text')).map(t=>t.textContent)}));
+    const dust=id=>{const e=document.querySelector('.tau-galaxy[data-node-id="'+CSS.escape(id)+'"] .tau-dust-far');return e?Number(e.getAttribute('opacity')):0;};
+    return {categories:[...groups.values()].every(g=>g.id==='unclassified'?!g.arxiv:/^math\\.[A-Z]{2}$/.test(g.id)&&g.arxiv===g.id),
+            headings:named.length>=3&&named.every(n=>n.group&&n.lines[0]===n.lines[0].toUpperCase()&&(n.lines.length===1||!n.group.arxiv||n.lines.includes(n.group.arxiv))),
+            faded:named.filter(n=>dust(n.group.id)<.95).length}; }""")
+   record(scope+' overview names each arXiv category, in capitals over its identifier',tiers['categories'] and tiers['headings'])
+  record(scope+' named areas show their progress colours',tiers['faded']==0)
+  # A large chart shows the whole universe; a much smaller one keeps the
+  # desktop scale with Mathlib in view, and the reader pans.
+  record(scope+' overview shows the universe, or Mathlib at desktop scale',page.evaluate("""() => { const g=TauExplorer.graph,t=g.debugState().transform,box=document.querySelector('#graph').getBoundingClientRect(); const u=TauExplorer.getUniverse(),b=u.bounds; const x0=b.x*t.k+t.x,x1=(b.x+b.w)*t.k+t.x,y0=b.y*t.k+t.y,y1=(b.y+b.h)*t.k+t.y; const fits=x0>=-2&&x1<=box.width+2&&y0>=-2&&y1<=box.height+2; const target=g.overviewTransform(); const cx=u.core.x*t.k+t.x,cy=u.core.y*t.k+t.y; const atScale=Math.abs(t.k-target.k)<1e-6*target.k+1e-9&&cx>0&&cx<box.width&&cy>0&&cy<box.height; return fits||(!fits&&atScale&&box.width<900); }"""))
  record(scope+' no links are drawn until something is selected',page.locator('.tau-link').count()==0 and page.evaluate("Array.from(document.querySelectorAll('.tau-route')).every(e=>Number(e.getAttribute('opacity'))===0)"))
  record(scope+' legend colours match the map encoding',legend_matches_map_encoding(page))
  # The headline figure and the scale under it are the map's own encoding, so they have to agree
@@ -408,9 +433,12 @@ def check_fields(page):
   shown=page.evaluate("Array.from(document.querySelectorAll('.tau-label-galaxy')).map(e=>e.getAttribute('data-label-for'))")
   fields=page.evaluate("Array.from(document.querySelectorAll('.tau-label-field')).map(e=>e.getAttribute('data-label-for'))")
   # Every field the layout draws is named, and its areas too, but for one in ten held back for room.
+  # On the sector map a field's areas are named once it is opened, below; the overview names the fields.
+  sectors=page.evaluate("TauExplorer.getUniverse().layout")=='sectors'
   record('Overview names each field above its areas, and the areas',len(d['fields'])>=2 and len(set(fields))==len(d['fields'])
-         and len(inside.intersection(shown))>=len(inside)-math.ceil(len(inside)*.1))
-  field='field:algebraic-number-theory'
+         and (sectors or len(inside.intersection(shown))>=len(inside)-math.ceil(len(inside)*.1)))
+  # The field with the most areas: the campaign's algebraic number theory, the atlas's number theory.
+  field=max(d['fields'],key=lambda f:(len(f['galaxyIds']),f['id']))['id']
   label=page.locator('.tau-label-field[data-label-for="%s"]'%field)
   label.hover();page.wait_for_timeout(300)
   members=next(f['galaxyIds'] for f in d['fields'] if f['id']==field)
@@ -446,9 +474,9 @@ def check_zoom_journey(page,scope):
  center_on(page,home)
  # One notch at a time: a three-notch jump can reach a large neighbouring area's zoom before this one's, and then
  # this one's constellations, without the camera ever being in this area alone (2026-10-21, the atlas's Curves area).
- record(scope+' wheel zoom enters a galaxy',wheel_until(page,'.tau-galaxy[data-node-id="%s"] ellipse'%home,-100,"TauExplorer.getState().view==='group' && TauExplorer.getState().id==='%s'"%home,attempts=24))
+ record(scope+' wheel zoom enters a galaxy',wheel_until(page,'.tau-galaxy[data-node-id="%s"] .tau-galaxy-disc'%home,-100,"TauExplorer.getState().view==='group' && TauExplorer.getState().id==='%s'"%home,attempts=24))
  page.wait_for_timeout(400)
- record(scope+' inside a galaxy its constellations resolve into stars',wheel_until(page,'.tau-galaxy[data-node-id="%s"] ellipse'%home,-200,"(() => { const d=TauExplorer.graph.debugState(); return d.visible.resolved>0 && d.visible.stars>0; })()",attempts=6))
+ record(scope+' inside a galaxy its constellations resolve into stars',wheel_until(page,'.tau-galaxy[data-node-id="%s"] .tau-galaxy-disc'%home,-200,"(() => { const d=TauExplorer.graph.debugState(); return d.visible.resolved>0 && d.visible.stars>0; })()",attempts=6))
  # One real wheel notch at a time (deltaY 100): a three-notch jump can carry the
  # camera past the roadmap straight into a star, which is allowed.
  record(scope+' wheel zoom enters a roadmap constellation',wheel_until(page,'[data-node-id='+json.dumps(ROADMAP)+'] .tau-hit',-100,"TauExplorer.getState().view==='roadmap' && TauExplorer.getState().id==="+json.dumps(ROADMAP)+" && !TauExplorer.getState().layer",attempts=24))
@@ -868,7 +896,7 @@ with sync_playwright() as p:
   mp.screenshot(path=str(ROOT/'preview-phone-narrow-overview.png'),animations='disabled')
   home=mp.evaluate("TauExplorer.data.roadmaps.find(r=>r.id==="+json.dumps(ROADMAP)+").group")
   center_on(mp,home)
-  record('Two-finger pinch enters a galaxy on a narrow phone',pinch_until(mp,touch,'.tau-galaxy[data-node-id="%s"] ellipse'%home,3,"TauExplorer.getState().view==='group' && TauExplorer.getState().id==='%s'"%home))
+  record('Two-finger pinch enters a galaxy on a narrow phone',pinch_until(mp,touch,'.tau-galaxy[data-node-id="%s"] .tau-galaxy-disc'%home,3,"TauExplorer.getState().view==='group' && TauExplorer.getState().id==='%s'"%home))
   record('Two-finger pinch enters a roadmap on a narrow phone',pinch_until(mp,touch,'[data-node-id='+json.dumps(ROADMAP)+'] .tau-hit',3,"TauExplorer.getState().view==='roadmap' && TauExplorer.getState().id==="+json.dumps(ROADMAP)+""))
   record('Two-finger pinch enters a star system on a narrow phone',pinch_until(mp,touch,'[data-node-id='+json.dumps(STAR)+'] .tau-hit',3,"TauExplorer.getState().layer==="+json.dumps(STAR)+""))
   mp.screenshot(path=str(ROOT/'preview-phone-star-system.png'),animations='disabled')
