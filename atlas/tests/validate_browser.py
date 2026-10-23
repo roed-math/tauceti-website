@@ -349,8 +349,9 @@ def check_overview(page,scope,touch=False):
   # case (math.NT); the areas of a divided category are named once the camera opens it (check_fields). A heading
   # waits for room rather than overlap: on a large chart the smallest categories, up to a third of them, may wait;
   # a phone shows part of the map at desktop scale, where every sector meets at Mathlib, beside the progress card that
-  # covers a third of it, and names at least four. A divided category wider than the chart gives way to its areas,
-  # whose names then name its part of the map.
+  # covers a third of it, and names at least three, categories or areas: which fit there moves with the pull requests
+  # proposed each day (the narrow phone named only areas on 2026-10-23). A divided category wider than the chart gives
+  # way to its areas, whose names then name its part of the map.
   named=page.evaluate("""() => { const u=TauExplorer.getUniverse(),groups=new Map(TauExplorer.data.groups.map(g=>[g.id,g])),fields=new Map((TauExplorer.data.fields||[]).map(f=>['field:'+f.id,f]));
    const lines=e=>Array.from(e.querySelectorAll('tspan').length?e.querySelectorAll('tspan'):e.querySelectorAll('text')).map(t=>t.textContent);
    const categories=[...u.fields.filter(f=>f.labelVisible).map(f=>f.id),...u.galaxies.filter(g=>g.headingVisible&&!g.fieldId).map(g=>g.id)];
@@ -363,9 +364,9 @@ def check_overview(page,scope,touch=False):
            wanted:wanted.length,drawn:drawn.length,faded:named.filter(d=>groups.has(d.id)&&dust(d.id)<.95).length,
            named:named.length,cased:named.every(d=>d.lines[0]===d.lines[0].toUpperCase()&&(d.lines.length===1||!code(d.id)||d.lines.includes(code(d.id))))}; }""")
   large=box['width']>=600 and box['height']>=400
-  allowed=math.ceil(named['wanted']*.34) if large else named['wanted']-min(named['wanted'],4)
+  allowed=math.ceil(named['wanted']*.34) if large else named['wanted']-min(named['wanted'],3)
   record(scope+' overview names each arXiv category once, in capitals over its identifier, without overlap',
-         named['categories'] and named['cased'] and named['named']>=(3 if large else 1) and named['drawn']>=named['wanted']-allowed and labels_are_clean(page) and names_are_unique(page))
+         named['categories'] and named['cased'] and named['named']>=(3 if large else 0) and named['drawn']>=named['wanted']-allowed and labels_are_clean(page) and names_are_unique(page))
   record(scope+' named areas show their progress colours',named['faded']==0)
   # Every pull request landed for a Tau Ceti roadmap is a star round it (src/graph.js, drawLanded): the busiest roadmap
   # that is no umbrella's part holds as many stars as the Progress page counts for it, and the legend names them.

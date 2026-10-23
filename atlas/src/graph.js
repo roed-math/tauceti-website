@@ -966,7 +966,7 @@
         const curve = (a, b, bend) => {
           const dx = b.x - a.x, dy = b.y - a.y, length = Math.max(1, Math.hypot(dx, dy));
           const mx = (a.x + b.x) / 2 - dy / length * bend, my = (a.y + b.y) / 2 + dx / length * bend;
-          return { path: `M${a.x},${a.y}Q${mx},${my} ${b.x},${b.y}`, mid: { x: (a.x + 2 * mx + b.x) / 4, y: (a.y + 2 * my + b.y) / 4 } };
+          return { path: `M${a.x},${a.y}Q${mx},${my} ${b.x},${b.y}`, mid: { x: (a.x + 2 * mx + b.x) / 4, y: (a.y + 2 * my + b.y) / 4 }, ends: [a.x, a.y, mx, my, b.x, b.y] };
         };
         if (activeNode.level === 'star') universe.starEdges.forEach((edge, index) => {
           if (edge.source !== activeNode.id && edge.target !== activeNode.id) return;
@@ -1000,6 +1000,19 @@
         if (activeNode.level === 'galaxy') this.layers.route.selectAll('path.tau-route').attr('opacity', d => d.source === activeNode.id || d.target === activeNode.id ? .6 : 0);
       }
       if (!activeNode || activeNode.level !== 'galaxy') this.layers.route.selectAll('path.tau-route').attr('opacity', 0);
+      // The wide invisible edge that picks a link out keeps clear of the two things it joins, by twelve pixels or by an
+      // opened roadmap's disc: it is drawn above the roadmaps, and from far out, where a roadmap is a point, it would
+      // cover the point, so that hovering it would flicker and clicking it would pick the link. It runs along the same
+      // curve, cut at both ends (the curve's blossom gives the piece between).
+      const clearance = id => { const node = this.universe && this.universe.byId.get(id);
+        return Math.max(node && node.level === 'constellation' && node.resolved ? node.r * 1.08 : (node && node.r) || 0, 12 / k); };
+      const blossom = (u, v, a, b, c) => (1 - u) * (1 - v) * a + ((1 - u) * v + u * (1 - v)) * b + u * v * c;
+      links.forEach(link => {
+        const [x0, y0, x1, y1, x2, y2] = link.ends, length = Math.max(1e-6, Math.hypot(x2 - x0, y2 - y0));
+        const s = Math.min(.45, clearance(link.source) / length), t = Math.max(.55, 1 - clearance(link.target) / length);
+        link.hit = `M${blossom(s, s, x0, x1, x2)},${blossom(s, s, y0, y1, y2)}Q${blossom(s, t, x0, x1, x2)},${blossom(s, t, y0, y1, y2)} `
+          + `${blossom(t, t, x0, x1, x2)},${blossom(t, t, y0, y1, y2)}`;
+      });
       if (this.selectedLinkId && !links.some(link => link.id === this.selectedLinkId)) this.selectedLinkId = null;
       const chosen = this.selectedLinkId, near = this.hoveredLinkId;
       const join = this.layers.link.selectAll('path.tau-link').data(links, d => d.id);
@@ -1017,9 +1030,14 @@
       hits.enter().append('path').attr('class', 'tau-link-hit').attr('vector-effect', 'non-scaling-stroke').attr('stroke-width', 14).attr('tabindex', 0).attr('role', 'button')
         .on('click', d => { d3.event.stopPropagation(); if (Date.now() < graph.suppressClicksUntil) return; graph.selectedLinkId = graph.selectedLinkId === d.id ? null : d.id; graph.scheduleRender(); })
         .on('keydown', d => { if (d3.event.key !== 'Enter' && d3.event.key !== ' ') return; d3.event.preventDefault(); graph.selectedLinkId = d.id; graph.scheduleRender(); })
-        .on('mouseenter', d => { if (!graph.isCoarse && !graph.pointerResting(d3.event)) { graph.hoveredLinkId = d.id; graph.scheduleRender(); } })
-        .on('mouseleave', () => { if (!graph.isCoarse) { graph.hoveredLinkId = null; graph.scheduleRender(); } })
-        .merge(hits).attr('d', d => d.path).attr('data-source', d => d.source).attr('data-target', d => d.target)
+        // A link is picked out only away from the roadmap it was shown for: its wide edge starts under the pointer.
+        .on('mousemove', d => {
+          if (graph.isCoarse || graph.pointerResting(d3.event)) return;
+          const next = graph.overHovered(d3.event) ? null : d.id;
+          if (next !== graph.hoveredLinkId) { graph.hoveredLinkId = next; graph.scheduleRender(); }
+        })
+        .on('mouseleave', () => { if (!graph.isCoarse) { graph.hoveredLinkId = null; if (!graph.keepsHover(d3.event)) graph.hoveredId = null; graph.scheduleRender(); } })
+        .merge(hits).attr('d', d => d.hit).attr('data-source', d => d.source).attr('data-target', d => d.target)
         .attr('aria-label', d => `${d.reference ? 'Related plans' : d.level === 'artefact' ? 'Needed by the paper' : 'Prerequisite'}: ${name(d.source)} to ${name(d.target)}`);
       this.renderLinkCard(links.find(link => link.id === chosen), name, k);
     }
@@ -1060,6 +1078,25 @@
       g.attr('transform', `translate(${x},${y})`);
     }
 
+    // Whether the pointer, leaving for event.relatedTarget, is still on the hovered object or on one of its links. A
+    // hovered roadmap's links are drawn above it, and their wide edges start at its centre: far out, where the roadmap is
+    // a point, they cover it at once, and without this the hover would end, the links go, and the hover begin again.
+    keepsHover(event) {
+      const to = event && event.relatedTarget, id = this.hoveredId;
+      if (!id || !to || !to.closest) return false;
+      if (to.classList && to.classList.contains('tau-link-hit')) return to.getAttribute('data-source') === id || to.getAttribute('data-target') === id;
+      const owner = to.closest('[data-node-id]');
+      return !!owner && owner.getAttribute('data-node-id') === id;
+    }
+
+    // Whether the pointer is over the hovered object, at least ten pixels round its centre.
+    overHovered(event) {
+      const node = this.hoveredId && this.universe ? this.universe.byId.get(this.hoveredId) : null;
+      if (!node || !event || !Number.isFinite(node.x)) return false;
+      const box = this.svg.node().getBoundingClientRect(), t = this.transform;
+      return Math.hypot(event.clientX - (box.left + node.x * t.k + t.x), event.clientY - (box.top + node.y * t.k + t.y)) <= Math.max((node.r || 0) * t.k, 10) + 2;
+    }
+
     // True while the pointer has not moved since the camera last travelled.
     pointerResting(event) {
       const at = this.pointerAtTravel;
@@ -1070,7 +1107,7 @@
       const graph = this;
       selection.on('click', d => { d3.event.stopPropagation(); if (Date.now() < graph.suppressClicksUntil) return; graph.options.onSelect?.(d); })
         .on('mouseenter', d => { if (!graph.isCoarse && !graph.pointerResting(d3.event)) { graph.hoveredId = d.id; graph.scheduleRender(); } })
-        .on('mouseleave', () => { if (!graph.isCoarse) { graph.hoveredId = null; graph.scheduleRender(); } })
+        .on('mouseleave', () => { if (!graph.isCoarse && !graph.keepsHover(d3.event)) { graph.hoveredId = null; graph.scheduleRender(); } })
         .on('focus', d => { graph.hoveredId = d.id; graph.scheduleRender(); }).on('blur', () => { graph.hoveredId = null; graph.scheduleRender(); })
         .on('keydown', d => { if (d3.event.key !== 'Enter' && d3.event.key !== ' ') return; d3.event.preventDefault(); d3.event.stopPropagation(); graph.options.onSelect?.(d); });
     }
