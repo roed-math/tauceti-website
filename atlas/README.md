@@ -11,7 +11,7 @@ The atlas also runs entirely offline. Download `index.html` and open it in a bro
 ## Explore
 
 - Mathlib is the sun at the centre. The farther out a subject or roadmap lies, the more theory must be built before its targets can be stated and proved.
-- Scroll or pinch toward a **subject** to see its **roadmap constellations**, toward a constellation to read its **layer stars**, and toward a star to discover its **orbiting mathematical planets**.
+- Scroll or pinch toward a **subject** to see its **roadmap constellations**, toward a constellation to read its **layer stars**, and open a star for its layer: its definitions, theorems and constructions are listed in its panel. (The explorer's own planned map, which is not published, draws them as **orbiting mathematical planets**; since 23 October 2026 the published pages stop at the stars.)
 - Tap or click a roadmap, star or planet to make the same journey directly. Zoom out or use the back control to return to the previous level.
 - Formula planets have short plain-text names; clicking them opens the typeset definition, theorem target or construction from the source. The details also list citations from the topic or layer and broader roadmap reading, with links back to the embedded source. Progress belongs to its layer star; planets do not carry independent completion claims.
 - The details panel explains the mathematics, tracked progress, prerequisites and consumers. The Links tab exposes the actual stage pairs behind dependencies.

@@ -157,6 +157,19 @@ def pick_planet(page, condition, pinned=None, preferred='()=>true'):
  }""", [pinned, condition, preferred, FORMULA_JS])
 
 
+def open_planet(page, planet_id, tap=False):
+ """Open a layer's definition or result as a reader does: by its planet where the map draws planets (the campaign
+ map), else by its entry under "Definitions and results" in the open layer's panel: the published pages stop at the
+ stars (since 2026-10-23)."""
+ target=page.locator(('[data-node-id="%s"] .tau-hit' if PLANETS else '#inspector-content [data-item-id="%s"]')%planet_id).first
+ target.tap() if tap else target.click()
+
+
+def first_planet(page, star):
+ """A layer's first definition or result: its first planet where planets are drawn, else the first its panel lists."""
+ return page.evaluate("([star, drawn]) => drawn ? TauExplorer.getUniverse().stars.find(s=>s.id===star).planetIds[0] : (TauExplorer.landmarks.find(l=>l.stageId===star)||{}).id",[star,PLANETS])
+
+
 def pick_formula_planet(page):
  """A formula planet, one with roadmap-level reading only while there is one."""
  return pick_planet(page, FORMULA_JS, FORMULA_PLANET, ROADMAP_READING_JS)
@@ -198,7 +211,7 @@ def run_reference_checks(page,browser):
  record('The atlas draws a planet with roadmap reading',bool(chosen))
  planet,owner=chosen['id'],chosen['roadmapId']
  page.evaluate("id => TauExplorer.openStage(id)",chosen['stageId']);page.wait_for_timeout(700)
- page.locator('[data-node-id="'+planet+'"] .tau-hit').click()
+ open_planet(page,planet)
  reading=page.locator('#inspector .planet-references')
  record('Planet references distinguish wider reading from an exact topic citation',reading.is_visible() and page.evaluate("id => {const item=TauExplorer.landmarks.find(x=>x.id===id),refs=TauExplorer.references.forLandmark(item);return !refs.direct.length&&!refs.layer.length&&refs.roadmap.length>0}",planet) and reading.locator('[data-reference-scope="direct"],[data-reference-scope="layer"]').count()==0 and reading.locator('[data-reference-scope="roadmap"] h4').inner_text()=='Roadmap reading')
  text=reading.inner_text()
@@ -228,7 +241,7 @@ def run_reference_checks(page,browser):
  # target in the roadmap. Its public paper link and local source stay separate.
  topic='tauceti:TauCetiRoadmap/CombinatorialHeegaardFloer#milestone-g-7::landmark:k-u-k-1csrgny'
  page.evaluate("TauExplorer.openStage('tauceti:TauCetiRoadmap/CombinatorialHeegaardFloer#milestone-g-7')");page.wait_for_timeout(700)
- page.locator('[data-node-id="'+topic+'"] .tau-hit').click()
+ open_planet(page,topic)
  direct=page.locator('.planet-references [data-reference-scope="direct"]')
  record('A TauCeti mathematical target exposes its explicit topic reference',direct.locator('h4').inner_text()=='For this topic' and 'Milnor conjecture' in direct.inner_text() and direct.locator('a[href="https://arxiv.org/abs/1011.5265"]').count()==1 and reference_sources_are_exact(page,topic))
  direct.locator('.reference-source').first.click()
@@ -240,7 +253,7 @@ def run_reference_checks(page,browser):
  cited=pick_planet(page,"item=>{const refs=TauExplorer.references.forLandmark(item);return !refs.direct.length&&refs.layer.length>0}",'AInfCohomology:AI.0::landmark:common-integral-perfectoid-ring-and-witt-v-1vm5fxh')
  record('The atlas draws a planet cited for its layer',bool(cited))
  page.evaluate("id => TauExplorer.openStage(id)",cited['stageId']);page.wait_for_timeout(700)
- page.locator('[data-node-id="'+cited['id']+'"] .tau-hit').click()
+ open_planet(page,cited['id'])
  layer=page.locator('.planet-references [data-reference-scope="layer"]')
  locators=page.evaluate("id => TauExplorer.references.forLandmark(TauExplorer.landmarks.find(x=>x.id===id)).layer.map(e=>(e.text||'').trim()).filter(Boolean)",cited['id'])
  record('Layer source locators are labelled separately from direct topic citations',layer.locator('h4').inner_text()=='For this layer' and len(locators)>0 and all(plain(t)[:40] in plain(layer.inner_text()) for t in locators) and page.locator('.planet-references [data-reference-scope="direct"]').count()==0)
@@ -248,7 +261,7 @@ def run_reference_checks(page,browser):
  empty=pick_planet(page,"item=>Object.values(TauExplorer.references.forLandmark(item)).every(items=>!items.length)",'AbelianSchemesAndArithmeticModuli:A1::landmark:relative-dimension-as-locally-constant-all-13bhoef')
  record('The atlas draws a planet without recorded references',bool(empty))
  page.evaluate("id => TauExplorer.openStage(id)",empty['stageId']);page.wait_for_timeout(700)
- page.locator('[data-node-id="'+empty['id']+'"] .tau-hit').click()
+ open_planet(page,empty['id'])
  record('A target without recorded references says so without invented reading',page.evaluate("id => Object.values(TauExplorer.references.forLandmark(TauExplorer.landmarks.find(x=>x.id===id))).every(items=>!items.length)",empty['id']) and page.locator('.planet-references .detail-note').inner_text()=='No bibliography is listed for this topic in the embedded roadmap.' and page.locator('.planet-references .planet-reference,.planet-references a,.planet-references .reference-source').count()==0)
 
  if not desktop_only:
@@ -262,7 +275,7 @@ def run_reference_checks(page,browser):
   record('The phone atlas draws the same kind of planet',bool(phone_choice))
   phone_planet=phone_choice['id']
   mp.evaluate("id => TauExplorer.openStage(id)",phone_choice['stageId']);mp.wait_for_timeout(800)
-  mp.locator('[data-node-id="'+phone_planet+'"] .tau-hit').tap()
+  open_planet(mp,phone_planet,tap=True)
   touch=mobile.new_cdp_session(mp)
   panel=mp.locator('#inspector-content');button=mp.locator('.planet-references .reference-source').first
   def reference_button_in_view():
@@ -335,7 +348,7 @@ def fit_all(page,touch=False):
 def check_overview(page,scope,touch=False):
  page.evaluate("TauExplorer.navigate({view:'all',id:null,layer:null,selected:null,origin:'all',activity:'all',unmapped:true,references:false})");page.wait_for_timeout(700)
  d=debug(page)
- record(scope+' universe holds every galaxy, roadmap, layer and planet',d['layout']=='universe' and d['counts']['galaxies']==BUILD['areasWithRoadmaps'] and d['counts']['constellations']==BUILD['roadmaps'] and d['counts']['stars']==BUILD.get('mathematicalStars',1594)-BUILD.get('sourceRefinements',0) and d['counts']['planets']>=3440-BUILD.get('hiddenPlanets',0))
+ record(scope+' universe holds every galaxy, roadmap, layer and planet',d['layout']=='universe' and d['counts']['galaxies']==BUILD['areasWithRoadmaps'] and d['counts']['constellations']==BUILD['roadmaps'] and d['counts']['stars']==BUILD.get('mathematicalStars',1594)-BUILD.get('sourceRefinements',0) and (d['counts']['planets']>=3440-BUILD.get('hiddenPlanets',0) if PLANETS else d['counts']['planets']==0))
  record(scope+' overview resolves no stars or planets and stays light',d['visible']['resolved']==0 and d['visible']['stars']==0 and d['visible']['planets']==0 and d['rendered']<600)
  # A phone shows part of the map at desktop scale: every roadmap in view,
  # and none outside it, is drawn as a point.
@@ -500,7 +513,8 @@ def check_zoom_journey(page,scope):
  record(scope+' wheel zoom enters a roadmap constellation',wheel_until(page,'[data-node-id='+json.dumps(ROADMAP)+'] .tau-hit',-100,"TauExplorer.getState().view==='roadmap' && TauExplorer.getState().id==="+json.dumps(ROADMAP)+" && !TauExplorer.getState().layer",attempts=24))
  record(scope+' constellation names and star names are legible and disjoint',labels_are_clean(page) and names_are_unique(page))
  record(scope+' wheel zoom enters a star system',wheel_until(page,'[data-node-id='+json.dumps(STAR)+'] .tau-hit',-300,"TauExplorer.getState().layer==="+json.dumps(STAR)+"",attempts=14))
- record(scope+' a star system shows its planets',page.locator('.tau-planet').count()>0 and page.locator('.tau-orbit').count()>0)
+ if PLANETS:record(scope+' a star system shows its planets',page.locator('.tau-planet').count()>0 and page.locator('.tau-orbit').count()>0)
+ else:record(scope+' a layer opened up draws its star and no planets',page.locator('.tau-planet').count()==0 and page.locator('[data-node-id='+json.dumps(STAR)+']').count()>0)
  page.screenshot(path=str(ROOT/('preview-'+scope.lower().replace(' ','-')+'-star-system.png')),animations='disabled')
  record(scope+' wheel zoom out returns to the roadmap',wheel_until(page,'#graph',300,"TauExplorer.getState().view==='roadmap' && !TauExplorer.getState().layer",attempts=14))
  record(scope+' wheel zoom out returns to the universe',wheel_until(page,'#graph',300,"TauExplorer.getState().view==='all'",attempts=20))
@@ -563,7 +577,7 @@ def check_click_journey(page,scope):
  page.screenshot(path=str(ROOT/('preview-'+scope.lower().replace(' ','-')+'-constellation.png')),animations='disabled')
  page.locator('[data-node-id='+json.dumps(STAR)+'] .tau-hit').click()
  page.wait_for_function("TauExplorer.getState().layer==="+json.dumps(STAR)+"");page.wait_for_timeout(500)
- record(scope+' clicking a star travels to its system and opens the layer',page.locator('#selection-kind').inner_text()=='Layer' and page.locator('.tau-planet').count()>0)
+ record(scope+' clicking a star travels to its system and opens the layer',page.locator('#selection-kind').inner_text()=='Layer' and (page.locator('.tau-planet').count()>0)==PLANETS)
  # Of the blueprint uses and restructure links into a layer, the map draws the four most used (its panel lists
  # them all), so promoted blueprints that cite this layer often leave some undrawn (2026-10-18 to 10-21).
  record(scope+' the selected star shows exactly its prerequisite and consumer links',page.locator('.tau-link').count()==page.evaluate("""star => {
@@ -571,15 +585,15 @@ def check_click_journey(page,scope):
    for (const e of edges) if (capped(e)) (into.get(e.target)||into.set(e.target,[]).get(e.target)).push(e);
    const drawn=new Set([...into.values()].flatMap(list=>list.sort((a,b)=>(b.uses||1)-(a.uses||1)||(a.source<b.source?-1:a.source>b.source?1:0)).slice(0,4)));
    return edges.filter(e=>(e.source===star||e.target===star)&&stars.has(e.source)&&stars.has(e.target)&&(!capped(e)||drawn.has(e))).length; }""",STAR))
- planet=page.evaluate("TauExplorer.getUniverse().stars.find(s=>s.id==="+json.dumps(STAR)+").planetIds[0]")
- page.locator('[data-node-id="'+planet+'"] .tau-hit').click()
+ planet=first_planet(page,STAR)
+ open_planet(page,planet)
  # A planet's mathematics is a roadmap landmark's description or, once a blueprint of its layer is promoted,
  # the blueprint's statement (the promotions waiting since 2026-10-09 make the test star's first planet one).
  try:
    page.wait_for_function("selector => [...document.querySelectorAll(selector)].some(e=>(e.offsetWidth||e.offsetHeight)&&e.innerText.trim().length>20)",arg=PLANET_MATH,timeout=10000);reads=True
  except Exception:
    reads=False
- record(scope+' clicking a planet reads its mathematics',reads and page.evaluate("TauExplorer.getState().layer==="+json.dumps(STAR)+""))
+ record(scope+(' clicking a planet reads its mathematics' if PLANETS else ' a definition in the layer\'s panel reads its mathematics'),reads and page.evaluate("TauExplorer.getState().layer==="+json.dumps(STAR)+""))
  page.screenshot(path=str(ROOT/('preview-'+scope.lower().replace(' ','-')+'-planet.png')),animations='disabled')
  page.locator('.cosmic-back').click();page.wait_for_function("!TauExplorer.getState().layer");page.wait_for_timeout(400)
  page.locator('.cosmic-back').click();page.wait_for_function("TauExplorer.getState().view==='group'");page.wait_for_timeout(400)
@@ -692,13 +706,17 @@ with sync_playwright() as p:
   page.route('http://**/*',abort_offline)
   page.route('https://**/*',abort_offline)
  page.goto(url,wait_until='load');page.wait_for_function('!!window.TauExplorer',timeout=15000)
+ # The published pages (Tau Ceti's roadmaps and those proposed) draw no planets: a layer's definitions and results are
+ # listed in its panel (src/app.js, PLANETS). The campaign map draws them.
+ PLANETS=page.evaluate("!['atlas','tauceti'].includes(TauExplorer.data.variant)")
  # The example star comes from the data: a layer the audit finds already built is not drawn.
  # The example roadmap comes from the data: the campaign's AnalyticNumberTheory while the map has it; on the atlas
  # (Tau Ceti's roadmaps and those proposed in pull requests, since 2026-10-21), the Tau Ceti roadmap with ten or more
  # layers that have planets and the most links to other roadmaps, since the click journey picks one out on the chart,
  # and no parent roadmap, since its back steps lead through the area (a sub-roadmap's lead through its parent).
  ROADMAP=page.evaluate("""() => { const u=TauExplorer.getUniverse(); if(u.byId.has('AnalyticNumberTheory'))return 'AnalyticNumberTheory';
-  const rich=new Map(),links=new Map(); for(const s of u.stars)if(s.planetIds.length)rich.set(s.constellationId,(rich.get(s.constellationId)||0)+1);
+  const lit=new Set(TauExplorer.landmarks.map(l=>l.stageId)),rich=new Map(),links=new Map();
+  for(const s of u.stars)if(s.planetIds.length||lit.has(s.id))rich.set(s.constellationId,(rich.get(s.constellationId)||0)+1);
   for(const e of TauExplorer.data.edges)for(const id of [e.source,e.target])links.set(id,(links.get(id)||0)+1);
   return TauExplorer.data.roadmaps.filter(r=>r.origin==='tauceti'&&!r.parentRoadmapId&&rich.get(r.id)>=10).map(r=>r.id)
    .sort((a,b)=>(links.get(b)||0)-(links.get(a)||0)||rich.get(b)-rich.get(a)||(a<b?-1:1))[0]; }""")
@@ -706,7 +724,7 @@ with sync_playwright() as p:
  PAPERS=page.evaluate("TauExplorer.data.papers.length>0")
  REFINED=page.evaluate("TauExplorer.data.stages.some(s=>s.expansion&&!s.expansion.blueprint)")
  PROPOSALS=page.evaluate("!!TauExplorer.data.proposals")
- STAR=page.evaluate("id => { const s=TauExplorer.getUniverse().stars.filter(x=>x.constellationId===id&&x.planetIds.length).map(x=>x.id).sort(); return s[0]; }",ROADMAP)
+ STAR=page.evaluate("id => { const lit=new Set(TauExplorer.landmarks.map(l=>l.stageId)),s=TauExplorer.getUniverse().stars.filter(x=>x.constellationId===id&&(x.planetIds.length||lit.has(x.id))).map(x=>x.id).sort(); return s[0]; }",ROADMAP)
  if overview_only:
   run_overview_checks(page,browser)
   record('No application exceptions',not errors)
@@ -765,8 +783,13 @@ with sync_playwright() as p:
  record('Planet label overrides refer to existing mathematical targets',page.evaluate("() => {const ids=new Set(TauLandmarks.build(TauExplorer.data).map(x=>x.id)),labels=TauExplorer.data.landmarkLabels;return Object.keys(labels).length>0 && Object.keys(labels).every(id=>ids.has(id))}"))
  named=pick_formula_planet(page)
  page.evaluate("id => TauExplorer.openStage(id)",named['stageId']);page.wait_for_timeout(700)
- page.locator('[data-node-id="'+named['id']+'"] .tau-hit').click();page.wait_for_timeout(400)
- record('Formula planet uses a short plain name in the map and SVG',page.evaluate(r"""id => {
+ if not PLANETS:
+  record('A formula target has a short plain name in its layer\'s panel',page.evaluate(r"""id => {
+   const item=TauExplorer.landmarks.find(x=>x.id===id),title=TauExplorer.presentation.landmarkTitle(item),entry=document.querySelector('#inspector-content [data-item-id="'+CSS.escape(id)+'"]');
+   return title.length<60&&!/[\\${}^_]/.test(title)&&!!entry&&entry.textContent.replace(/\s/g,'').includes(title.replace(/\s/g,''));
+  }""",named['id']))
+ open_planet(page,named['id']);page.wait_for_timeout(400)
+ if PLANETS:record('Formula planet uses a short plain name in the map and SVG',page.evaluate(r"""id => {
   const item=TauExplorer.landmarks.find(x=>x.id===id),title=TauExplorer.presentation.landmarkTitle(item),node=TauExplorer.getUniverse().byId.get(id);
   const svg=new DOMParser().parseFromString(TauExplorer.graph.exportSVG(),'image/svg+xml');
   const caption=Array.from(svg.querySelectorAll('[data-label-for]')).find(e=>e.getAttribute('data-label-for')===id)?.querySelector('text');
@@ -779,7 +802,7 @@ with sync_playwright() as p:
  page.screenshot(path=str(ROOT/'preview-formula-planet.png'),animations='disabled')
  # A layer with no recorded status: the example roadmap's if it has one, else the first such layer with planets of a
  # roadmap whose README the page carries (on the atlas a proposed roadmap's is read from GitHub, and this pass is offline).
- S=page.evaluate("() => { const u=TauExplorer.getUniverse(),blank=x=>x.planetIds.length&&TauExplorer.progress.stage(x.id).status==='unknown',carried=x=>!!(TauExplorer.data.roadmaps.find(r=>r.id===x.constellationId)||{}).readme; const star=u.stars.find(x=>x.constellationId==="+json.dumps(ROADMAP)+"&&blank(x))||u.stars.filter(x=>blank(x)&&carried(x)).sort((a,b)=>a.id<b.id?-1:1)[0]; window.__blankStage=star?star.id:null; return window.__blankStage; }")
+ S=page.evaluate("() => { const u=TauExplorer.getUniverse(),lit=new Set(TauExplorer.landmarks.map(l=>l.stageId)),blank=x=>(x.planetIds.length||lit.has(x.id))&&TauExplorer.progress.stage(x.id).status==='unknown',carried=x=>!!(TauExplorer.data.roadmaps.find(r=>r.id===x.constellationId)||{}).readme; const star=u.stars.find(x=>x.constellationId==="+json.dumps(ROADMAP)+"&&blank(x))||u.stars.filter(x=>blank(x)&&carried(x)).sort((a,b)=>a.id<b.id?-1:1)[0]; window.__blankStage=star?star.id:null; return window.__blankStage; }")
  record('A layer with no recorded status is on the map',bool(S))
  page.evaluate("TauExplorer.openStage(window.__blankStage)");page.wait_for_timeout(600)
  record('Central layer star exposes progress controls',page.get_by_label('Layer status',exact=True).is_visible())
@@ -887,12 +910,13 @@ with sync_playwright() as p:
   record('Phone tap enters a roadmap constellation',mp.evaluate("TauExplorer.graph.debugState().visible.stars>=10"))
   mp.locator('[data-node-id='+json.dumps(STAR)+'] .tau-hit').tap()
   mp.wait_for_function("TauExplorer.getState().layer==="+json.dumps(STAR)+"");mp.wait_for_timeout(600)
-  record('Phone tap enters a star system',mp.locator('.tau-planet').count()>0)
-  planet=mp.evaluate("TauExplorer.getUniverse().stars.find(s=>s.id==="+json.dumps(STAR)+").planetIds[0]")
-  pinch_gesture(mp,touch,'[data-node-id="'+planet+'"] .tau-hit',1.12)
-  record('Phone pinch over a planet does not open it',mp.evaluate("TauExplorer.getState().selected==="+json.dumps(STAR)+""))
-  mp.wait_for_timeout(800)
-  mp.locator('[data-node-id="'+planet+'"] .tau-hit').tap()
+  record('Phone tap enters a star system',(mp.locator('.tau-planet').count()>0)==PLANETS and mp.locator('#selection-kind').inner_text()=='Layer')
+  planet=first_planet(mp,STAR)
+  if PLANETS:
+   pinch_gesture(mp,touch,'[data-node-id="'+planet+'"] .tau-hit',1.12)
+   record('Phone pinch over a planet does not open it',mp.evaluate("TauExplorer.getState().selected==="+json.dumps(STAR)+""))
+   mp.wait_for_timeout(800)
+  open_planet(mp,planet,tap=True)
   try:
    mp.locator(PLANET_MATH).first.wait_for(state='visible',timeout=10000);opened=True
   except Exception:
@@ -928,8 +952,7 @@ with sync_playwright() as p:
   center_on(mp,ROADMAP)
   mp.locator('[data-node-id='+json.dumps(ROADMAP)+'] .tau-hit').tap();mp.wait_for_function("TauExplorer.getState().view==='roadmap'");mp.wait_for_timeout(500)
   mp.locator('[data-node-id='+json.dumps(STAR)+'] .tau-hit').tap();mp.wait_for_function("TauExplorer.getState().layer==="+json.dumps(STAR)+"");mp.wait_for_timeout(500)
-  planet=mp.evaluate("TauExplorer.getUniverse().stars.find(s=>s.id==="+json.dumps(STAR)+").planetIds[0]")
-  mp.locator('[data-node-id="'+planet+'"] .tau-hit').tap()
+  open_planet(mp,first_planet(mp,STAR),tap=True)
   try:
    mp.locator(PLANET_MATH).first.wait_for(state='visible',timeout=10000);opened=True
   except Exception:
@@ -944,7 +967,7 @@ with sync_playwright() as p:
   mp.set_viewport_size({'width':375,'height':812});mp.wait_for_timeout(500)
   phone_named=pick_formula_planet(mp)
   mp.evaluate("id => TauExplorer.openStage(id)",phone_named['stageId']);mp.wait_for_timeout(700)
-  mp.locator('[data-node-id="'+phone_named['id']+'"] .tau-hit').tap();mp.wait_for_timeout(400)
+  open_planet(mp,phone_named['id'],tap=True);mp.wait_for_timeout(400)
   formula=mp.locator('.landmark-description math').first
   reading=mp.locator('#inspector-content');reading_box=reading.bounding_box();formula_box=formula.bounding_box()
   if formula_box and formula_box['y']+formula_box['height']>reading_box['y']+reading_box['height']:
@@ -967,8 +990,7 @@ with sync_playwright() as p:
    center_on(sp,ROADMAP)
    sp.locator('[data-node-id='+json.dumps(ROADMAP)+'] .tau-hit').tap();sp.wait_for_function("TauExplorer.getState().view==='roadmap'");sp.wait_for_timeout(600)
    sp.locator('[data-node-id='+json.dumps(STAR)+'] .tau-hit').tap();sp.wait_for_function("TauExplorer.getState().layer==="+json.dumps(STAR)+"");sp.wait_for_timeout(600)
-   planet=sp.evaluate("TauExplorer.getUniverse().stars.find(s=>s.id==="+json.dumps(STAR)+").planetIds[0]")
-   sp.locator('[data-node-id="'+planet+'"] .tau-hit').tap()
+   open_planet(sp,first_planet(sp,STAR),tap=True)
    try:
     sp.locator(PLANET_MATH).first.wait_for(state='visible',timeout=10000);opened=True
    except Exception:

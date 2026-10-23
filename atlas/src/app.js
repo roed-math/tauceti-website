@@ -142,12 +142,16 @@ function ascend(){
  navigate({view:'all',id:null,layer:null,selected:null,tab:'overview'});
 }
 let universe=null,universeKey='',suppressFocus=false,lastCameraTarget='';
+// The published pages (Tau Ceti's roadmaps, and those proposed) stop at the stars, a roadmap's layers: a layer's
+// definitions and results are listed in its panel rather than drawn as planets round it. The campaign map keeps them.
+const PLANETS=!['atlas','tauceti'].includes(DATA.variant);
 function universeInput(){
  const roadmaps=DATA.roadmaps.filter(permitted),gaps=visibleOpportunities(),ids=new Set(roadmaps.map(r=>r.id));
  const constellations=[],starMap=new Map(),planetMap=new Map(),starEdges=[];
  for(const r of roadmaps){const p=progress.roadmap(r.id),starIds=mathStages(r);
   constellations.push({id:r.id,galaxyId:r.group,label:shortTitle(r.title),starIds,distance:DATA.roadmapDistances?.roadmaps?.[r.id]?.distance??DATA.roadmapClassification?.roadmaps?.[r.id]?.distance??null,origin:r.origin||'campaign',progress:aggregateProgress(p),progressLabel:aggregateProgressLabel(p),parentRoadmapId:r.parentRoadmapId||null});
   for(const id of starIds){const sp=progress.stage(id),parent=stages.get(id)?.parentStageId;starMap.set(id,{label:stageTitle(id),progress:stageProgress(sp),progressLabel:labels[sp.status]||'',top:!parent||!starIds.includes(parent)});
+   if(!PLANETS){planetMap.set(id,[]);continue;}
    const planets=(stageLandmarks.get(id)||[]).map(item=>({id:item.id,label:landmarkTitle(item),kind:['definition','theorem'].includes(item.kind)?item.kind:'construction',refinement:false,summary:plainExcerpt(TauPresentation.landmarkDescription(item)),moons:[]}));
    for(const rid of (stageRefinements.get(id)||[]).filter(isMathematicalStage)){const x=stages.get(rid).expansion,kind=x.kind;planets.push({id:rid,label:stageTitle(rid),kind:['definition','construction','theorem','lemma','comparison','application'].includes(kind)?kind:'construction',refinement:true,summary:plainExcerpt(x.statement),
     moons:[...(x.hypotheses||[]).map(t=>({kind:'hypothesis',text:t})),...(x.proofSteps||[]).map((t,i)=>({kind:'step',text:t,index:i+1})),...(x.acceptance||[]).map(t=>({kind:'check',text:t}))]});}
@@ -164,7 +168,7 @@ function universeInput(){
  const drawnBlueprint=new Set(),usesByLayer=new Map();for(const e of DATA.stageEdges)if(capped(e)){if(!usesByLayer.has(e.target))usesByLayer.set(e.target,[]);usesByLayer.get(e.target).push(e);}
  for(const list of usesByLayer.values())list.sort((a,b)=>(b.uses||1)-(a.uses||1)||(a.source<b.source?-1:a.source>b.source?1:0)).slice(0,4).forEach(e=>drawnBlueprint.add(e));
  for(const e of DATA.stageEdges)if(starMap.has(e.source)&&starMap.has(e.target)&&!(capped(e)&&!drawnBlueprint.has(e)))starEdges.push({source:e.source,target:e.target});
- const planetEdges=DATA.stageEdges.filter(e=>stages.get(e.source)?.expansion&&stages.get(e.target)?.expansion&&stages.get(e.source).parentStageId===stages.get(e.target).parentStageId).map(e=>({source:e.source,target:e.target}));
+ const planetEdges=!PLANETS?[]:DATA.stageEdges.filter(e=>stages.get(e.source)?.expansion&&stages.get(e.target)?.expansion&&stages.get(e.source).parentStageId===stages.get(e.target).parentStageId).map(e=>({source:e.source,target:e.target}));
  const constellationEdges=DATA.edges.filter(e=>ids.has(e.source)&&ids.has(e.target)).map(e=>({source:e.source,target:e.target,count:e.stageCount||1}));
  const present=id=>ids.has(id)||gaps.some(a=>a.id===id);
  const groupsWithProgress=allGroups.map(g=>{const p=summarize(roadmaps.filter(r=>r.group===g.id));return {...g,progress:aggregateProgress(p),progressLabel:aggregateProgressLabel(p,'layers complete')};});
@@ -228,8 +232,8 @@ function renderContext(){
  if(!['all','subjects'].includes(state.view)){const nav=el('nav','cosmic-navigation');nav.setAttribute('aria-label','Zoom navigation');nav.append(btn(state.layer?'← Roadmap':state.view==='group'?'← Atlas':'← Area',ascend,'cosmic-back'));actions.append(nav);}
  if(['roadmap','collection'].includes(state.view)&&maps.has(state.id)&&!state.layer)actions.append(btn('Full roadmap',()=>openReader(state.id),'secondary'));
  const label=el('label','toggle links-toggle'),input=document.createElement('input');input.type='checkbox';input.checked=state.references;input.addEventListener('change',()=>navigate({references:input.checked},true));label.append(input,document.createTextNode('Show related-plan links'));actions.append(label);
- if(state.layer){$('edge-legend').innerHTML='<span class="kind-legend"><span><svg class="kind-icon" viewBox="-7 -7 14 14" aria-hidden="true"><circle r="5" fill="#6f9fcf"/><path d="M-2.75,-1.75Q-1.5,-3.75 .25,-2.75Q1.5,-2 .5,-.75Q-.5,.25 -1.75,-.25Q-3.5,0 -2.75,-1.75ZM1,1.25Q2.75,.5 3.25,1.75Q3,3.25 1.5,3.5Q.25,3 1,1.25Z" fill="#9cc59a"/></svg>Definition or construction</span><span><svg class="kind-icon" viewBox="-9 -7 18 14" aria-hidden="true"><g transform="rotate(-18)"><path d="M-8.2,0A8.2,2 0 0,1 8.2,0" fill="none" stroke="#ece0bf" stroke-width="1.1"/></g><circle r="4.7" fill="#d9c391"/><g transform="rotate(-18)"><path d="M-8.2,0A8.2,2 0 0,0 8.2,0" fill="none" stroke="#ece0bf" stroke-width="1.1"/></g></svg>Theorem or result</span></span>';}else $('edge-legend').textContent=state.layer?'':state.view==='roadmap'?'Select a star to see its prerequisites and consumers, and a link to see what it joins':'Select an object to see its links, and a link to see what it joins';
- $('graph-hint').textContent=state.layer?'Click a planet to read it · zoom out to return':'Scroll or pinch to zoom · drag to pan · click to open';
+ if(state.layer&&PLANETS){$('edge-legend').innerHTML='<span class="kind-legend"><span><svg class="kind-icon" viewBox="-7 -7 14 14" aria-hidden="true"><circle r="5" fill="#6f9fcf"/><path d="M-2.75,-1.75Q-1.5,-3.75 .25,-2.75Q1.5,-2 .5,-.75Q-.5,.25 -1.75,-.25Q-3.5,0 -2.75,-1.75ZM1,1.25Q2.75,.5 3.25,1.75Q3,3.25 1.5,3.5Q.25,3 1,1.25Z" fill="#9cc59a"/></svg>Definition or construction</span><span><svg class="kind-icon" viewBox="-9 -7 18 14" aria-hidden="true"><g transform="rotate(-18)"><path d="M-8.2,0A8.2,2 0 0,1 8.2,0" fill="none" stroke="#ece0bf" stroke-width="1.1"/></g><circle r="4.7" fill="#d9c391"/><g transform="rotate(-18)"><path d="M-8.2,0A8.2,2 0 0,0 8.2,0" fill="none" stroke="#ece0bf" stroke-width="1.1"/></g></svg>Theorem or result</span></span>';}else $('edge-legend').textContent=state.layer?(PLANETS?'':'The layer\'s definitions and results are listed in its panel'):state.view==='roadmap'?'Select a star to see its prerequisites and consumers, and a link to see what it joins':'Select an object to see its links, and a link to see what it joins';
+ $('graph-hint').textContent=state.layer?(PLANETS?'Click a planet to read it · zoom out to return':'Zoom out to return'):'Scroll or pinch to zoom · drag to pan · click to open';
 }
 
 function renderBreadcrumbs(){
@@ -295,7 +299,7 @@ function renderConnections(box,r){
    for(const citation of ref.citations.slice(0,4))card.append(el('p','detail-note',`${citation.label} · source line ${citation.sourceLine}`));
    card.append(btn('Read linked roadmap',()=>openReader(other),'secondary'));box.append(card);}}
 }
-function landmarkLink(box,landmark){const button=btn('',()=>openLandmark(landmark.id),'item-link');button.append(el('span','landmark-kind',landmark.kind),el('span','',landmarkTitle(landmark)));box.append(button);}
+function landmarkLink(box,landmark){const button=btn('',()=>openLandmark(landmark.id),'item-link');button.dataset.itemId=landmark.id;button.append(el('span','landmark-kind',landmark.kind),el('span','',landmarkTitle(landmark)));box.append(button);}
 function openReference(entry,roadmap){
  const owner=DATA.roadmaps.find(r=>r.sourcePath===entry.sourcePath)||DATA.documents?.find(d=>d.sourcePath===entry.sourcePath)||roadmap;
  openReader(owner.id);
@@ -334,7 +338,7 @@ function renderInspector(){const id=state.selected,changed=inspectedId!==id,box=
  if(state.tab==='links')renderConnections(box,r);
 
  return;}
- if(landmarks.has(id)){const landmark=landmarks.get(id),stage=stages.get(landmark.stageId),r=maps.get(landmark.roadmapId);$('selection-kind').textContent=landmark.kind.charAt(0).toUpperCase()+landmark.kind.slice(1)+' · planet';detailHeader(box,landmarkTitle(landmark),shortTitle(r.title),'#a8c8df');box.append(el('span','landmark-kind',landmark.kind));const text=el('div','md-content landmark-description');text.append(TauMarkdown.render(TauPresentation.landmarkDescription(landmark),{basePath:landmark.sourcePath}));box.append(text);renderPlanetReferences(box,landmark,r);section(box,'In this layer');box.append(btn(stageTitle(stage.id),()=>openStage(stage.id),'item-link'),el('p','detail-note','This is a target named in the roadmap. Progress is recorded for its parent layer.'),btn('Read full roadmap',()=>openReader(r.id),'secondary'));return;}
+ if(landmarks.has(id)){const landmark=landmarks.get(id),stage=stages.get(landmark.stageId),r=maps.get(landmark.roadmapId);$('selection-kind').textContent=landmark.kind.charAt(0).toUpperCase()+landmark.kind.slice(1)+(PLANETS?' · planet':'');detailHeader(box,landmarkTitle(landmark),shortTitle(r.title),'#a8c8df');box.append(el('span','landmark-kind',landmark.kind));const text=el('div','md-content landmark-description');text.append(TauMarkdown.render(TauPresentation.landmarkDescription(landmark),{basePath:landmark.sourcePath}));box.append(text);renderPlanetReferences(box,landmark,r);section(box,'In this layer');box.append(btn(stageTitle(stage.id),()=>openStage(stage.id),'item-link'),el('p','detail-note','This is a target named in the roadmap. Progress is recorded for its parent layer.'),btn('Read full roadmap',()=>openReader(r.id),'secondary'));return;}
  if(declarations.has(id)){renderDeclaration(box,declarations.get(id));return;}
  if(stages.has(id)&&stages.get(id).expansion){renderRefinement(box,stages.get(id));return;}
  if(stages.has(id)){
