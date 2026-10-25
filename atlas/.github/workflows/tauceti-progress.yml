@@ -25,6 +25,7 @@ concurrency:
 
 permissions:
   contents: write
+  issues: write  # the issue that says the scheduled update failed, and closes once one succeeds
 
 jobs:
   refresh:
@@ -78,3 +79,28 @@ jobs:
             publish
           done
           exit 1
+      # A failed update must not go unnoticed: from 2026-10-23 evening to 2026-10-25 every run failed a heading
+      # check on the new roadmaps and nothing was published. A failed run opens (or adds to) one issue, which
+      # GitHub mails to the repository's owner; the next run that succeeds closes it.
+      - name: Say so when the update failed
+        if: failure()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          title="Atlas: the scheduled update failed"
+          url="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          open=$(gh issue list -R "$GITHUB_REPOSITORY" --state open --search "\"$title\" in:title" --json number --jq '.[0].number')
+          if [ -n "$open" ]; then
+            gh issue comment "$open" -R "$GITHUB_REPOSITORY" --body "Failed again: $url"
+          else
+            gh issue create -R "$GITHUB_REPOSITORY" --title "$title" --body "The atlas was not updated: $url (see its failed step). Nothing is published until a run succeeds."
+          fi
+      - name: Close the failure issue once an update succeeds
+        if: success()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          title="Atlas: the scheduled update failed"
+          for n in $(gh issue list -R "$GITHUB_REPOSITORY" --state open --search "\"$title\" in:title" --json number --jq '.[].number'); do
+            gh issue close "$n" -R "$GITHUB_REPOSITORY" --comment "Updated again: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          done

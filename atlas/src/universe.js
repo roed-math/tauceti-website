@@ -199,7 +199,11 @@
       galaxy.hubRadius = radii.slice().sort((a, b) => a - b)[Math.floor(radii.length / 2)];
       wedgeBounds(galaxy);
       galaxy.outline = wedgePath(galaxy.r0, galaxy.r1, galaxy.a0, galaxy.a1);
-      galaxy.labelSpots = spotsAlong((galaxy.a0 + galaxy.a1) / 2, galaxy.r1 + 30, galaxy.r0 - 30, galaxy.a1 - galaxy.a0);
+      // From its outer end inwards; then, as a last resort when the middle of the map is full, a little beyond its
+      // outer end, still on its middle line, where the map is open: the crowded upper half of the overview had ten
+      // categories waiting for a name on 2026-10-25, functional analysis (16 roadmaps) among them.
+      galaxy.labelSpots = [...spotsAlong((galaxy.a0 + galaxy.a1) / 2, galaxy.r1 + 30, galaxy.r0 - 30, galaxy.a1 - galaxy.a0),
+        ...spotsAlong((galaxy.a0 + galaxy.a1) / 2, galaxy.r1 + 1500, galaxy.r1 + 270, 0).reverse()];
     });
   }
 
