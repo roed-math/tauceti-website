@@ -206,14 +206,15 @@
     });
     galaxies.forEach(galaxy => {
       const members = constellationsOf(galaxy), radii = members.map(c => Math.hypot(c.x, c.y));
-      // With the Mathlib disk, every sector starts at its rim, so the disk ends where the sectors begin (the user,
-      // 2026-10-26); without it, a little inside its nearest roadmap.
-      galaxy.r0 = Number.isFinite(rim) ? rim : Math.max(CORE_RADIUS * 2.4, Math.min(...radii.map((r, i) => r - members[i].r)) - 60);
+      galaxy.r0 = Math.max(CORE_RADIUS * 2.4, Math.min(...radii.map((r, i) => r - members[i].r)) - 60);
+      // With the Mathlib disk, a sector's tint and dust start at the disk's rim, so the disk ends where the sectors begin
+      // (the user, 2026-10-26). Only the drawing: the camera frames a sector, and finds where it is, by its roadmaps (r0).
+      galaxy.t0 = Number.isFinite(rim) ? rim : galaxy.r0;
       galaxy.r1 = Math.max(...radii.map((r, i) => r + members[i].r)) + 60;
       galaxy.hubRadius = radii.slice().sort((a, b) => a - b)[Math.floor(radii.length / 2)];
       wedgeBounds(galaxy);
       [galaxy.b0, galaxy.b1] = span.get(galaxy.id) || [galaxy.a0, galaxy.a1];
-      galaxy.outline = wedgePath(galaxy.r0, galaxy.r1, galaxy.b0, galaxy.b1);
+      galaxy.outline = wedgePath(galaxy.t0, galaxy.r1, galaxy.b0, galaxy.b1);
       // From its outer end inwards; then, as a last resort when the middle of the map is full, a little beyond its
       // outer end, still on its middle line, where the map is open: the crowded upper half of the overview had ten
       // categories waiting for a name on 2026-10-25, functional analysis (16 roadmaps) among them.
@@ -257,7 +258,7 @@
   function sectorDust(galaxy, members) {
     let seed = hash(galaxy.label + '|dust') || 1;
     const random = () => { seed = (seed + 0x6D2B79F5) >>> 0; let t = seed; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
-    const inside = (x, y) => { let angle = Math.atan2(y, x); while (angle < galaxy.b0) angle += Math.PI * 2; const radius = Math.hypot(x, y); return angle <= galaxy.b1 && radius >= galaxy.r0 && radius <= galaxy.r1; };
+    const inside = (x, y) => { let angle = Math.atan2(y, x); while (angle < galaxy.b0) angle += Math.PI * 2; const radius = Math.hypot(x, y); return angle <= galaxy.b1 && radius >= galaxy.t0 && radius <= galaxy.r1; };
     const count = Math.max(320, Math.min(900, 240 + 18 * galaxy.count)), points = [];
     let guard = 0;
     while (points.length < count && guard++ < count * 6) {
@@ -266,7 +267,7 @@
         const x = c.x + Math.cos(angle) * spread, y = c.y + Math.sin(angle) * spread, shine = random();
         if (inside(x, y)) points.push({ x, y, radial: spread / (c.r * 3), cls: spread < c.r * 1.8 && shine > .35 ? 2 : shine > .5 ? 1 : 0 });
       } else {
-        const radius = Math.sqrt(galaxy.r0 * galaxy.r0 + random() * (galaxy.r1 * galaxy.r1 - galaxy.r0 * galaxy.r0)), angle = galaxy.b0 + random() * (galaxy.b1 - galaxy.b0);
+        const radius = Math.sqrt(galaxy.t0 * galaxy.t0 + random() * (galaxy.r1 * galaxy.r1 - galaxy.t0 * galaxy.t0)), angle = galaxy.b0 + random() * (galaxy.b1 - galaxy.b0);
         points.push({ x: Math.cos(angle) * radius, y: Math.sin(angle) * radius, radial: 1, cls: random() > .72 ? 1 : 0 });
       }
     }

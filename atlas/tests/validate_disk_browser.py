@@ -55,8 +55,10 @@ with sync_playwright() as p:
         record(scope + ': each sector\'s tint reaches the lines either side of it, with no empty strip along them', page.evaluate("""() => {
           const u = TauExplorer.getUniverse(), rules = u.guides.rules.map(r => r.angle), near = a => rules.some(r => Math.abs(Math.atan2(Math.sin(a - r), Math.cos(a - r))) < 1e-6);
           return u.galaxies.every(g => near(g.b0) && near(g.b1)); }"""))
-        record(scope + ': every sector starts where the disk ends', page.evaluate("""() => {
-          const u = TauExplorer.getUniverse(); return u.galaxies.every(g => g.r0 === u.disk.outer); }"""))
+        # The tint only: the camera frames a sector by its roadmaps. Moving the sector itself to the rim made a phone's
+        # pinch into a roadmap fail on GitHub's runners (2026-10-26).
+        record(scope + ': every sector\'s tint starts where the disk ends, and the camera still frames it by its roadmaps', page.evaluate("""() => {
+          const u = TauExplorer.getUniverse(); return u.galaxies.every(g => g.t0 === u.disk.outer) && u.galaxies.some(g => g.r0 > g.t0 + 100); }"""))
         record(scope + ': the map\'s sector rules start where the live map\'s do', page.evaluate("""() => {
           const g = TauExplorer.graph, inner = g.universe.guides.inner;
           return [...document.querySelectorAll('line.tau-sector-rule')].every(l => Math.abs(Math.hypot(+l.getAttribute('x1'), +l.getAttribute('y1')) - inner) < 1); }"""))
