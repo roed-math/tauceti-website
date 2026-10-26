@@ -189,10 +189,27 @@ def finer_areas(roadmaps: list, code: str, spec: dict) -> list:
     return parts if len(parts) > 1 else []
 
 
-def sectors(galaxies: list) -> None:
+def place_area(area: str | None, ids) -> str | None:
+    """The galaxy a Mathlib area (math.GN, math.NT/analytic) falls in: its own when the map has it; else, for a finer
+    area, its category's catch-all area, else the category itself; else none."""
+    if not area:
+        return None
+    if area in ids:
+        return area
+    code = area.split("/")[0]
+    return next((gid for gid in (f"{code}/other", code) if gid in ids), None)
+
+
+def sectors(galaxies: list, mathlib: dict | None = None) -> None:
     """Give each galaxy its sector: [start, end] in degrees clockwise round Mathlib, contiguous and in order, a share
-    that grows with its roadmaps, with a wider gap between categories than between the areas of one."""
+    that grows with its roadmaps, with a wider gap between categories than between the areas of one. Given the Mathlib
+    disk's items in each galaxy (mathlib), the roadmaps and Mathlib share the circle half each, so that one division
+    serves the disk round the sun and the map beyond it (the user, 2026-10-26)."""
     weight = {galaxy["id"]: len(galaxy["roadmapIds"]) ** .85 + 1 for galaxy in galaxies}
+    if mathlib:
+        items = {galaxy["id"]: mathlib.get(galaxy["id"], 0) ** .85 + 1 for galaxy in galaxies}
+        roadmaps, disk = sum(weight.values()), sum(items.values())
+        weight = {gid: weight[gid] / roadmaps + items[gid] / disk for gid in weight}
     gaps = [0.0] + [AREA_GAP if b.get("field") and b.get("field") == a.get("field") else FIELD_GAP for a, b in zip(galaxies, galaxies[1:])]
     unit = (360 - sum(gaps) - FIELD_GAP) / sum(weight.values())
     angle = START
@@ -204,13 +221,16 @@ def sectors(galaxies: list) -> None:
         angle += width
 
 
-def group_by_arxiv(atlas: dict, declared: dict, areas: dict | None = None, subareas: dict | None = None) -> dict:
+def group_by_arxiv(atlas: dict, declared: dict, areas: dict | None = None, subareas: dict | None = None,
+                   also: frozenset = frozenset(), mathlib: dict | None = None) -> dict:
     """Replace the atlas's subject galaxies with the arXiv categories, the largest divided into finer areas, and move
     every roadmap into its own.
 
     declared maps a roadmap id, or the id a folder off the map would have, to the category its metadata.toml
-    declares; areas is data/tauceti-arxiv-areas.json's categories, and subareas data/arxiv-subareas.json.
-    Returns {galaxy: roadmaps}."""
+    declares; areas is data/tauceti-arxiv-areas.json's categories, and subareas data/arxiv-subareas.json. The
+    categories in also join the map even with no roadmaps (the Mathlib disk's, scripts/disk_layout.py), with no
+    distance. mathlib gives the disk's items in each of its areas; the sectors then share the circle between the
+    roadmaps and Mathlib (sectors()). Returns {galaxy: roadmaps}."""
     chosen = categories_of(atlas, declared, area_categories(areas or {}))
     names = {**{code: name for code, (name, _) in CATEGORIES.items()}, UNCLASSIFIED: UNCLASSIFIED_GROUP[0]}
     descriptions = {**{code: text for code, (_, text) in CATEGORIES.items()}, UNCLASSIFIED: UNCLASSIFIED_GROUP[1]}
@@ -230,7 +250,7 @@ def group_by_arxiv(atlas: dict, declared: dict, areas: dict | None = None, subar
         record.update(arxiv=code, arxivBasis=basis, rationale=rationale)
     mean = lambda rids: round(sum(distance_of(atlas, rid) for rid in rids) / len(rids), 2)
     galaxies, fields, about = [], [], {}
-    for code in [code for code in ORDER if members[code]]:
+    for code in [code for code in ORDER if members[code] or code in also]:
         name, rids = names[code], sorted(roadmap["id"] for roadmap in members[code])
         parts = finer_areas(members[code], code, subareas or {})
         if not parts:
@@ -245,9 +265,14 @@ def group_by_arxiv(atlas: dict, declared: dict, areas: dict | None = None, subar
             about[f"{code}/{area['id']}"] = f"An area of {name} ({code}). {descriptions[code]}"
         fields.append({"id": code, "label": f"{name} ({code})", "short": name, "caption": [name, code], "code": code, "color": COLOURS[code],
                        "groupIds": [f"{code}/{area['id']}" for area, _ in parts], "roadmaps": len(rids), "distance": mean(rids)})
-    sectors(galaxies)
+    ids = {galaxy["id"] for galaxy in galaxies}
+    placed = Counter()
+    for area, count in (mathlib or {}).items():
+        if (gid := place_area(area, ids)):
+            placed[gid] += count
+    sectors(galaxies, dict(placed) if mathlib else None)
     for galaxy in galaxies:
-        galaxy.update(color=COLOURS[galaxy["arxiv"] or UNCLASSIFIED], distance=mean(galaxy["roadmapIds"]))
+        galaxy.update(color=COLOURS[galaxy["arxiv"] or UNCLASSIFIED], distance=mean(galaxy["roadmapIds"]) if galaxy["roadmapIds"] else None)
     group_of = {rid: galaxy["id"] for galaxy in galaxies for rid in galaxy["roadmapIds"]}
     area_of = {rid: galaxy.get("area") for galaxy in galaxies for rid in galaxy["roadmapIds"]}
     for roadmap in atlas["roadmaps"]:

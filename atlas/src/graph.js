@@ -16,6 +16,13 @@
   const OCEAN = '#6f9fcf', LAND = '#9cc59a', SAND = '#d9c391', RING = '#ece0bf';
   const DEFINITION_FILL = OCEAN, RESULT_FILL = SAND;
   const REFERENCE_CHART = { width: 1204, height: 782 };
+  // The Mathlib disk (src/universe.js) is hidden at rest, so the map is the live one: the sun and the empty circle
+  // round it. Hovering over the sun opens it to DISK_PEEK of its size; a click opens it fully, and a second closes it.
+  const DISK_PEEK = .42, DISK_FILL = '#9fb3c8', DISK_TIMES = { peek: 250, open: 450, closed: 350 };
+  // The disk's items are stars, as the landed pull requests are: a near-white core in a faint halo of its colour. A
+  // definition burns blue-white and a theorem pale gold; a landmark is brighter than a header's item. None twinkles:
+  // on the atlas a twinkling star is an open pull request.
+  const DISK_STAR = { definition: { core: '#eef4ff', glow: '#7aa3ff' }, theorem: { core: '#fff4dc', glow: '#f0c46e' } };
   const isDefinitionKind = kind => kind === 'definition' || kind === 'construction' || !kind;
   const planetFill = d => isDefinitionKind(d.kind) ? OCEAN : SAND;
   const nameHash = text => Array.from(String(text)).reduce((seed, character) => ((seed * 31 + character.charCodeAt(0)) >>> 0), 7);
@@ -65,6 +72,13 @@
   const RING_TILT = -18;
   // The far half of a ring passes behind the planet and the near half in front.
   const ringArc = (r, near) => `M${-1.75 * r},0A${1.75 * r},${.42 * r} 0 0,${near ? 0 : 1} ${1.75 * r},0`;
+  // A Lean name as a map label: verbatim, its last components, as many as say what it is (the panel has the whole).
+  const leanLabel = name => {
+    const parts = String(name).split('.');
+    let label = parts.pop();
+    while (parts.length && label.length < 14) label = parts.pop() + '.' + label;
+    return label.length > 34 ? '…' + label.slice(-33) : label;
+  };
   const normalizeText = value => String(value == null ? '' : value).replace(/([a-z])([A-Z])/g, '$1 $2').replace(/_/g, ' ');
 
   function progressValue(value) {
@@ -122,6 +136,17 @@
         .tau-graph .tau-node { cursor: pointer; outline: none; }
         .tau-graph .tau-hit { fill: transparent; pointer-events: all; }
         .tau-graph .tau-core, .tau-graph .tau-galaxy-disc, .tau-graph .tau-dust, .tau-graph .tau-constellation-disc, .tau-graph .tau-figure, .tau-graph .tau-orbit, .tau-graph .tau-field, .tau-graph .tau-link, .tau-graph .tau-route, .tau-graph .tau-ring { pointer-events: none; }
+        .tau-graph .tau-disk-base, .tau-graph .tau-disk-rule, .tau-graph .tau-disk-dust { pointer-events: none; }
+        .tau-graph .tau-disk-dust path, .tau-graph .tau-disk-item path { fill: none; stroke-linecap: round; }
+        .tau-graph .tau-disk-item .tau-disk-ring { fill: none; pointer-events: none; }
+        .tau-graph .tau-core .tau-core-hit { fill: transparent; pointer-events: all; cursor: pointer; outline: none; }
+        .tau-graph .tau-core .tau-core-hit:focus-visible { stroke: rgba(240, 228, 200, .5); }
+        .tau-graph .tau-disk-item { cursor: pointer; outline: none; }
+        .tau-graph .tau-disk-item .tau-disk-hit { stroke: transparent; pointer-events: stroke; }
+        .tau-graph .tau-label-mathlib text { fill: #b9c5d0; font-weight: 500; stroke-width: 2.5px; }
+        .tau-graph .tau-label-mathlib.is-landmark text { fill: #e1e7ec; }
+        .tau-graph .tau-label-disksector text { fill: #93a4b5; font-weight: 600; letter-spacing: 1.1px; stroke-width: 3px; }
+        .tau-graph .tau-label-emptysector text { fill: #6f7c8a; font-weight: 600; letter-spacing: 1.2px; stroke-width: 3px; }
         .tau-graph .tau-label-core text { fill: #efe3c8; font-weight: 600; letter-spacing: 2.5px; text-transform: uppercase; stroke-width: 3px; }
         .tau-label-galaxy text { fill: #b3bec9; font-weight: 500; letter-spacing: .2px; stroke-width: 2.5px; }
         .tau-label-field text, .tau-graph .tau-label-galaxy.is-field text { fill: #d3dae1; font-weight: 600; letter-spacing: 1.3px; stroke-width: 3px; }
@@ -196,7 +221,7 @@
         .forEach(([offset, colour, opacity]) => liveStar.append('stop').attr('offset', offset).attr('stop-color', colour).attr('stop-opacity', opacity));
       this.viewport = this.svg.append('g').attr('class', 'tau-viewport');
       this.layers = {};
-      ['field', 'core', 'galaxy', 'landed', 'route', 'constellation', 'figure', 'link', 'star', 'planet', 'artefact', 'live', 'label'].forEach(name => { this.layers[name] = this.viewport.append('g').attr('class', 'tau-layer-' + name); });
+      ['field', 'disk', 'core', 'galaxy', 'landed', 'route', 'constellation', 'figure', 'link', 'star', 'planet', 'artefact', 'live', 'label'].forEach(name => { this.layers[name] = this.viewport.append('g').attr('class', 'tau-layer-' + name); });
       this.liveItems = []; this.landedCounts = new Map();
       // Drawn in screen space, above everything: the card of a selected link.
       this.overlay = this.svg.append('g').attr('class', 'tau-overlay');
@@ -235,7 +260,7 @@
         this.zoom.extent([[0, 0], [this.width, this.height]]);
         if (this.awaitingFit && box.width > 0 && box.height > 0) { this.awaitingFit = false; this.fitAll(false); return; }
         const aspectBefore = previousWidth / previousHeight, aspectAfter = this.width / this.height;
-        if (this.universe && Math.abs(aspectAfter / aspectBefore - 1) > .25 && this.options.onAspectChange) this.options.onAspectChange();
+        if (this.universe && Math.abs(aspectAfter / aspectBefore - 1) > .25 && this.options.onAspectChange) this.options.onAspectChange({ width: previousWidth, height: previousHeight });
         else this.scheduleRender();
       };
       this.resize();
@@ -252,7 +277,7 @@
       this.layers.field.selectAll('*').remove(); this.layers.core.selectAll('*').remove(); this.layers.galaxy.selectAll('*').remove(); this.layers.route.selectAll('*').remove();
       this.layers.constellation.selectAll('*').remove(); this.layers.figure.selectAll('*').remove(); this.layers.link.selectAll('*').remove();
       this.layers.star.selectAll('*').remove(); this.layers.planet.selectAll('*').remove(); this.layers.artefact.selectAll('*').remove(); this.layers.label.selectAll('*').remove();
-      this.drawField(); this.drawCore(); this.drawGalaxies(); this.drawLanded();
+      this.drawField(); this.drawDisk(); this.drawCore(); this.drawGalaxies(); this.drawLanded();
       if (settings.camera) this.restoreCamera(settings.camera);
       else if (settings.keepCamera && this.transform !== d3.zoomIdentity) this.scheduleRender();
       else { this.awaitingFit = true; this.resize(); }
@@ -424,6 +449,168 @@
         g.append('circle').attr('class', 'tau-core-spot').attr('cx', x * r).attr('cy', y * r).attr('r', size * r).attr('fill', '#7a3510').attr('opacity', .6);
       });
       g.append('title').text('Mathlib: the formalised baseline. Subjects and roadmaps lie farther out the more theory must be built before their targets can be stated and proved.');
+      if (!this.universe.disk) return;
+      // The sun opens the Mathlib disk: a hover a little, a click fully, a second click closes it (setDisk).
+      const graph = this;
+      g.append('circle').attr('class', 'tau-core-hit').attr('r', r * 2.1).attr('tabindex', 0).attr('role', 'button')
+        .on('mouseenter', () => { if (!graph.isCoarse && graph.diskState === 'closed') graph.setDisk('peek'); })
+        .on('mouseleave', () => { if (graph.diskState === 'peek') graph.setDisk('closed'); })
+        .on('click', () => { d3.event.stopPropagation(); if (Date.now() < graph.suppressClicksUntil) return; graph.toggleDisk(); })
+        .on('keydown', () => { if (d3.event.key !== 'Enter' && d3.event.key !== ' ') return; d3.event.preventDefault(); d3.event.stopPropagation(); graph.toggleDisk(); })
+        .append('title').text('Mathlib: click to open its key definitions and theorems, each as far from the centre as the Mathlib needed to state and prove it. Click again to close.');
+      this.labelCore();
+    }
+
+    labelCore() {
+      const open = this.diskState === 'open';
+      this.layers.core.select('.tau-core-hit').attr('aria-expanded', String(open)).attr('aria-label', open ? 'Close the Mathlib disk' : 'Open the Mathlib disk');
+    }
+
+    // ----- the Mathlib disk -------------------------------------------------------
+    // Hidden at rest, so the map is the live one. Flat like every mark but the sun: a faint fill, faint rules between
+    // its areas, and the rest of Mathlib as dust. Its items are drawn by render, as the camera reaches them.
+    drawDisk() {
+      const layer = this.layers.disk, disk = this.universe.disk;
+      layer.selectAll('*').remove();
+      this.diskGroup = null;
+      if (!disk) return;
+      this.diskState = this.diskState || 'closed';
+      const scale = this.diskState === 'open' ? 1 : this.diskState === 'peek' ? DISK_PEEK : 0;
+      const g = layer.append('g').attr('class', 'tau-disk').attr('data-state', this.diskState).attr('transform', `scale(${scale})`)
+        .attr('opacity', this.diskState === 'peek' ? .75 : 1).attr('display', scale ? null : 'none');
+      g.append('circle').attr('class', 'tau-disk-base').attr('r', disk.outer).attr('fill', DISK_FILL).attr('fill-opacity', .045);
+      // A rule between neighbouring areas, stronger between categories than between the areas of one.
+      const order = disk.sectors.slice().sort((a, b) => a.a0 - b.a0);
+      const rules = order.map((s, index) => {
+        const before = order[(index + order.length - 1) % order.length], end = index ? before.a1 : before.a1 - Math.PI * 2;
+        return { angle: (end + s.a0) / 2, major: !s.code || s.code !== before.code };
+      });
+      g.selectAll('line.tau-disk-rule').data(rules).enter().append('line').attr('class', 'tau-disk-rule')
+        .attr('x1', d => Math.cos(d.angle) * disk.inner).attr('y1', d => Math.sin(d.angle) * disk.inner)
+        .attr('x2', d => Math.cos(d.angle) * disk.outer).attr('y2', d => Math.sin(d.angle) * disk.outer)
+        .attr('stroke', ACCENT).attr('vector-effect', 'non-scaling-stroke').attr('stroke-width', 1).attr('stroke-opacity', d => d.major ? .14 : .06);
+      const dust = g.append('g').attr('class', 'tau-disk-dust');
+      [[0, 1, .32], [1, 1.4, .45], [2, 1.9, .62]].forEach(([cls, width, opacity]) => dust.append('path')
+        .attr('d', this.speckPath(disk.dust.filter(p => p.cls === cls))).attr('stroke', DUST).attr('stroke-opacity', opacity)
+        .attr('vector-effect', 'non-scaling-stroke').attr('stroke-width', width));
+      g.append('g').attr('class', 'tau-disk-items');
+      this.diskGroup = g;
+    }
+
+    // Open ('open'), open a little ('peek') or close ('closed') the disk, growing it out of the sun and back.
+    setDisk(state, animate = true) {
+      const disk = this.universe && this.universe.disk, g = this.diskGroup;
+      if (!disk || !g || !['closed', 'peek', 'open'].includes(state)) return this;
+      this.diskState = state;
+      const scale = state === 'open' ? 1 : state === 'peek' ? DISK_PEEK : 0;
+      const still = !animate || (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+      // An animation ends exactly at its scale (d3 leaves its interpolation's rounding behind).
+      const finish = () => { this.diskAnimating = false; g.attr('transform', `scale(${scale})`); if (this.diskState === 'closed') g.attr('display', 'none'); this.scheduleRender(); };
+      g.interrupt().attr('data-state', state);
+      if (scale) g.attr('display', null);
+      this.diskAnimating = !still;
+      if (still) { g.attr('transform', `scale(${scale})`).attr('opacity', state === 'peek' ? .75 : 1); finish(); }
+      else g.transition().duration(DISK_TIMES[state]).ease(d3.easeCubicOut).attr('transform', `scale(${scale})`).attr('opacity', state === 'peek' ? .75 : 1)
+        .on('end', finish).on('interrupt', () => { this.diskAnimating = false; });
+      // The rules between the map's sectors start at the disk's rim while it is open.
+      const guides = this.universe.guides;
+      if (guides) {
+        const inner = state === 'open' ? Math.max(guides.inner, disk.outer) : guides.inner;
+        const rules = this.layers.field.selectAll('line.tau-sector-rule');
+        (still ? rules : rules.transition().duration(DISK_TIMES[state])).attr('x1', d => Math.cos(d.angle) * inner).attr('y1', d => Math.sin(d.angle) * inner);
+      }
+      this.labelCore();
+      this.svg.classed('tau-disk-open', state === 'open');
+      this.scheduleRender();
+      return this;
+    }
+
+    // A click on the sun: open the disk and frame it, or close it and return to the opening view.
+    toggleDisk() {
+      if (this.diskState === 'open') {
+        // A Mathlib item's panel closes with the disk: the item is no longer on the map.
+        const selected = this.selectedId && this.universe.byId.get(this.selectedId);
+        if (selected && selected.level === 'mathlib') this.select(null, true);
+        this.setDisk('closed'); this.fitAll(true);
+      }
+      else { this.setDisk('open'); this.zoomToDisk(true); }
+      return this;
+    }
+
+    diskTransform() {
+      const disk = this.universe.disk, core = this.universe.core, reserve = this.width < 600 ? 56 : this.height < 400 ? 24 : 0;
+      const k = Math.max(.015, Math.min(this.width, this.height - reserve) / (2 * disk.outer * 1.06));
+      return d3.zoomIdentity.translate(this.width / 2 - core.x * k, (this.height - reserve) / 2 - core.y * k).scale(k);
+    }
+
+    // After the chart changes shape (a panel opening beside it), the point at its centre stays there, at the same scale.
+    keepCentreFrom(before) {
+      const t = this.transform, cx = (before.width / 2 - t.x) / t.k, cy = (before.height / 2 - t.y) / t.k;
+      this.svg.call(this.zoom.transform, d3.zoomIdentity.translate(this.width / 2 - cx * t.k, this.height / 2 - cy * t.k).scale(t.k));
+      return this;
+    }
+
+    zoomToDisk(animate) { return this.universe && this.universe.disk ? this.travel(this.diskTransform(), animate !== false) : this; }
+
+    // The disk's items the camera can see, and their names: the landmarks once the disk is open, the header items
+    // once it overfills the chart; the most important named first, as the label system finds them room.
+    collectDisk(k, rect, labels, active, T) {
+      const disk = this.universe.disk;
+      if (!disk || !this.diskGroup || !this.diskState || this.diskState === 'closed') return [];
+      const open = this.diskState === 'open', scale = open ? 1 : DISK_PEEK;
+      const fine = open && disk.outer * k >= Math.min(this.width, this.height) * 1.05;
+      const inView = d => d.x * scale + 12 / k > rect.x && d.x * scale - 12 / k < rect.x + rect.w && d.y * scale + 12 / k > rect.y && d.y * scale - 12 / k < rect.y + rect.h;
+      const items = disk.items.filter(d => (d.tier === 1 || fine || d.id === active) && inView(d));
+      if (!open || this.diskAnimating) return items;
+      const chart = this.visibleRect(0), centred = (x, y) => x >= chart.x && x <= chart.x + chart.w && y >= chart.y && y <= chart.y + chart.h;
+      disk.sectors.forEach(s => {
+        // A slice Mathlib has nothing in is not named on the disk.
+        if (!s.items) return;
+        const middle = (s.a0 + s.a1) / 2;
+        if ((s.a1 - s.a0) * disk.outer * .9 * k < (T.small ? 30 : 48)) return;
+        const spots = [.95, .88, .8, .7, .6].map(f => ({ x: Math.cos(middle) * disk.outer * f, y: Math.sin(middle) * disk.outer * f + 3.5 / k, above: false, anchor: 'middle' }))
+          .filter(spot => centred(spot.x, spot.y));
+        if (!spots.length) return;
+        // A category is named with its arXiv identifier (math.RA), as on the map; a finer area of one by its name.
+        const named = [(s.short || s.label).toUpperCase(), ...(s.sectorId === s.code ? [s.code] : [])];
+        labels.push({ id: 'disksector:' + s.id, nodeId: s.id, kind: 'disksector', x: spots[0].x, y: spots[0].y, lines: named,
+          font: T.small ? 9 : 10, anchor: 'middle', above: false, priority: 95 + Math.min(20, s.items / 50), active: false, alternatives: spots.slice(1) });
+      });
+      const chosen = d => d.id === this.selectedId ? 2 : d.id === active ? 1 : 0;
+      items.filter(d => centred(d.x, d.y)).sort((a, b) => chosen(b) - chosen(a) || a.tier - b.tier || b.importance - a.importance).slice(0, 180).forEach(d => {
+        const font = d.tier === 1 ? 10.5 : 9.5, gap = 5 / k;
+        labels.push({ id: 'mathlib:' + d.id, nodeId: d.id, kind: 'mathlib', landmark: d.tier === 1, x: d.x + gap, y: d.y + 3.5 / k, lines: d.tier === 1 ? wrapText(d.title, 28, 2) : [leanLabel(d.name)], font,
+          anchor: 'start', above: false, priority: (d.tier === 1 ? 30 : 10) + Math.min(9, d.importance) + 150 * chosen(d), active: active === d.id, chosen: chosen(d) > 0,
+          alternatives: [{ x: d.x - gap, y: d.y + 3.5 / k, above: false, anchor: 'end' }, { x: d.x, y: d.y + 14 / k, above: false, anchor: 'middle' },
+            { x: d.x, y: d.y - 6 / k, above: true, anchor: 'middle' }] });
+      });
+      return items;
+    }
+
+    // Each item a star that keeps its size on screen, growing a little as the camera closes in (DISK_STAR): a landmark
+    // brighter the more important it is, a header's item faint. A wide clear stroke round it takes a finger's tap.
+    renderDiskItems(items, k, active) {
+      const layer = this.diskGroup ? this.diskGroup.select('g.tau-disk-items') : null;
+      if (!layer) return;
+      const join = layer.selectAll('g.tau-disk-item').data(items, d => d.id);
+      join.exit().remove();
+      const enter = join.enter().append('g').attr('class', 'tau-disk-item tau-node').attr('data-node-id', d => d.id).attr('data-level', 'mathlib')
+        .attr('tabindex', 0).attr('role', 'button').attr('aria-label', d => normalizeText(d.title) + (d.theorem ? '. Mathlib theorem' : '. Mathlib definition'));
+      ['tau-disk-hit', 'tau-disk-halo', 'tau-disk-glow', 'tau-disk-core'].forEach(name => enter.append('path').attr('class', name).attr('vector-effect', 'non-scaling-stroke')
+        .attr('d', d => `M${d.x.toFixed(2)},${d.y.toFixed(2)}h0`));
+      enter.append('circle').attr('class', 'tau-disk-ring').attr('cx', d => d.x).attr('cy', d => d.y).attr('stroke', ACCENT).attr('vector-effect', 'non-scaling-stroke').attr('stroke-width', 1.5);
+      enter.select('.tau-disk-hit').attr('stroke-width', 14);
+      enter.selectAll('.tau-disk-halo, .tau-disk-glow').attr('stroke', d => DISK_STAR[d.theorem ? 'theorem' : 'definition'].glow);
+      enter.select('.tau-disk-core').attr('stroke', d => DISK_STAR[d.theorem ? 'theorem' : 'definition'].core);
+      this.bindInteractions(enter);
+      const grow = this.universe.disk ? Math.max(1, Math.min(2.2, Math.sqrt(k / this.diskTransform().k))) : 1;
+      // A glow that fades: a brighter ring close round the core and a very faint one beyond, as flat strokes.
+      const core = d => (d.tier === 1 ? 2 + .1 * Math.max(0, Math.min(7, d.importance)) : 1.3) * grow * (d.id === active ? 1.25 : 1);
+      const all = enter.merge(join);
+      all.select('.tau-disk-core').attr('stroke-width', core).attr('stroke-opacity', d => d.tier === 1 ? 1 : .8);
+      all.select('.tau-disk-glow').attr('stroke-width', d => core(d) * 2).attr('stroke-opacity', d => d.tier === 1 ? .3 : .18);
+      all.select('.tau-disk-halo').attr('stroke-width', d => core(d) * 3.4).attr('stroke-opacity', d => d.tier === 1 ? .09 : 0);
+      all.select('.tau-disk-ring').attr('r', d => (core(d) * 1.6 + 3) / k).attr('opacity', d => d.id === active || d.id === this.selectedId ? 1 : 0);
     }
 
     dustPath(points, radius) {
@@ -577,6 +764,15 @@
           anchor: along ? along[0].anchor : 'middle', above: along ? along[0].above : true,
           priority: 150 + field.count, active: active === field.id, members: new Set(field.galaxyIds), alternatives: (along || spots).slice(1) });
       });
+      // A sector with no roadmaps yet is named faintly along its middle, with its identifier: Mathlib's disk has
+      // material there (the Mathlib-only areas), and roadmaps will come.
+      (universe.emptySectors || []).forEach(s => {
+        const along = [...edgeSpots((s.a0 + s.a1) / 2, s.spots[0] ? Math.hypot(s.spots[0].x, s.spots[0].y) : 0, 0), ...s.spots].filter(spot => intersects(spot.x, spot.y, 60 / k));
+        if (!along.length || (s.a1 - s.a0) * Math.hypot(along[0].x, along[0].y) * k < 18) return;
+        const lines = T.small ? [(s.short || s.label).toUpperCase()] : [(s.short || s.label).toUpperCase(), ...(s.code ? [s.code] : [])];
+        labels.push({ id: 'empty:' + s.id, nodeId: s.id, kind: 'emptysector', x: along[0].x, y: along[0].y, lines, font: T.small ? 9.5 : 10,
+          anchor: along[0].anchor, above: along[0].above, priority: 70, active: false, alternatives: along.slice(1) });
+      });
       const framed = new Map();
       galaxies.forEach(galaxy => {
         const screenW = galaxy.labelSpots ? (galaxy.a1 - galaxy.a0) * galaxy.hubRadius * k : galaxy.w * k;
@@ -665,7 +861,9 @@
           });
         });
       });
-      this.visible = { galaxies, constellations, stars, planets, artefacts, labels };
+      const diskItems = this.collectDisk(k, rect, labels, active, T);
+      this.visible = { galaxies, constellations, stars, planets, artefacts, labels, disk: diskItems };
+      this.renderDiskItems(diskItems, k, active);
       this.renderConstellations(constellations, k, active);
       this.renderStars(stars, k, active);
       this.renderPlanets(planets, k, active);
@@ -868,11 +1066,14 @@
       // A roadmap drawn as a point, and Mathlib at the centre, are solid too.
       (this.visible ? this.visible.constellations : []).forEach(c => { if (c.resolved) return; const r = Math.max(2.4, Math.min(c.r * k * .9, 2.4 + Math.min(2.4, c.r * k * .1))); solids.push({ owner: c.id, x: c.x * k + t.x, y: c.y * k + t.y, r: r + 1.5 }); });
       if (this.universe && this.universe.core) { const c = this.universe.core; solids.push({ owner: c.id, x: c.x * k + t.x, y: c.y * k + t.y, r: c.r * k * 1.2 + 1 }); }
+      // The disk's dots are solid to the names of its items; the disk's own names (Mathlib, its areas) lie over them, as a
+      // galaxy's name lies over its dust, and so does the name of the item selected or pointed at, among its neighbours.
+      if (this.diskState === 'open') (this.visible && this.visible.disk || []).forEach(d => solids.push({ owner: d.id, disk: true, x: d.x * k + t.x, y: d.y * k + t.y, r: d.tier === 1 ? 4 : 3 }));
       const overlays = this.overlayBoxes();
-      const onSolid = (box, own) => solids.some(s => s.owner !== own && Math.hypot(Math.max(box.x, Math.min(s.x, box.x + box.w)) - s.x, Math.max(box.y, Math.min(s.y, box.y + box.h)) - s.y) < s.r - 1)
+      const onSolid = (box, own, label) => solids.some(s => s.owner !== own && !(s.disk && (label.kind === 'core' || label.kind === 'disksector' || label.chosen)) && Math.hypot(Math.max(box.x, Math.min(s.x, box.x + box.w)) - s.x, Math.max(box.y, Math.min(s.y, box.y + box.h)) - s.y) < s.r - 1)
         || overlays.some(o => Math.min(box.x + box.w, o.x + o.w) - Math.max(box.x, o.x) > 0 && Math.min(box.y + box.h, o.y + o.h) - Math.max(box.y, o.y) > 0);
       const collides = (box, label) => placed.some(other => Math.min(box.x + box.w, other.x + other.w) - Math.max(box.x, other.x) > -2 && Math.min(box.y + box.h, other.y + other.h) - Math.max(box.y, other.y) > -1)
-        || (label.kind === 'galaxy' && onDisc(box, label.nodeId)) || (label.kind === 'field' && onDisc(box, label.members)) || onSolid(box, label.ownerId || label.nodeId);
+        || (label.kind === 'galaxy' && onDisc(box, label.nodeId)) || (label.kind === 'field' && onDisc(box, label.members)) || onSolid(box, label.ownerId || label.nodeId, label);
       const byId = new Map(labels.map(label => [label.id, label]));
       // A name is drawn only when the whole of it fits the chart; a clipped
       // name reads as a different name.
@@ -922,10 +1123,12 @@
       const graph = this;
       enter.filter(d => d.kind === 'field').on('click', d => { d3.event.stopPropagation(); if (Date.now() < graph.suppressClicksUntil) return; graph.zoomTo(d.nodeId); })
         .on('mouseenter', d => { if (!graph.isCoarse && !graph.pointerResting(d3.event)) { graph.hoveredId = d.nodeId; graph.scheduleRender(); } }).on('mouseleave', () => { if (!graph.isCoarse) { graph.hoveredId = null; graph.scheduleRender(); } });
+      enter.filter(d => d.kind === 'mathlib').on('click', d => { d3.event.stopPropagation(); if (Date.now() < graph.suppressClicksUntil) return; graph.options.onSelect?.(graph.universe.byId.get(d.nodeId)); })
+        .on('mouseenter', d => { if (!graph.isCoarse && !graph.pointerResting(d3.event)) { graph.hoveredId = d.nodeId; graph.scheduleRender(); } }).on('mouseleave', () => { if (!graph.isCoarse) { graph.hoveredId = null; graph.scheduleRender(); } });
       enter.filter(d => d.kind === 'galaxy').on('click', d => { d3.event.stopPropagation(); if (Date.now() < graph.suppressClicksUntil) return; graph.options.onSelect?.(graph.universe.byId.get(d.nodeId)); })
         .on('mouseenter', d => { if (!graph.isCoarse && !graph.pointerResting(d3.event)) { graph.hoveredId = d.nodeId; graph.scheduleRender(); } }).on('mouseleave', () => { if (!graph.isCoarse) { graph.hoveredId = null; graph.scheduleRender(); } });
       const all = enter.merge(join);
-      all.classed('is-active', d => d.active).classed('is-field', d => !!d.field).attr('transform', d => `translate(${d.x},${d.y}) scale(${1 / k})`);
+      all.classed('is-active', d => d.active).classed('is-field', d => !!d.field).classed('is-landmark', d => !!d.landmark).attr('transform', d => `translate(${d.x},${d.y}) scale(${1 / k})`);
       const cache = this.widthCache; let measured = false;
       all.select('text').attr('text-anchor', d => d.anchor).attr('font-size', d => d.font).each(function (d) {
         const text = d3.select(this); text.selectAll('tspan').remove();
@@ -1115,6 +1318,8 @@
     // ----- selection ----------------------------------------------------------
     select(id, fromBackground) {
       this.selectedId = this.universe && this.universe.byId.has(id) ? id : null;
+      // A Mathlib item is on the disk: selecting one (from the address, say) opens it.
+      if (this.selectedId && this.universe.byId.get(this.selectedId).level === 'mathlib' && this.diskState !== 'open') this.setDisk('open', false);
       this.selectedLinkId = null;
       this.scheduleRender();
       if (fromBackground && this.options.onClear) this.options.onClear();
@@ -1220,6 +1425,7 @@
     focus() {
       if (!this.universe) return { level: 'all', id: null };
       const k = this.transform.k, cx = (this.width / 2 - this.transform.x) / k, cy = (this.height / 2 - this.transform.y) / k;
+      if (this.diskState === 'open' && this.universe.disk && Math.hypot(cx, cy) <= this.universe.disk.outer) return { level: 'all', id: null };
       // An object is "in focus" when the camera is at least a good fraction of
       // the scale that fits it and its centre is near the middle of the view.
       const fitScale = id => this.transformFor(this.footprint(id)).k;

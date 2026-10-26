@@ -135,7 +135,19 @@
   const NUDGES = [0, 1, -1, 2, -2, 3, -3, 4, -4, 5, -5, 6, -6, 7, -7, 8, -8];
   const GOLDEN_SHARE = (Math.sqrt(5) - 1) / 2;
 
-  function placeSectors(galaxies, constellationsOf) {
+  // Each sector's span: from the rule before it to the rule after it, halfway across the gaps between sectors. A sector's
+  // tint and dust fill its span, so that neighbouring sectors meet at the line between them with no empty strip along
+  // it (the user, 2026-10-26: "I dont like that it leaves a gap between the lines"); its roadmaps keep to the sector.
+  function spans(sectors) {
+    const order = sectors.slice().sort((a, b) => a.a0 - b.a0), found = new Map();
+    order.forEach((s, index) => {
+      const before = order[(index + order.length - 1) % order.length], after = order[(index + 1) % order.length];
+      found.set(s.id, [((index ? before.a1 : before.a1 - Math.PI * 2) + s.a0) / 2, (s.a1 + (index < order.length - 1 ? after.a0 : after.a0 + Math.PI * 2)) / 2]);
+    });
+    return found;
+  }
+
+  function placeSectors(galaxies, constellationsOf, span, rim) {
     const cell = 200, grid = new Map(), key = (x, y) => Math.floor(x / cell) + ',' + Math.floor(y / cell);
     const crowding = (x, y, c) => {
       let worst = 0;
@@ -194,11 +206,14 @@
     });
     galaxies.forEach(galaxy => {
       const members = constellationsOf(galaxy), radii = members.map(c => Math.hypot(c.x, c.y));
-      galaxy.r0 = Math.max(CORE_RADIUS * 2.4, Math.min(...radii.map((r, i) => r - members[i].r)) - 60);
+      // With the Mathlib disk, every sector starts at its rim, so the disk ends where the sectors begin (the user,
+      // 2026-10-26); without it, a little inside its nearest roadmap.
+      galaxy.r0 = Number.isFinite(rim) ? rim : Math.max(CORE_RADIUS * 2.4, Math.min(...radii.map((r, i) => r - members[i].r)) - 60);
       galaxy.r1 = Math.max(...radii.map((r, i) => r + members[i].r)) + 60;
       galaxy.hubRadius = radii.slice().sort((a, b) => a - b)[Math.floor(radii.length / 2)];
       wedgeBounds(galaxy);
-      galaxy.outline = wedgePath(galaxy.r0, galaxy.r1, galaxy.a0, galaxy.a1);
+      [galaxy.b0, galaxy.b1] = span.get(galaxy.id) || [galaxy.a0, galaxy.a1];
+      galaxy.outline = wedgePath(galaxy.r0, galaxy.r1, galaxy.b0, galaxy.b1);
       // From its outer end inwards; then, as a last resort when the middle of the map is full, a little beyond its
       // outer end, still on its middle line, where the map is open: the crowded upper half of the overview had ten
       // categories waiting for a name on 2026-10-25, functional analysis (16 roadmaps) among them.
@@ -242,7 +257,7 @@
   function sectorDust(galaxy, members) {
     let seed = hash(galaxy.label + '|dust') || 1;
     const random = () => { seed = (seed + 0x6D2B79F5) >>> 0; let t = seed; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
-    const inside = (x, y) => { let angle = Math.atan2(y, x); while (angle < galaxy.a0) angle += Math.PI * 2; const radius = Math.hypot(x, y); return angle <= galaxy.a1 && radius >= galaxy.r0 && radius <= galaxy.r1; };
+    const inside = (x, y) => { let angle = Math.atan2(y, x); while (angle < galaxy.b0) angle += Math.PI * 2; const radius = Math.hypot(x, y); return angle <= galaxy.b1 && radius >= galaxy.r0 && radius <= galaxy.r1; };
     const count = Math.max(320, Math.min(900, 240 + 18 * galaxy.count)), points = [];
     let guard = 0;
     while (points.length < count && guard++ < count * 6) {
@@ -251,7 +266,7 @@
         const x = c.x + Math.cos(angle) * spread, y = c.y + Math.sin(angle) * spread, shine = random();
         if (inside(x, y)) points.push({ x, y, radial: spread / (c.r * 3), cls: spread < c.r * 1.8 && shine > .35 ? 2 : shine > .5 ? 1 : 0 });
       } else {
-        const radius = Math.sqrt(galaxy.r0 * galaxy.r0 + random() * (galaxy.r1 * galaxy.r1 - galaxy.r0 * galaxy.r0)), angle = galaxy.a0 + random() * (galaxy.a1 - galaxy.a0);
+        const radius = Math.sqrt(galaxy.r0 * galaxy.r0 + random() * (galaxy.r1 * galaxy.r1 - galaxy.r0 * galaxy.r0)), angle = galaxy.b0 + random() * (galaxy.b1 - galaxy.b0);
         points.push({ x: Math.cos(angle) * radius, y: Math.sin(angle) * radius, radial: 1, cls: random() > .72 ? 1 : 0 });
       }
     }
@@ -467,6 +482,37 @@
     return list;
   }
 
+  // The Mathlib disk (scripts/disk_layout.py): Mathlib's key definitions and theorems round the sun, each as far out
+  // as the Mathlib it needs, in the sectors of its area. It is hidden until the sun is clicked (src/graph.js).
+  const DISK_SPECKS = 7000;
+
+  function buildDisk(data) {
+    const rad = degrees => degrees * Math.PI / 180;
+    const sectors = data.sectors.map(s => ({ id: 'disk:' + s.id, sectorId: s.id, label: s.label, short: s.short, code: s.code, field: s.field,
+      a0: rad(s.a0), a1: rad(s.a1), items: s.items }));
+    const items = data.items.map(row => ({ id: row.id, level: 'mathlib', name: row.n, title: row.t, kind: row.k, sector: row.s, tier: row.l,
+      x: Math.cos(rad(row.a)) * row.r, y: Math.sin(rad(row.a)) * row.r, radius: row.r, importance: row.i,
+      theorem: ['theorem', 'lemma'].includes(row.k) }));
+    // The rest of Mathlib as dust: specks spread over each sector's bands, as many as it has there, up to DISK_SPECKS.
+    const bySector = new Map(sectors.map(s => [s.sectorId, s])), bins = data.dust.bins, span = spans(sectors);
+    const total = Object.values(data.dust.areas).reduce((sum, counts) => sum + counts.reduce((a, b) => a + b, 0), 0);
+    const scale = Math.min(1, DISK_SPECKS / Math.max(1, total)), dust = [];
+    let seed = 20261026;
+    const random = () => { seed = (seed + 0x6D2B79F5) >>> 0; let x = seed; x = Math.imul(x ^ (x >>> 15), x | 1); x ^= x + Math.imul(x ^ (x >>> 7), x | 61); return ((x ^ (x >>> 14)) >>> 0) / 4294967296; };
+    Object.entries(data.dust.areas).forEach(([sid, counts]) => {
+      const s = bySector.get(sid);
+      if (!s) return;
+      counts.forEach((count, bin) => {
+        const r0 = data.inner + (data.outer - data.inner) * bin / bins, r1 = data.inner + (data.outer - data.inner) * (bin + 1) / bins;
+        for (let n = Math.round(count * scale); n > 0; n--) {
+          const [b0, b1] = span.get(s.id), radius = Math.sqrt(r0 * r0 + random() * (r1 * r1 - r0 * r0)), angle = b0 + random() * (b1 - b0), shine = random();
+          dust.push({ x: Math.cos(angle) * radius, y: Math.sin(angle) * radius, cls: shine > .9 ? 2 : shine > .6 ? 1 : 0 });
+        }
+      });
+    });
+    return { inner: data.inner, outer: data.outer, commit: data.commit, max: data.max, sectors, items, dust };
+  }
+
   function build(input, viewport) {
     const aspect = viewport && viewport.width && viewport.height ? viewport.width / viewport.height : 1.5;
     const galaxies = input.groups.map(group => ({ id: group.id, level: 'galaxy', label: group.label, short: group.short || '', caption: group.caption || null, code: group.arxiv || null, sector: Array.isArray(group.sector) ? group.sector : null, direction: group.direction, color: group.color, constellationIds: [], count: 0, unmappedCount: 0, progress: group.progress == null ? null : group.progress, progressLabel: group.progressLabel || '' }));
@@ -493,7 +539,8 @@
     // The Mathlib-centred map is the same on every screen: it is laid out for
     // a desktop chart, and a smaller screen shows part of it at the same scale.
     const sectored = radial && populated.length > 0 && populated.every(galaxy => galaxy.sector);
-    if (sectored) placeSectors(populated, membersOf);
+    if (sectored) placeSectors(populated, membersOf, spans(galaxies.filter(galaxy => Array.isArray(galaxy.sector))
+      .map(galaxy => ({ id: galaxy.id, a0: galaxy.sector[0] * Math.PI / 180, a1: galaxy.sector[1] * Math.PI / 180 }))), input.disk ? input.disk.outer : null);
     else if (radial) placeGalaxiesRadial(populated, membersOf, REFERENCE_ASPECT);
     else placeGalaxies(populated, Array.from(galaxyLinks.values()), aspect);
     if (!sectored) populated.forEach(galaxy => (radial ? placeConstellationsRadial : placeConstellations)(galaxy, membersOf(galaxy)));
@@ -565,11 +612,14 @@
     // sectors, stronger between categories than between the areas of one.
     let guides = null;
     if (sectored) {
-      const order = populated.slice().sort((a, b) => a.a0 - b.a0), reach = Math.max(...populated.map(g => g.r1));
+      // A rule between every two sectors of the map, those without roadmaps too: an area Mathlib's disk needs has its
+      // sector before its roadmaps come, and the disk's rules run on from these (src/graph.js, drawDisk).
+      const order = galaxies.filter(galaxy => Array.isArray(galaxy.sector)).map(galaxy => ({ code: galaxy.code, a0: galaxy.sector[0] * Math.PI / 180, a1: galaxy.sector[1] * Math.PI / 180 }))
+        .sort((a, b) => a.a0 - b.a0), reach = Math.max(...populated.map(g => g.r1));
       guides = {
-        rules: order.map((galaxy, index) => {
+        rules: order.map((sector, index) => {
           const before = order[(index + order.length - 1) % order.length], end = index ? before.a1 : before.a1 - Math.PI * 2;
-          return { angle: (end + galaxy.a0) / 2, major: !galaxy.fieldId || galaxy.fieldId !== before.fieldId };
+          return { angle: (end + sector.a0) / 2, major: !sector.code || sector.code !== before.code };
         }),
         rings: Array.from({ length: 10 }, (_, index) => ({ distance: index + 1, radius: sectorRadius(index + 1) })).filter(ring => ring.radius <= reach + SECTOR_STEP / 2),
         inner: SECTOR_CORE * .55, outer: reach + 120
@@ -578,6 +628,8 @@
     const byId = new Map();
     [...fields, ...populated, ...constellations, ...stars, ...planets, ...artefacts].forEach(node => byId.set(node.id, node));
     const core = radial ? { id: 'core:mathlib', level: 'core', x: 0, y: 0, r: CORE_RADIUS, label: 'Mathlib' } : null;
+    const disk = sectored && core && input.disk ? buildDisk(input.disk) : null;
+    if (disk) disk.items.forEach(item => byId.set(item.id, item));
     const extents = populated.map(galaxy => ({ x0: galaxy.x - galaxy.rx, y0: galaxy.y - galaxy.ry, x1: galaxy.x + galaxy.rx, y1: galaxy.y + galaxy.ry }));
     if (core) extents.push({ x0: -core.r * 3.4, y0: -core.r * 1.7, x1: core.r * 3.4, y1: core.r * 1.7 });
     const left = Math.min(...extents.map(e => e.x0)), top = Math.min(...extents.map(e => e.y0));
@@ -585,9 +637,15 @@
     const bounds = populated.length ? { x: left, y: top, w: right - left, h: bottom - top } : { x: -100, y: -100, w: 200, h: 200 };
     const starIds = new Set(stars.map(star => star.id));
     return {
-      fields, galaxies: populated, constellations, stars, planets, artefacts, byId, bounds, aspect, core, layout: sectored ? 'sectors' : radial ? 'radial' : 'areas',
+      fields, galaxies: populated, constellations, stars, planets, artefacts, byId, bounds, aspect, core, disk, layout: sectored ? 'sectors' : radial ? 'radial' : 'areas',
       // The sector map opens on Mathlib with the roadmaps up to this distance from it in view.
       overviewRadius: sectored ? sectorRadius(4.6) : null, guides,
+      // The sectors no roadmap is in yet (those of the Mathlib disk's areas): named faintly along their middle.
+      emptySectors: sectored ? galaxies.filter(galaxy => Array.isArray(galaxy.sector) && !galaxy.constellationIds.length).map(galaxy => {
+        const a0 = galaxy.sector[0] * Math.PI / 180, a1 = galaxy.sector[1] * Math.PI / 180, middle = (a0 + a1) / 2;
+        return { id: galaxy.id, label: galaxy.label, short: galaxy.short, code: galaxy.code, caption: galaxy.caption, a0, a1,
+          spots: spotsAlong(middle, sectorRadius(3.6), SECTOR_CORE + 150, a1 - a0) };
+      }) : [],
       routes: routesBetween(populated, constellations, input.constellationEdges),
       constellationEdges: input.constellationEdges.filter(edge => constellationById.has(edge.source) && constellationById.has(edge.target)),
       artefactEdges: (input.artefactEdges || []).filter(edge => constellationById.has(edge.source) && byId.has(edge.target)),

@@ -5,8 +5,9 @@ name: Tau Ceti progress
 # open pull requests to TauCetiRoadmap, for the roadmaps proposed to it (scripts/tauceti_prs.py).
 # The atlas (index.html) shows both, since 2026-10-21 in place of the campaign's own planned
 # roadmaps; the Tau Ceti atlas (tauceti/index.html) shows only Tau Ceti's. A roadmap Tau Ceti has
-# accepted since the atlas's snapshot joins both maps from its README. Nothing is pushed unless
-# the data changed and both pages pass their checks.
+# accepted since the atlas's snapshot joins both maps from its README. Mathlib's disk round the sun
+# follows the Mathlib commit Tau Ceti builds on, and is made again when that commit moves (below).
+# Nothing is pushed unless the data changed and both pages pass their checks.
 
 on:
   # GitHub starts scheduled runs on a best-effort basis and drops some (the 07:20 run on
@@ -14,6 +15,11 @@ on:
   schedule:
     - cron: '20 1,7,13,19 * * *'
   workflow_dispatch:
+    inputs:
+      mathlib:
+        description: Make the Mathlib disk again even if Tau Ceti's Mathlib commit has not moved
+        type: boolean
+        default: false
 
 # Its own group. It used to share the intake's, but a run waiting there was cancelled whenever
 # another intake run queued, which the intake does all day: every scheduled run from 2026-10-09
@@ -30,7 +36,8 @@ permissions:
 jobs:
   refresh:
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    # A run that makes the Mathlib disk again extracts Mathlib, about twenty-five minutes more.
+    timeout-minutes: 120
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -42,12 +49,29 @@ jobs:
         run: |
           python3 scripts/tauceti_progress.py --fetch | tee -a "$GITHUB_STEP_SUMMARY"
           python3 scripts/tauceti_prs.py --fetch | tee -a "$GITHUB_STEP_SUMMARY"
+      # Mathlib's disk follows the Mathlib commit in Tau Ceti's lake-manifest.json, and moves less often than the
+      # roadmaps: when that commit has moved, Mathlib is extracted again and the disk made anew (about twenty-five
+      # minutes); otherwise this takes a second. If it fails, the disk stays as it was and the rest is updated.
+      - name: Mathlib's disk, when Tau Ceti's Mathlib has moved
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          force="${{ github.event_name == 'workflow_dispatch' && inputs.mathlib && '--force' || '' }}"
+          if bash scripts/mathlib_refresh.sh "$RUNNER_TEMP/mathlib" $force > "$RUNNER_TEMP/mathlib.log" 2>&1; then
+            tail -3 "$RUNNER_TEMP/mathlib.log" | tee -a "$GITHUB_STEP_SUMMARY"
+          else
+            tail -30 "$RUNNER_TEMP/mathlib.log"
+            git checkout -- data/mathlib-disk.json data/mathlib-pin.json
+            echo "::warning::The Mathlib disk was not made again; it stays as it was." | tee -a "$GITHUB_STEP_SUMMARY"
+          fi
+          # Kept apart, so that a retry below, which starts again from main, keeps the disk made here.
+          mkdir -p "$RUNNER_TEMP/disk" && cp data/mathlib-disk.json data/mathlib-pin.json "$RUNNER_TEMP/disk/"
       - name: Rebuild, check and publish if it changed
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          if git diff --quiet -- data/tauceti-progress.json data/tauceti-new-roadmaps.json data/tauceti-prs.json; then echo "No change on the Progress page or in the pull requests." | tee -a "$GITHUB_STEP_SUMMARY"; exit 0; fi
+          if git diff --quiet -- data/tauceti-progress.json data/tauceti-new-roadmaps.json data/tauceti-prs.json data/mathlib-disk.json data/mathlib-pin.json; then echo "No change on the Progress page, in the pull requests or in Mathlib's disk." | tee -a "$GITHUB_STEP_SUMMARY"; exit 0; fi
           python3 scripts/build.py > /dev/null
           python3 scripts/build.py --tauceti > /dev/null
           # Only the tests of what builds the pages. The full suite also checks the swarm's live queue,
@@ -55,15 +79,18 @@ jobs:
           python3 -m unittest tests/test_tauceti_progress.py tests/test_tauceti_prs.py tests/test_blueprints.py tests/test_decompositions.py \
             tests/test_definitions_page.py tests/test_galaxies.py tests/test_artefacts.py tests/test_library_coverage.py \
             tests/test_restructure.py tests/test_radial_layout.py tests/test_distances.py tests/test_items.py \
-            tests/test_collation.py tests/test_merge_landmark_names.py
+            tests/test_collation.py tests/test_merge_landmark_names.py tests/test_arxiv_groups.py tests/test_disk_layout.py tests/test_mathlib_areas.py
           python3 -m pip install -q playwright
           python3 -m playwright install --with-deps chromium > /dev/null
           python3 tests/validate_tauceti_browser.py > "$RUNNER_TEMP/tauceti.log" 2>&1 || { tail -40 "$RUNNER_TEMP/tauceti.log"; exit 1; }
           python3 tests/validate_browser.py > "$RUNNER_TEMP/browser.log" 2>&1 || python3 tests/validate_browser.py > "$RUNNER_TEMP/browser.log" 2>&1 || { tail -60 "$RUNNER_TEMP/browser.log"; exit 1; }
+          for page in index.html tauceti/index.html; do
+            python3 tests/validate_disk_browser.py "file://$PWD/$page" > "$RUNNER_TEMP/disk.log" 2>&1 || { tail -40 "$RUNNER_TEMP/disk.log"; exit 1; }
+          done
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           publish() {
-            git add data/tauceti-progress.json data/tauceti-new-roadmaps.json data/tauceti-prs.json index.html definitions.html BUILD.json tauceti
+            git add data/tauceti-progress.json data/tauceti-new-roadmaps.json data/tauceti-prs.json data/mathlib-disk.json data/mathlib-pin.json index.html definitions.html BUILD.json tauceti
             git commit -q -m "Atlas: Tau Ceti progress from the Progress page ($(python3 -c "import json; print(json.load(open('data/tauceti-progress.json'))['exported_at'])")) and its open pull requests"
           }
           publish
@@ -74,7 +101,8 @@ jobs:
             sleep $((attempt * 15))
             git fetch -q origin main && git reset -q --hard origin/main
             python3 scripts/tauceti_progress.py --fetch > /dev/null && python3 scripts/tauceti_prs.py --fetch > /dev/null
-            if git diff --quiet -- data/tauceti-progress.json data/tauceti-new-roadmaps.json data/tauceti-prs.json; then echo "Main already has this data."; exit 0; fi
+            cp "$RUNNER_TEMP/disk/mathlib-disk.json" "$RUNNER_TEMP/disk/mathlib-pin.json" data/
+            if git diff --quiet -- data/tauceti-progress.json data/tauceti-new-roadmaps.json data/tauceti-prs.json data/mathlib-disk.json data/mathlib-pin.json; then echo "Main already has this data."; exit 0; fi
             python3 scripts/build.py > /dev/null && python3 scripts/build.py --tauceti > /dev/null
             publish
           done

@@ -176,7 +176,7 @@ function universeInput(){
  // A paper's lines come from the roadmaps its panel lists under "Builds on": the one it sits beside, any it needs
  // whole, and the owners of the layers it needs, each with the number of its layers the paper needs.
  const artefactEdges=[];for(const a of artefacts){const p=papers.get(a.id),count=new Map();for(const sid of p.needs||[]){const o=stages.get(sid)?.owner;if(o)count.set(o,(count.get(o)||0)+1);}for(const r of new Set([p.home,...(p.roadmaps||[]),...count.keys()]))if(ids.has(r))artefactEdges.push({source:r,target:a.id,count:count.get(r)||0,whole:(p.roadmaps||[]).includes(r)});}
- return {layout:LAYOUT,groups:groupsWithProgress,fields:DATA.fields||[],artefacts,artefactEdges,constellations,stars:starMap,planets:planetMap,starEdges,planetEdges,constellationEdges,relatedEdges:[...relatedEdges,...contextEdges].filter(e=>present(e.source)&&present(e.target))};
+ return {layout:LAYOUT,groups:groupsWithProgress,fields:DATA.fields||[],disk:DATA.mathlibDisk||null,artefacts,artefactEdges,constellations,stars:starMap,planets:planetMap,starEdges,planetEdges,constellationEdges,relatedEdges:[...relatedEdges,...contextEdges].filter(e=>present(e.source)&&present(e.target))};
 }
 function buildUniverse(force){
  const key=[state.origin,state.activity,state.unmapped,[...pins].join(',')].join('|');
@@ -189,6 +189,7 @@ function buildUniverse(force){
 }
 const graph=new TauGraph($('graph'),{
  onSelect:node=>{if(!node)return;const id=node.id;
+  if(node.level==='mathlib'){select(id);return;}
   if(node.level==='galaxy'){navigate({view:'group',id,layer:null,selected:id,tab:'overview'});return;}
   if(node.level==='constellation'){if(node.unmapped)navigate({view:'group',id:opportunities.get(id)?.group||state.id,layer:null,selected:id,tab:'overview'});else openItem(id);return;}
   if(node.level==='star'){openStage(id);return;}
@@ -211,7 +212,8 @@ const graph=new TauGraph($('graph'),{
   state=next;lastCameraTarget=focus.level==='all'&&!graph.atOverview()?'free':JSON.stringify(viewTarget());try{history.replaceState(null,'',routeHash(state));}catch{}
   document.body.classList.toggle('is-system-view',!!state.layer);renderBreadcrumbs();renderContext();renderCatalogue();renderStats();
  },
- onAspectChange:()=>{if(universe){buildUniverse(true);graph.zoomToView(viewTarget(),false);}}
+ // Inside the open Mathlib disk the reader keeps their place when a panel opens beside the chart.
+ onAspectChange:before=>{if(universe){buildUniverse(true);if(graph.diskState==='open'&&before)graph.keepCentreFrom(before);else graph.zoomToView(viewTarget(),false);}}
 });
 function viewTarget(){
  if(state.view==='roadmap'&&state.layer)return {layer:state.layer};
@@ -329,6 +331,7 @@ function renderPlanetReferences(box,landmark,roadmap){
  box.append(panel);
 }
 function renderInspector(){const id=state.selected,changed=inspectedId!==id,box=clear($('inspector-content'));inspectedId=id;if(changed)box.scrollTop=0;$('inspector').hidden=!id;document.body.classList.toggle('has-selection',!!id);if(!id)return;
+ if(diskItems.has(id)){renderDiskItem(box,diskItems.get(id));return;}
  if(papers.has(id)){const p=papers.get(id),ps=paperProgress(p);$('selection-kind').textContent='Paper';detailHeader(box,p.label,`Beside ${shortTitle(maps.get(p.home)?.title||p.home)}`,ps.unlocked?'#ffffff':color(ps.progress));box.append(el('span','status-chip',ps.unlocked?'Unlocked':'Locked'),el('p','detail-summary',p.citation),el('p','detail-note',ps.progressLabel+'.'));if(p.link){const a=el('a','topic-link','Read the paper ↗');a.href=p.link;a.target='_blank';a.rel='noopener noreferrer';box.append(a);}section(box,'Builds on');[...new Set([p.home,...p.roadmaps,...p.needs.map(sid=>stages.get(sid)?.owner)])].filter(r=>maps.has(r)).forEach(r=>item(box,r,()=>openItem(r)));if(p.pending.length){section(box,'Calls for roadmaps not yet in the atlas');const list=el('ul','region-topics');p.pending.forEach(r=>list.append(el('li','',r.replace(/([a-z])([A-Z])/g,'$1 $2'))));box.append(list);}box.append(el('p','detail-note','A paper unlocks once every layer it needs is formalised: the layers its reviewed routes name, and all of any roadmap it extends as a Part II.'));return;}
  if(opportunities.has(id)){const area=opportunities.get(id);$('selection-kind').textContent='Unmapped area';detailHeader(box,area.title,groups.get(area.group).label,'#91aabd');box.append(el('span','status-chip','No dedicated roadmap'),el('p','detail-summary',area.summary),el('p','detail-note',area.reason));section(box,'Nearby mathematical developments');area.relatedRoadmaps.forEach(r=>item(box,r,()=>openItem(r)));box.append(el('p','detail-note','These links provide mathematical context. This proposed area has no layers or completion percentage.'));return;}
  if(groups.has(id)){const g=groups.get(id),members=DATA.roadmaps.filter(r=>r.group===id&&permitted(r));$('selection-kind').textContent='Subject';const field=fieldOf.get(id),siblings=field?field.groupIds.filter(gid=>gid!==id&&groups.has(gid)):[];detailHeader(box,g.label,siblings.length?`${members.length} roadmaps · an area of ${fieldName(field)}`:`${members.length} roadmaps`,g.color);const region=DATA.regions?.groups?.[id]||g;box.append(el('p','detail-summary',region.description||`Explore the mathematics of ${g.label.toLowerCase()}.`));if(Number.isFinite(g.distance))box.append(el('p','detail-note',`Mean distance from Mathlib ${g.distance.toFixed(1)} of 10, over its roadmaps. Its direction on the map follows the subjects it is most related to.`));whyHere(box,id);if(region.topics?.length){const topics=el('ul','region-topics');region.topics.forEach(topic=>topics.append(el('li','',topic)));box.append(topics);}if(siblings.length){section(box,'Other areas of '+fieldName(field));for(const gid of siblings)box.append(btn(groups.get(gid).label,()=>openItem(gid),'topic-link'));}const bridges=(region.bridgeGroups||[]).filter(gid=>groups.has(gid)&&!siblings.includes(gid));if(bridges.length){section(box,'Connected areas');for(const gid of bridges)box.append(btn(groups.get(gid).label,()=>openItem(gid),'topic-link'));}box.append(btn('Open roadmaps →',()=>openItem(id),'primary'));section(box,'In this subject');members.forEach(r=>item(box,r.id,()=>openItem(r.id)));const gaps=visibleOpportunities().filter(a=>a.group===id);if(gaps.length){section(box,'Areas needing a roadmap');gaps.forEach(a=>box.append(btn(a.title,()=>select(a.id),'item-link')));}return;}
@@ -387,6 +390,24 @@ function renderLayerBlueprint(box,r,layer){const rows=r.blueprint?.layers?.[laye
  section(box,'Blueprint');box.append(el('p','detail-note',`${rows.length} declaration${rows.length===1?'':'s'} planned for this layer by its reviewed blueprint. Open one for its statement, proof outline, API and unit tests.`));
  main.forEach(row=>declarationLink(box,r,row));
  if(steps.length){const more=el('details','blueprint-steps');more.append(el('summary','',`${steps.length} lemma${steps.length===1?'':'s'} and other steps`));steps.forEach(row=>declarationLink(more,r,row));box.append(more);}}
+// A Mathlib item of the disk round the sun (src/universe.js): what it says, how much of Mathlib it needs, and where
+// Mathlib keeps it.
+const diskItems=new Map((DATA.mathlibDisk?.items||[]).map(row=>[row.id,row]));
+const CATALOGUES={overview:"Mathlib's overview",undergrad:"Mathlib's undergraduate list",'100':"Freek Wiedijk's 100 theorems",'1000':'The 1000+ theorems list'};
+function renderDiskItem(box,r){const disk=DATA.mathlibDisk,sector=disk.sectors.find(s=>s.id===r.s),theorem=['theorem','lemma'].includes(r.k);
+ $('selection-kind').textContent=theorem?'Mathlib theorem':r.k==='instance'?'Mathlib instance':'Mathlib definition';
+ detailHeader(box,r.t,sector?sector.label:'Mathlib',theorem?'#f0c46e':'#7aa3ff');
+ if(r.t!==r.n)box.append(el('code','disk-name',r.n));
+ if(r.sig)box.append(el('pre','disk-signature',r.k+' '+r.sig));
+ if(r.doc){const text=el('div','md-content landmark-description');text.append(TauMarkdown.render(r.doc,{}));box.append(text);}
+ section(box,'What it needs');stats(box,[[r.p.toLocaleString(),'definitions to state and prove it'],[r.q.toLocaleString(),'to state it'],[r.d,'deep']]);
+ box.append(el('p','detail-note',"It lies as far from the centre as the first number: the Mathlib definitions, structures, classes and inductive types in everything its statement and proof refer to, the proofs of the lemmas it uses included. Lean's own and the tactics' lemmas do not count. Deep is the longest chain of definitions beneath it."));
+ if(r.c&&r.c.length){section(box,"In Mathlib's catalogues");const list=el('ul','region-topics');r.c.forEach(([c,w])=>list.append(el('li','',(CATALOGUES[c]||c)+(w?': '+w:''))));box.append(list);}
+ section(box,'In Mathlib');box.append(el('p','detail-note',r.m));
+ const row=el('div','button-row'),link=(text,href)=>{const a=el('a','topic-link',text);a.href=href;a.target='_blank';a.rel='noopener noreferrer';return a;};
+ row.append(link('Documentation ↗',`https://leanprover-community.github.io/mathlib4_docs/${r.m.split('.').join('/')}.html#${encodeURIComponent(r.n)}`));
+ if(r.f)row.append(link('Source ↗',`https://github.com/leanprover-community/mathlib4/blob/${disk.commit}/${r.f}${r.ln?'#L'+r.ln:''}`));
+ box.append(row);}
 function renderDeclaration(box,d){const r=maps.get(d.roadmapId);$('selection-kind').textContent=capital(d.kind)+' · blueprint';detailHeader(box,d.title,shortTitle(r.title),'#8fa8d0');box.append(el('span','landmark-kind',d.kind));section(box,'In the layer');item(box,d.layer);blueprintNodeDetails(box,r,d.id,d.file,null);}
 function renderBlueprintPlanet(box,s){const r=maps.get(s.owner),x=s.expansion;$('selection-kind').textContent=capital(x.kind)+' · planet';detailHeader(box,stageTitle(s.id),shortTitle(r.title),'#8fa8d0');box.append(el('span','landmark-kind',x.kind));if(x.title&&x.title!==x.planet)box.append(el('p','detail-subtitle',x.title));if(!x.reviewed)box.append(el('span','status-chip','Added during review; not yet independently checked'));
  section(box,'In the layer');if(stages.has(s.parentStageId))item(box,s.parentStageId);

@@ -1,0 +1,3 @@
+evidence-core[yaml] @ git+https://github.com/LeanTrustBuilders/evidence-core@v0.16.1
+numpy
+pyyaml

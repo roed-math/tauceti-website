@@ -85,6 +85,33 @@ class Grouping(unittest.TestCase):
         self.assertAlmostEqual((a1 - a0) / (b1 - b0), (9 ** .85 + 1) / 2, places=2)
         self.assertEqual(map_["groups"][0]["direction"], round((a0 + a1) / 2 % 360, 1))
 
+    def test_a_category_mathlib_needs_is_on_the_map_with_no_roadmaps_yet(self):
+        # The Mathlib disk's areas are everywhere on the map (the user, 2026-10-26): a category with Mathlib material but
+        # no roadmaps keeps its place in the order, with the narrowest share, and no distance.
+        map_ = atlas(("tauceti:N", "x"), ("tauceti:G", "x"))
+        counts = group_by_arxiv(map_, {"tauceti:N": "math.NT", "tauceti:G": "math.AG"}, also=frozenset({"math.GN", "math.NT"}))
+        self.assertEqual(counts, {"math.NT": 1, "math.AG": 1, "math.GN": 0})
+        groups = {group["id"]: group for group in map_["groups"]}
+        self.assertEqual([group["id"] for group in map_["groups"]], ["math.NT", "math.AG", "math.GN"])
+        self.assertEqual((groups["math.GN"]["roadmapIds"], groups["math.GN"]["distance"], groups["math.GN"]["label"]),
+                         ([], None, "General Topology (math.GN)"))
+        (a0, a1), (b0, b1) = groups["math.AG"]["sector"], groups["math.GN"]["sector"]
+        self.assertAlmostEqual((a1 - a0) / (b1 - b0), 2, places=2)  # 1 ** .85 + 1 to 0 + 1
+
+    def test_one_division_for_the_roadmaps_and_mathlib_half_each(self):
+        # The disk's slices are the map's (the user, 2026-10-26): a sector's share counts its roadmaps and Mathlib's
+        # items in it half each, so an area Mathlib covers has room though its roadmaps are still to come.
+        map_ = atlas(*[(f"tauceti:N{i}", "x") for i in range(9)], ("tauceti:G", "x"))
+        counts = group_by_arxiv(map_, {**{f"tauceti:N{i}": "math.NT" for i in range(9)}, "tauceti:G": "math.AG"},
+                                also=frozenset({"math.GN"}), mathlib={"math.NT/analytic": 50, "math.GN": 800})
+        self.assertEqual(counts, {"math.NT": 9, "math.AG": 1, "math.GN": 0})
+        roadmaps = {"math.NT": 9 ** .85 + 1, "math.AG": 1 ** .85 + 1, "math.GN": 1}
+        mathlib = {"math.NT": 50 ** .85 + 1, "math.AG": 1, "math.GN": 800 ** .85 + 1}
+        share = {gid: roadmaps[gid] / sum(roadmaps.values()) + mathlib[gid] / sum(mathlib.values()) for gid in roadmaps}
+        width = {group["id"]: group["sector"][1] - group["sector"][0] for group in map_["groups"]}
+        self.assertAlmostEqual(width["math.GN"] / width["math.NT"], share["math.GN"] / share["math.NT"], places=2)
+        self.assertAlmostEqual(width["math.AG"] / width["math.NT"], share["math.AG"] / share["math.NT"], places=2)
+
     def test_what_uses_a_roadmap_is_counted_again_by_category(self):
         map_ = atlas(("tauceti:A", "x"), ("tauceti:B", "x"), ("tauceti:C", "x"), edges=[("tauceti:A", "tauceti:B"), ("tauceti:A", "tauceti:C")])
         map_["roadmapDistances"] = {"roadmaps": {"tauceti:A": {"distance": 3, "usedBy": [{"galaxy": "etale", "roadmaps": 9}]}}, "galaxies": {"etale": {}}}

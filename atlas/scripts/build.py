@@ -27,6 +27,7 @@ from tauceti_progress import REPOSITORY as TAUCETI_BLOB, load_arxiv_areas, match
 from roadmap_dependencies import add_dependencies, follow_pull_requests  # noqa: E402
 from arxiv_groups import UNCLASSIFIED, group_by_arxiv  # noqa: E402
 from atlas_distances import measure as measure_page_distances  # noqa: E402
+from disk_layout import layout as disk_layout  # noqa: E402
 
 
 def load_decompositions() -> list:
@@ -35,6 +36,12 @@ def load_decompositions() -> list:
     if not folder.is_dir():
         return []
     return [json.loads(path.read_text(encoding="utf-8")) for path in sorted(folder.glob("*.json"))]
+
+
+def load_disk() -> dict | None:
+    """Mathlib's key definitions and theorems for the disk (scripts/mathlib_disk.py), when they have been made."""
+    path = ROOT / "data" / "mathlib-disk.json"
+    return json.loads(path.read_text(encoding="utf-8")) if path.exists() else None
 
 
 def read_text(relative_path: str) -> str:
@@ -281,7 +288,14 @@ def build(output: Path, blueprints: Path | None = None, variant: str | None = No
         distances["method"] = {"distance": "A roadmap's distance from Mathlib is the work still to do in the roadmaps it rests on: every roadmap "
                                "its README or its pull request names as a prerequisite, every roadmap those rest on, and itself, each counting "
                                "the share of its layers not yet done. It is placed on a 0-10 scale in proportion, 10 being the farthest roadmap on the page."}
-        atlas["meta"]["arxivGroups"] = group_by_arxiv(atlas, declared, load_arxiv_areas(), json.loads(read_text("data/arxiv-subareas.json")))
+        # The Mathlib disk, round the sun (scripts/disk_layout.py): its areas are on the map even where no roadmap is yet.
+        disk = load_disk()
+        also = frozenset(area.split("/")[0] for area in (disk or {}).get("areas", {}) if area)
+        # One division for the disk and the map: the sectors share the circle between the roadmaps and Mathlib's items.
+        atlas["meta"]["arxivGroups"] = group_by_arxiv(atlas, declared, load_arxiv_areas(), json.loads(read_text("data/arxiv-subareas.json")), also=also,
+                                                      mathlib={area: entry["items"] for area, entry in disk["areas"].items()} if disk else None)
+        if disk:
+            atlas["mathlibDisk"] = disk_layout(disk, atlas["groups"])
     retired, link_packets = context["retired"], context["linkPackets"]
     # Layers that are not source refinements: the snapshot's, and those of any roadmap added above.
     original_stage_count = sum(1 for stage in atlas["stages"] if not stage.get("expansion"))
@@ -341,7 +355,7 @@ def build(output: Path, blueprints: Path | None = None, variant: str | None = No
     # progress targets, so the parent stays terminal for progress accounting.
     refinements = [stage for stage in atlas["stages"] if stage.get("expansion")]
     parent_ids = {stage.get("parentStageId") for stage in atlas["stages"] if stage.get("parentStageId") and not stage.get("expansion")}
-    source_paths = ["src/shell.html", *style_paths, *assets.values(), "data/atlas.json", "data/status.json", "data/tauceti-progress.json", "data/tauceti-new-roadmaps.json", "data/galaxies.json", "data/roadmap-retirements.json", "data/library-coverage.json", "data/opportunities.json", "data/stage-presentation.json", "data/landmark-labels.json", "data/landmark-hidden.json", "data/roadmap-summaries.json", "data/roadmap-classification.json", "data/classification-estimates.json", "data/roadmap-distances.json", "data/galaxy-layout.json", "data/bibliography.json", "NOTICE", "LICENSE", "vendor/D3-LICENSE.txt", "vendor/KaTeX-LICENSE.txt"]
+    source_paths = ["src/shell.html", *style_paths, *assets.values(), "data/atlas.json", "data/status.json", "data/tauceti-progress.json", "data/tauceti-new-roadmaps.json", "data/galaxies.json", "data/roadmap-retirements.json", "data/library-coverage.json", "data/opportunities.json", "data/stage-presentation.json", "data/landmark-labels.json", "data/landmark-hidden.json", "data/roadmap-summaries.json", "data/roadmap-classification.json", "data/classification-estimates.json", "data/roadmap-distances.json", "data/galaxy-layout.json", "data/bibliography.json", *(["data/mathlib-disk.json"] if (ROOT / "data/mathlib-disk.json").exists() else []), "NOTICE", "LICENSE", "vendor/D3-LICENSE.txt", "vendor/KaTeX-LICENSE.txt"]
     for folder in ("data/decompositions", "data/blueprints", "data/blueprints/roadmaps", "data/links", "data/restructure"):
         source_paths += [str(path.relative_to(ROOT)) for path in sorted((ROOT / folder).glob("*.*"))] if (ROOT / folder).is_dir() else []
     report = {

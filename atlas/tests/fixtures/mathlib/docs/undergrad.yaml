@@ -1,0 +1,5 @@
+Ring Theory:
+  Ideals:
+    Dedekind domain: 'IsDedekindDomain'
+    Dedekind domain, under another name: 'IsDedekindDomain'
+    maximal ideal: 'Ideal.IsMaximal'
