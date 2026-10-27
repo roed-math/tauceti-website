@@ -83,6 +83,8 @@ def touch_swipe(page, session, start, end, steps=10):
   page.wait_for_timeout(18)
  session.send('Input.dispatchTouchEvent',{'type':'touchEnd','touchPoints':[]})
  page.wait_for_timeout(120)
+UNCOVERED="points => points.every(([x, y]) => { const e = document.elementFromPoint(x, y); return !!(e && e.closest('#graph svg')); })"
+TO_MIDDLE="([x, y]) => { const g = TauExplorer.graph, t = g.transform, box = g.svg.node().getBoundingClientRect(); g.svg.call(g.zoom.transform, t.translate((box.left + box.width / 2 - x) / t.k, (box.top + box.height / 2 - y) / t.k)); }"
 def pinch_until(page, session, selector, scale, predicate, attempts=7):
  # Two independently moving fingers generate native touch events. Their centroid
  # stays on the chosen object, so entering it tests the map's touch targeting.
@@ -96,6 +98,11 @@ def pinch_until(page, session, selector, scale, predicate, attempts=7):
   room=min(x-chart['x'],chart['x']+chart['width']-x,60)-3
   if room<4:return False
   radius=min(28,room/scale) if scale>1 else min(45,room)
+  # A finger pinches only what it can touch. An object under a panel over the chart (the progress card on a narrow
+  # phone, whose size depends on the fonts: Linux's covered Class field theory once the Mathlib disk's sectors came,
+  # 2026-10-26) is first brought to the chart's middle, as a reader pans to it.
+  if not page.evaluate(UNCOVERED,[[x-radius,y],[x,y],[x+radius,y]]):
+   page.evaluate(TO_MIDDLE,[x,y]);page.wait_for_timeout(400);continue
   def fingers(r):return touch_points([(x-r,y),(x+r,y)])
   session.send('Input.dispatchTouchEvent',{'type':'touchStart','touchPoints':fingers(radius)})
   for step in range(1,13):
