@@ -1458,7 +1458,7 @@
   $('theme').addEventListener('click', () => {
     const next = document.documentElement.dataset.theme === 'light' ? 'dark' : 'light';
     document.documentElement.dataset.theme = next;
-    try { localStorage.setItem('tauceti-review:theme', next); } catch (e) { /* not kept */ }
+    try { localStorage.setItem('tauceti:theme', next); } catch (e) { /* not kept */ }  // shared with the Tau Ceti website
   });
   /* The first page; back from signing in with GitHub, the page as it was, then what was to be done there. */
   async function start() {

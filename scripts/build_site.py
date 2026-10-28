@@ -2,9 +2,12 @@
 """Assemble the static site into _site/: each src/pages/*.html inside src/layout.html,
 plus static/ and the generated data/.
 
-A page begins with a JSON comment giving its title, description and page scripts:
+A page begins with a JSON comment giving its title, description, page scripts and the data files its
+figures draw on (linked from the footer, for download):
 
-  <!-- {"title": "Growth", "description": "...", "scripts": ["growth.js"]} -->
+  <!-- {"title": "Growth", "description": "...", "scripts": ["growth.js"], "data": ["live:progress.json"]} -->
+
+"live:NAME" is taucetiproject.org's published static/NAME; anything else is a path in this site.
 
 Usage: python3 scripts/build_site.py [--out _site] [--data data]
 """
@@ -41,16 +44,50 @@ PAGES = [
 REVIEW_DATA = "https://cbirkbeck.github.io/tauceti-reviewed-by-test/data/"
 
 HEADER = re.compile(r"\A\s*<!--\s*(\{.*?\})\s*-->\s*", re.S)
+LIVE = "https://taucetiproject.org/static/"
+
+# Before first paint, so a reader who chose light never sees the dark page flash. The review app reads
+# the same key (review/web/index.html).
+THEME_INIT = ("  <script>try { var t = localStorage.getItem('tauceti:theme'); "
+              "if (t === 'light' || t === 'dark') document.documentElement.dataset.theme = t; } catch (e) {}</script>")
 
 
-def review_app(out: Path, data_url: str) -> None:
-    """The review app from review/web/, reading its data/ from data_url (review/web/data.js)."""
+def site_header(current: str, root: str = "") -> str:
+    """src/header.html for the page `current` (a PAGES entry), its links relative to `root`."""
+    nav = "\n".join(
+        f'          <a href="{(root or "./") if f == "index.html" else root + f}"'
+        + (' aria-current="page"' if f == current else "")
+        + f">{html.escape(label)}</a>"
+        for f, label in PAGES)
+    return (ROOT / "src/header.html").read_text().replace("{{nav}}", nav).replace("{{home}}", root or "./").replace("{{root}}", root).rstrip("\n")
+
+
+def data_links(files: list[str]) -> str:
+    if not files:
+        return ""
+    links = []
+    for f in files:
+        url = LIVE + f.removeprefix("live:") if f.startswith("live:") else f
+        links.append(f'<a href="{html.escape(url)}" download>{html.escape(url.rsplit("/", 1)[-1])}</a>')
+    return ("        <p class=\"small muted data-links\">The data behind this page, to download: "
+            + " · ".join(links) + ".</p>")
+
+
+def review_app(out: Path, data_url: str, version: str) -> None:
+    """The review app from review/web/, reading its data/ from data_url (review/web/data.js), under the
+    site's own top bar (its stylesheet scopes the bar; review/web/style.css places its own bar below)."""
     shutil.copytree(ROOT / "review" / "web", out)
     index = out / "index.html"
     page = index.read_text()
-    meta = f'<meta name="tau-review-data" content="{html.escape(data_url.rstrip("/") + "/")}">'
-    assert "<head>" in page, "review/web/index.html has no <head>"
-    index.write_text(page.replace("<head>", "<head>\n  " + meta, 1))
+    assert "<head>" in page and "<body>" in page, "review/web/index.html has no <head> or <body>"
+    head = "\n".join([
+        f'<meta name="tau-review-data" content="{html.escape(data_url.rstrip("/") + "/")}">',
+        '<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@400;500;600;700&display=swap">',
+        f'<link rel="stylesheet" href="../static/sitebar.css?v={version}">',
+        f'<script src="../static/js/sitebar.js?v={version}" defer></script>',
+    ])
+    page = page.replace("<head>", "<head>\n" + head, 1).replace("<body>", "<body>\n" + site_header("review/", "../"), 1)
+    index.write_text(page)
 
 
 def main() -> None:
@@ -65,7 +102,6 @@ def main() -> None:
     layout = (ROOT / "src/layout.html").read_text()
     now = dt.datetime.now(dt.timezone.utc)
     version = now.strftime("%Y%m%d%H%M%S")
-    built_at = now.strftime("%Y-%m-%d %H:%M UTC")
 
     if args.out.exists():
         shutil.rmtree(args.out)
@@ -76,7 +112,7 @@ def main() -> None:
     (args.out / ".nojekyll").write_text("")
     if args.atlas:
         shutil.copytree(args.atlas, args.out / "atlas")
-    review_app(args.out / "review", args.review_data)
+    review_app(args.out / "review", args.review_data, version)
 
     for file, _ in PAGES:
         if file.endswith("/"):
@@ -85,11 +121,6 @@ def main() -> None:
         m = HEADER.match(src)
         meta = json.loads(m.group(1)) if m else {}
         body = src[m.end():] if m else src
-        nav = "\n".join(
-            f'        <a href="{"./" if f == "index.html" else f}"'
-            + (' aria-current="page"' if f == file else "")
-            + f">{html.escape(label)}</a>"
-            for f, label in PAGES)
         scripts = "\n".join(f'  <script src="static/js/{s}?v={version}" defer></script>'
                             for s in meta.get("scripts", []))
         title = meta.get("title", "Tau Ceti")
@@ -97,10 +128,11 @@ def main() -> None:
                 .replace("{{title}}", html.escape(title if title == "Tau Ceti" else f"{title} — Tau Ceti"))
                 .replace("{{description}}", html.escape(meta.get("description", "")))
                 .replace("{{scripts}}", scripts)
-                .replace("{{nav}}", nav)
+                .replace("{{theme_init}}", THEME_INIT)
+                .replace("{{header}}", site_header(file))
+                .replace("{{data_links}}", data_links(meta.get("data", [])))
                 .replace("{{page}}", file.removesuffix(".html"))
                 .replace("{{version}}", version)
-                .replace("{{built_at}}", built_at)
                 .replace("{{content}}", body))
         (args.out / file).write_text(page)
     print(f"built {sum(not f.endswith('/') for f, _ in PAGES)} pages into {args.out}")

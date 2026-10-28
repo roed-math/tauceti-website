@@ -1,15 +1,16 @@
 /* Tau Ceti Review: one centred column under a sticky top bar, serif titles over a sans body, in the
    Tau Ceti Atlas's dark palette (tauceti-explorer, src/style.css), with a light
    one to switch to. A kind is a colour (a notion blue, a result green, an instance purple), a review
-   state a badge, and the gold Tau Ceti's own. */
+   state a badge, and the gold Tau Ceti's own. Every text colour clears WCAG AA (4.5:1) on each surface
+   it is used on, in both themes. */
 :root {
   --bg: #0b1016; --surface: #0e141b; --raised: #131a22; --hover: #182029; --line: #222c37; --line-soft: #1a222b;
-  --ink: #e2e6eb; --ink-soft: #b9c2cc; --muted: #8391a0; --faint: #5b6875; --edge: #3b4753;
+  --ink: #e2e6eb; --ink-soft: #b9c2cc; --muted: #8391a0; --faint: #7c8a98; --edge: #3b4753;
   --accent: #dfc186; --accent-soft: #2a261c; --accent-ink: #17130a;
   --concept: #7fa9d6; --result: #9cc59a; --instance: #b9a0dd; --gold: #dfc186;
   --ai: #6cb4ff;  /* an AI agent's answer: its tick, its AI mark */
   --code: #111821; --hit: #3b3418;
-  --st-covered: #f7f3e9; --st-uncounted: #e89678; --st-stale: #e89678; --st-problem: #e0705c; --st-unreviewed: #5b6875;
+  --st-covered: #f7f3e9; --st-uncounted: #e89678; --st-stale: #e89678; --st-problem: #e0705c; --st-unreviewed: #7c8a98; --on-problem: #1a0b07;
   --serif: "Source Serif 4", Georgia, "Times New Roman", serif;
   --sans: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
   --mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
@@ -17,12 +18,12 @@
 }
 :root[data-theme="light"] {
   --bg: #fbfaf7; --surface: #ffffff; --raised: #f4f2ee; --hover: #f1eee8; --line: #e6e2da; --line-soft: #efece6;
-  --ink: #1d2126; --ink-soft: #3a414a; --muted: #5b6470; --faint: #8a929c; --edge: #c9c3b8;
-  --accent: #8a6a1f; --accent-soft: #f6efdc; --accent-ink: #ffffff;
-  --concept: #2c5f8a; --result: #2f7a55; --instance: #7a5b9a; --gold: #b8860b;
-  --ai: #1f6fd1;
+  --ink: #1d2126; --ink-soft: #3a414a; --muted: #5b6470; --faint: #626b77; --edge: #c9c3b8;
+  --accent: #85661e; --accent-soft: #f6efdc; --accent-ink: #ffffff;
+  --concept: #2c5f8a; --result: #2e7854; --instance: #7a5b9a; --gold: #8a6408;
+  --ai: #1d69c7;
   --code: #f4f2ee; --hit: #fff3c4;
-  --st-covered: #2f7a55; --st-uncounted: #b4562f; --st-stale: #b4562f; --st-problem: #b0392a; --st-unreviewed: #8a929c;
+  --st-covered: #2f7a55; --st-uncounted: #a8502c; --st-stale: #a8502c; --st-problem: #b0392a; --st-unreviewed: #626b77; --on-problem: #ffffff;
   color-scheme: light;
 }
 * { box-sizing: border-box; }
@@ -41,6 +42,11 @@ h3 { font-size: 1.1rem; margin: 1.2rem 0 .4rem; }
 .muted { color: var(--muted); } .faint { color: var(--faint); } .small { font-size: 13px; }
 
 /* The top bar. */
+/* On the Tau Ceti website the site's own bar (.site-nav, 49px, with the theme switch) comes first, and this
+   one sticks below it. */
+.site-nav + .top { top: 49px; }
+.site-nav + .top #theme { display: none; }
+html:has(.site-nav) { scroll-padding-top: 125px; }
 .top { position: sticky; top: 0; z-index: 30; background: color-mix(in srgb, var(--bg) 92%, transparent); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); border-bottom: 1px solid var(--line); }
 .top-inner { max-width: 1120px; margin: 0 auto; padding: 10px 16px; display: flex; gap: 14px; align-items: center; flex-wrap: wrap; }
 .brand { display: inline-flex; align-items: center; gap: 8px; font-family: var(--serif); font-weight: 600; font-size: 1.15rem; color: var(--ink); white-space: nowrap; }
@@ -307,7 +313,7 @@ details.twisty > summary:hover .gist { color: var(--ink); }
 .thread-head a { color: var(--muted); }
 .verdict { padding: 1px 7px; border-radius: 4px; font-size: 11px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; }
 .verdict.accept { color: var(--bg); background: var(--st-covered); }
-.verdict.problem { color: #fff; background: var(--st-problem); }
+.verdict.problem { color: var(--on-problem); background: var(--st-problem); }
 .verdict.question { color: var(--accent-ink); background: var(--accent); }
 .verdict.test, .verdict.challenge { color: var(--bg); background: var(--concept); }
 .verdict.named { color: var(--gold); background: var(--accent-soft); }

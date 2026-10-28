@@ -90,32 +90,19 @@
     if (target) target.replaceChildren(TC.el("p", { class: "error small", text: "Could not load this data (" + (err && err.message || err) + ")." }));
   };
 
-  TC.SERIES = ["--s1", "--s2", "--s3", "--s4", "--s5", "--s6", "--s7", "--s8"].map(function (v) {
-    return getComputedStyle(document.documentElement).getPropertyValue(v).trim() || "#3987e5";
-  });
-  TC.OTHER = "#6b7394";
-
-  /* ---------- table view ---------- */
-  TC.tableView = function (headers, rows, numeric) {
-    var thead = TC.el("tr", null, headers.map(function (h, i) {
-      return TC.el("th", { class: numeric && numeric[i] ? "n" : null, text: h });
-    }));
-    var body = rows.map(function (r) {
-      return TC.el("tr", null, r.map(function (c, i) {
-        return TC.el("td", { class: numeric && numeric[i] ? "n" : null, text: c });
-      }));
-    });
-    return TC.el("details", { class: "as-table" }, [
-      TC.el("summary", { text: "Show as a table" }),
-      TC.el("div", { class: "scroll" }, [TC.el("table", { class: "data" }, [TC.el("thead", null, [thead]), TC.el("tbody", null, body)])]),
-    ]);
-  };
+  // CSS variables rather than values, so a theme switch recolours every chart without redrawing it.
+  TC.SERIES = ["--s1", "--s2", "--s3", "--s4", "--s5", "--s6", "--s7", "--s8"].map(function (v) { return "var(" + v + ")"; });
+  TC.OTHER = "var(--s-other)";
 
   /* ---------- time series ---------- */
   var SVGNS = "http://www.w3.org/2000/svg";
+  // A var() colour goes in style: SVG presentation attributes do not resolve CSS variables everywhere.
   function s(tag, attrs) {
     var e = document.createElementNS(SVGNS, tag);
-    for (var k in attrs) e.setAttribute(k, attrs[k]);
+    for (var k in attrs) {
+      if ((k === "fill" || k === "stroke") && String(attrs[k]).indexOf("var(") === 0) e.style[k] = attrs[k];
+      else e.setAttribute(k, attrs[k]);
+    }
     return e;
   }
   function niceMax(v) {
@@ -126,8 +113,7 @@
   }
 
   /* opts: dates (ISO days), series [{name, values, color, dash, note}], stacked, area,
-     yFormat, tipFormat, height, legend (default: when ≥ 2 series), table (default true),
-     markers [{date, label}] */
+     yFormat, tipFormat, height, legend (default: when ≥ 2 series), markers [{date, label}] */
   TC.timeChart = function (container, opts) {
     if (typeof container === "string") container = TC.$(container);
     container.replaceChildren();
@@ -143,12 +129,6 @@
     var tip = TC.el("div", { class: "tooltip", role: "status" });
     host.append(tip);
     container.append(host);
-    if (opts.table !== false) {
-      var headers = ["Date"].concat(series.map(function (x) { return x.name; }));
-      var rows = [];
-      for (var i = n - 1; i >= 0; i--) rows.push([dates[i]].concat(series.map(function (x) { return TC.fmt(x.values[i]); })));
-      container.append(TC.tableView(headers, rows, headers.map(function (_, i) { return i > 0; })));
-    }
 
     // Stacked series draw cumulative bands; first series at the bottom.
     var tops = series.map(function () { return new Array(n); });
@@ -206,7 +186,7 @@
           var below = opts.stacked && k2 > 0 ? tops[k2 - 1] : null, back = "";
           for (var j = n - 1; j >= 0; j--) back += "L" + x(j).toFixed(1) + "," + y(below ? below[j] : 0).toFixed(1);
           svg.append(s("path", { d: line + back + "Z", fill: sr.color, "fill-opacity": opts.stacked ? 0.88 : 0.18 }));
-          svg.append(s("path", { d: line, fill: "none", stroke: opts.stacked ? "#0f1633" : sr.color, "stroke-width": opts.stacked ? 1.5 : 2 }));
+          svg.append(s("path", { d: line, fill: "none", stroke: opts.stacked ? "var(--surface)" : sr.color, "stroke-width": opts.stacked ? 1.5 : 2 }));
         } else {
           svg.append(s("path", { d: line, fill: "none", stroke: sr.color, "stroke-width": 2, "stroke-dasharray": sr.dash || "", "stroke-linejoin": "round", "stroke-linecap": "round" }));
         }
@@ -221,7 +201,7 @@
       var cross = s("line", { class: "crosshair", x1: 0, x2: 0, y1: m.t, y2: m.t + h, visibility: "hidden" });
       svg.append(cross);
       var dots = series.map(function (sr) {
-        var c = s("circle", { r: 4, fill: sr.color, stroke: "#0f1633", "stroke-width": 2, visibility: "hidden" });
+        var c = s("circle", { r: 4, fill: sr.color, stroke: "var(--surface)", "stroke-width": 2, visibility: "hidden" });
         svg.append(c);
         return c;
       });
@@ -303,10 +283,6 @@
       ]));
     });
     container.replaceChildren(wrap);
-    if (opts.table !== false) {
-      container.append(TC.tableView([opts.labelHeader || "Item", opts.valueHeader || "Value"],
-        items.map(function (i) { return [i.label, i.valueText || fmt(i.value)]; }), [false, true]));
-    }
   };
 
   /* ---------- Lean highlighting (keywords and comments only) ---------- */
@@ -376,11 +352,6 @@
   /* ---------- page chrome ---------- */
   document.addEventListener("DOMContentLoaded", function () {
     TC.$$("pre").forEach(TC.copyable);
-    var btn = TC.$(".nav-toggle"), links = TC.$("#nav-links");
-    if (btn && links) btn.addEventListener("click", function () {
-      var open = links.classList.toggle("open");
-      btn.setAttribute("aria-expanded", open ? "true" : "false");
-    });
     TC.$$("[data-tabs]").forEach(function (group) {
       var buttons = TC.$$("[role=tab]", group);
       buttons.forEach(function (b) {

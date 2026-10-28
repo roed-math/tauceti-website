@@ -19,11 +19,11 @@ document.addEventListener("DOMContentLoaded", function () {
     TC.$("[data-topic-note]").textContent = "Through " + TC.dayYear(d.last_full_day) + "; " + TC.fmt(d.unattributed.prs) + " pull requests without a single roadmap label are not shown.";
     TC.bars("#by-topic", d.topics.map(function (t) {
       return {
-        label: t.name, value: t.net_lines, color: colorOf[t.arxiv], href: "structure.html#topic-" + t.arxiv,
+        label: t.name, value: t.net_lines, color: colorOf[t.arxiv], href: "structure.html?area=" + encodeURIComponent(t.arxiv),
         valueText: TC.compact(t.net_lines) + " · " + t.roadmaps + (t.roadmaps === 1 ? " roadmap" : " roadmaps"),
         title: t.name + " (" + t.arxiv + "): " + TC.fmt(t.net_lines) + " net lines across " + t.roadmaps + " roadmaps",
       };
-    }), { labelHeader: "Area", valueHeader: "Net lines · roadmaps" });
+    }));
     TC.bars("#by-roadmap", d.roadmaps.slice(0, 20).map(function (r) {
       return {
         label: r.roadmap, value: r.net_lines, color: colorOf[r.arxiv] || TC.OTHER,
@@ -31,7 +31,7 @@ document.addEventListener("DOMContentLoaded", function () {
         valueText: TC.compact(r.net_lines) + " · " + TC.fmt(r.merged_prs) + " PRs",
         title: r.roadmap + " (" + r.arxiv + "): " + TC.fmt(r.net_lines) + " net lines from " + TC.fmt(r.merged_prs) + " merged PRs",
       };
-    }), { labelHeader: "Roadmap", valueHeader: "Net lines · merged PRs" });
+    }));
   }).catch(function (e) { TC.fail("#by-topic", e); TC.fail("#by-roadmap", e); TC.set("areas", "—"); });
 
   TC.live("progress.json").then(function (p) {
@@ -57,14 +57,10 @@ document.addEventListener("DOMContentLoaded", function () {
       });
       track.append(segs);
       wrap.append(TC.el("div", { class: "bar", title: k + ": " + order.map(function (s) { return (t[s] || 0) + " " + s; }).join(", ") }, [
-        TC.el("div", { class: "name" }, [TC.el("a", { href: "structure.html#topic-" + t.arxiv, text: k })]), track,
+        TC.el("div", { class: "name" }, [TC.el("a", { href: "structure.html?area=" + encodeURIComponent(t.arxiv), text: k })]), track,
       ]));
     });
     var box = TC.$("#by-state");
     box.replaceChildren(wrap);
-    box.append(TC.tableView(["Area", "Done", "Partial", "Untouched", "Not assessed"], topics.map(function (k) {
-      var t = byTopic[k];
-      return [k, t.done || 0, t.partial || 0, t.untouched || 0, t.unassessed || 0].map(String);
-    }), [false, true, true, true, true]));
   }).catch(function (e) { TC.fail("#by-state", e); });
 });

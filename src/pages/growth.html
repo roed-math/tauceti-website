@@ -1,4 +1,4 @@
-<!-- {"title": "Growth", "description": "How fast Tau Ceti is growing: lines of Lean over time, by area, merges per week, and roadmap layers completed.", "scripts": ["growth.js"]} -->
+<!-- {"title": "Growth", "description": "How fast Tau Ceti is growing: lines of Lean over time, by area, merges per week, and roadmap layers completed.", "scripts": ["growth.js"], "data": ["data/library-loc.json", "data/loc-by-topic.json", "live:roadmap-completion.json", "live:pr-stats.json", "live:progress.json"]} -->
 <p class="eyebrow">Growth</p>
 <h1>How fast is it growing?</h1>
 <p class="lede">Tau Ceti merged its first pull request on <span data-first-merge>…</span>. Every chart here runs through the last complete UTC day; hover or focus a chart for exact values, or open its table.</p>
@@ -19,7 +19,7 @@
 
 <div class="panel">
   <h3>Lines of Lean by area</h3>
-  <p class="sub">Net lines landed by merged pull requests, stacked by the arXiv category of the roadmap each advances. The seven largest areas are shown; the rest are combined.</p>
+  <p class="sub">Net lines landed by merged pull requests, stacked by the arXiv category of the roadmap each advances. The seven largest areas are shown; the rest are combined. This sums diffs, so a line rewritten later counts twice.</p>
   <div id="topics"><p class="muted">Loading…</p></div>
 </div>
 
@@ -50,4 +50,3 @@
     <div id="roadmaps"><p class="muted">Loading…</p></div>
   </div>
 </div>
-<p class="small muted">Sources: <a href="data/library-loc.json">library-loc.json</a> and <a href="data/loc-by-topic.json">loc-by-topic.json</a> (built with this site from git and GitHub), and taucetiproject.org’s <a href="https://taucetiproject.org/static/pr-stats.json">pr-stats.json</a>, <a href="https://taucetiproject.org/static/progress.json">progress.json</a> and <a href="https://taucetiproject.org/static/roadmap-completion.json">roadmap-completion.json</a>. The area chart sums diffs, so a rewritten line counts twice; its total differs from the library line count by that and by unlabelled pull requests.</p>

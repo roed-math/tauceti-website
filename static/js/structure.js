@@ -1,18 +1,63 @@
 document.addEventListener("DOMContentLoaded", function () {
   "use strict";
   var TC = window.TC;
-  var data;
+  var data, areaOf = {}, areaLabels = {};
+
+  // The page's state lives in its address, so a filtered view or an area's page can be linked to.
+  var params = new URLSearchParams(location.search);
+  var AREA = params.get("area") || "";
+  var state = {
+    q: params.get("q") || "",
+    show: params.get("show") || "all",
+    sort: params.get("sort") || "activity",
+    group: params.get("group") || "topic",
+  };
 
   function count(r, s) { return r.states.filter(function (x) { return x === s; }).length; }
+  function code(r) { return r.arxiv || "none"; }
 
+  /* ---------- what each filter means (as taucetiproject.org/progress defines them) ---------- */
+  function hasReport(r) { return !!r.status; }
+  function readmeChanged(r) { return !!r.assessment && r.assessment.reason === "ok" && r.assessment.readme_changed === true; }
+  function prsDue(r) {
+    return !r.completed && !!r.status && !!r.activity && r.activity.since_report !== null && r.activity.since_report >= data.update_due_prs;
+  }
+  function due(r) { return (!!r.status && !r.status.inherited && prsDue(r)) || readmeChanged(r); }
+  var SHOW = {
+    all: function () { return true; },
+    active: function (r) { return !r.completed; },
+    completed: function (r) { return r.completed; },
+    reported: hasReport,
+    unreported: function (r) { return !hasReport(r); },
+    unassessed: function (r) { return r.states.indexOf("unassessed") >= 0; },
+    due: due,
+  };
+  function act(r, k) { return r.activity ? r.activity[k] || 0 : 0; }
+  var SORT = {
+    activity: function (a, b) { return (act(b, "recent") - act(a, "recent")) || (act(b, "total") - act(a, "total")) || a.name.localeCompare(b.name); },
+    done: function (a, b) { return ((b.completed ? 1e6 : 0) + count(b, "done")) - ((a.completed ? 1e6 : 0) + count(a, "done")) || a.name.localeCompare(b.name); },
+    due: function (a, b) {
+      function since(r) { return r.activity && r.status && r.activity.since_report !== null ? r.activity.since_report : -1; }
+      return (due(b) - due(a)) || (since(b) - since(a)) || a.name.localeCompare(b.name);
+    },
+    name: function (a, b) { return a.name.localeCompare(b.name); },
+  };
+  function matches(r, q) {
+    if (!q) return true;
+    var hay = [r.name, r.title, r.topic, r.arxiv, r.parent || "", (r.layers || []).join(" "),
+               r.status ? r.status.glance : "", r.status ? (r.status.frontier || []).map(function (f) { return f.name + " " + f.text; }).join(" ") : ""];
+    return hay.join(" ").toLowerCase().indexOf(q) >= 0;
+  }
+
+  /* ---------- one roadmap ---------- */
   function segments(r) {
     var segs = TC.el("div", { class: "segs", "aria-hidden": "true" });
     if (r.completed && !r.states.length) {
-      segs.append(TC.el("div", { class: "seg complete", title: "archived as complete" }));
+      segs.append(TC.el("div", { class: "seg complete", title: "declared complete" }));
       return segs;
     }
     r.states.forEach(function (s, i) {
-      segs.append(TC.el("div", { class: "seg " + (r.completed ? "complete" : s), title: (r.layer_ids[i] || "") + ": " + (r.completed ? "archived as complete" : s) }));
+      segs.append(TC.el("div", { class: "seg " + (r.completed ? "complete" : s), title: (r.layer_ids[i] || "") + ": " + (r.completed ? "declared complete" : s) }));
     });
     return segs;
   }
@@ -36,7 +81,7 @@ document.addEventListener("DOMContentLoaded", function () {
       document.createTextNode(n ? done + "/" + n + " layers" : r.completed ? "archived" : "no layers"),
       TC.el("br"),
       // Sub-roadmaps carry their umbrella's label, so their merges are counted on the umbrella.
-      document.createTextNode(r.activity ? TC.fmt(r.activity.total || 0) + " PRs" : r.parent ? "PRs under " + r.parent : ""),
+      document.createTextNode(r.activity ? TC.fmt(r.activity.total || 0) + " PRs" + (due(r) ? " · update due" : "") : r.parent ? "PRs under " + r.parent : ""),
     ]);
     var body = TC.el("div", { class: "rm-body" });
     var st = r.status || {};
@@ -68,70 +113,166 @@ document.addEventListener("DOMContentLoaded", function () {
       if (l && l.url) { links.append(document.createTextNode(" · ")); links.append(TC.el("a", { href: l.url, text: l.label || "more" })); }
     });
     body.append(links);
-    var d = TC.el("details", { class: "rm" + (child ? " child" : ""), id: "rm-" + r.name }, [
+    return TC.el("details", { class: "rm" + (child ? " child" : ""), id: "rm-" + r.name }, [
       TC.el("summary", null, [name, segments(r), meta]), body,
     ]);
-    d.dataset.search = [r.name, r.title, r.topic, r.arxiv, r.parent || ""].join(" ").toLowerCase();
-    return d;
+  }
+
+  /* ---------- the board ---------- */
+  function areaHref(c) { return "structure.html?area=" + encodeURIComponent(c); }
+
+  // The roadmaps (with their sub-roadmaps) a filter keeps, in the chosen order: [[roadmap, [kept children]]].
+  function selection(rows, kids) {
+    var q = state.q.trim().toLowerCase(), show = SHOW[state.show] || SHOW.all, sort = SORT[state.sort] || SORT.activity;
+    var out = [];
+    rows.slice().sort(sort).forEach(function (r) {
+      var ch = (kids[r.id] || []).slice().sort(sort);
+      var mine = show(r) && matches(r, q);
+      var keptKids = ch.filter(function (k) { return show(k) && (mine || matches(k, q)); });
+      if (mine || keptKids.length) out.push([r, mine ? ch.filter(function (k) { return show(k); }) : keptKids]);
+    });
+    return out;
+  }
+
+  function rowsOf(sel) {
+    var els = [];
+    sel.forEach(function (pair) { els.push(row(pair[0], false)); pair[1].forEach(function (k) { els.push(row(k, true)); }); });
+    return els;
+  }
+
+  function stats(sel) {
+    var layers = 0, done = 0, n = 0;
+    sel.forEach(function (pair) {
+      n++;
+      [pair[0]].concat(pair[1]).forEach(function (r) { layers += r.states.length; done += r.completed ? r.states.length : count(r, "done"); });
+    });
+    return n + (n === 1 ? " roadmap" : " roadmaps") + (layers ? " · " + done + "/" + layers + " layers done" : "");
+  }
+
+  function panel(title, c, sel, linked) {
+    var head = TC.el("div", { class: "topic-head" }, [
+      TC.el("h3", null, [linked ? TC.el("a", { href: areaHref(c), text: title }) : document.createTextNode(title)]),
+      TC.el("span", { class: "muted", text: (c !== "none" ? c + " · " : "") + stats(sel) }),
+    ]);
+    var section = TC.el("section", { class: "topic-group", id: "topic-" + c }, [head]);
+    // On its own page, an area the Atlas divides is shown in its subareas, in the Atlas's order.
+    var subs = AREA ? subareas(c, sel) : null;
+    if (subs) {
+      subs.forEach(function (sub) {
+        section.append(TC.el("h4", { class: "subarea-head" }, [document.createTextNode(sub.label + " "), TC.el("span", { class: "muted", text: "· " + stats(sub.sel) })]));
+        section.append(TC.el("div", { class: "rms" }, rowsOf(sub.sel)));
+      });
+    } else {
+      section.append(TC.el("div", { class: "rms" }, rowsOf(sel)));
+    }
+    return section;
+  }
+
+  function subareas(c, sel) {
+    var order = (areaLabels.fields || {})[c];
+    if (!order) return null;
+    var by = {};
+    sel.forEach(function (pair) {
+      var a = areaOf[pair[0].id] || order[order.length - 1];
+      (by[a] = by[a] || []).push(pair);
+    });
+    var out = order.filter(function (a) { return by[a]; }).map(function (a) { return { label: areaLabels.names[a] || a, sel: by[a] }; });
+    return out.length > 1 ? out : null;
+  }
+
+  function areaNav(top) {
+    var nav = TC.$("#area-nav");
+    nav.replaceChildren(TC.el("a", { href: "structure.html", text: "All", "aria-current": AREA ? null : "page" }));
+    data.topics.forEach(function (t) {
+      var c = (top.find(function (r) { return r.topic === t; }) || {}).arxiv;
+      if (!c) return;
+      var n = top.filter(function (r) { return r.topic === t; }).length;
+      nav.append(TC.el("a", { href: areaHref(c), text: t + " " + n, "aria-current": AREA === c ? "page" : null }));
+    });
   }
 
   function render() {
-    var q = TC.$("#q").value.trim().toLowerCase();
-    var hideDone = TC.$("#hide-done").checked;
-    var sort = TC.$("#sort").value;
-    var rows = data.rows.filter(function (r) { return !r.retired && !(hideDone && r.completed); });
-    var children = {};
-    rows.forEach(function (r) { if (r.parent_id) (children[r.parent_id] = children[r.parent_id] || []).push(r); });
-    var key = {
-      layers: function (r) { return -(count(r, "done") + (r.completed ? 1000 : 0)); },
-      activity: function (r) { return -((r.activity || {}).total || 0); },
-      name: function () { return 0; },
-    }[sort];
-    function cmp(a, b) { return key(a) - key(b) || a.name.localeCompare(b.name); }
-    var groups = {};
-    rows.forEach(function (r) { if (!r.parent_id) (groups[r.topic] = groups[r.topic] || []).push(r); });
+    var rows = data.rows.filter(function (r) { return !r.retired; });
+    var kids = {};
+    rows.forEach(function (r) { if (r.parent_id) (kids[r.parent_id] = kids[r.parent_id] || []).push(r); });
+    var top = rows.filter(function (r) { return !r.parent_id; });
     var board = TC.$("#board");
     board.replaceChildren();
-    var shown = 0;
-    data.topics.forEach(function (topic) {
-      var list = (groups[topic] || []).sort(cmp);
-      var els = [];
-      list.forEach(function (r) {
-        var kids = (children[r.id] || []).sort(cmp);
-        var kidEls = kids.map(function (k) { return row(k, true); });
-        var parentEl = row(r, false);
-        var match = function (e) { return !q || e.dataset.search.indexOf(q) >= 0; };
-        var anyKid = kidEls.some(match);
-        if (match(parentEl) || anyKid) {
-          els.push(parentEl);
-          kidEls.forEach(function (k) { if (match(parentEl) || match(k)) els.push(k); });
-        }
+    if (AREA) {
+      var mine = top.filter(function (r) { return code(r) === AREA; });
+      if (!mine.length) { board.append(TC.el("p", { class: "error", text: "No roadmaps are in " + AREA + "." })); return; }
+      var sel = selection(mine, kids);
+      if (sel.length) board.append(panel(mine[0].topic, AREA, sel, false));
+    } else if (state.group === "none") {
+      var all = selection(top, kids);
+      if (all.length) board.append(panel("All roadmaps", "none", all, false));
+    } else {
+      data.topics.forEach(function (t) {
+        var inT = top.filter(function (r) { return r.topic === t; });
+        if (!inT.length) return;
+        var sel = selection(inT, kids);
+        if (sel.length) board.append(panel(t, code(inT[0]), sel, true));
       });
-      if (!els.length) return;
-      shown += els.length;
-      var arxiv = list[0].arxiv;
-      var layers = 0, done = 0;
-      list.concat.apply(list, list.map(function (r) { return children[r.id] || []; })).forEach(function (r) { layers += r.states.length; done += count(r, "done"); });
-      board.append(TC.el("section", { class: "topic-group", id: "topic-" + arxiv }, [
-        TC.el("h3", null, [document.createTextNode(topic), TC.el("span", { class: "muted", text: arxiv + " · " + list.length + " roadmaps · " + done + "/" + layers + " layers done" })]),
-      ].concat(els)));
-    });
-    if (!shown) board.append(TC.el("p", { class: "muted", text: "No roadmap matches that filter." }));
+    }
+    if (!board.children.length) board.append(TC.el("p", { class: "muted", text: "No roadmap matches this filter." }));
   }
 
-  TC.live("progress.json").then(function (p) {
-    data = p;
-    TC.$("#board-meta").textContent = "Roadmaps as of TauCetiRoadmap " + p.roadmap_head.slice(0, 7) + "; activity through " + TC.dayYear(p.cutoff) + ".";
-    render();
-    ["#q", "#sort", "#hide-done"].forEach(function (s) { TC.$(s).addEventListener("input", render); });
-    function goToHash() {
-      var t = location.hash && document.getElementById(decodeURIComponent(location.hash.slice(1)));
-      if (!t) return;
-      if (t.tagName === "DETAILS") t.open = true;
-      var go = function () { t.scrollIntoView({ block: "start" }); };
-      requestAnimationFrame(go);
-      if (document.fonts) document.fonts.ready.then(go);  // the display face shifts layout when it arrives
+  function save() {
+    var p = new URLSearchParams();
+    if (AREA) p.set("area", AREA);
+    if (state.q) p.set("q", state.q);
+    if (state.show !== "all") p.set("show", state.show);
+    if (state.sort !== "activity") p.set("sort", state.sort);
+    if (state.group !== "topic" && !AREA) p.set("group", state.group);
+    history.replaceState(null, "", location.pathname + (p.toString() ? "?" + p : "") + location.hash);
+  }
+
+  function goToHash() {
+    var t = location.hash && document.getElementById(decodeURIComponent(location.hash.slice(1)));
+    if (!t) return;
+    if (t.tagName === "DETAILS") t.open = true;
+    var go = function () { t.scrollIntoView({ block: "start" }); };
+    requestAnimationFrame(go);
+    if (document.fonts) document.fonts.ready.then(go);  // the display face shifts layout when it arrives
+  }
+
+  // The Atlas's areas (atlas/tauceti/areas.json, written by its build). Without them the board still
+  // groups by arXiv category; the areas only divide the largest categories further.
+  var areas = fetch("atlas/tauceti/areas.json").then(function (r) { return r.ok ? r.json() : null; }).catch(function () { return null; });
+
+  Promise.all([TC.live("progress.json"), areas]).then(function (res) {
+    data = res[0];
+    var a = res[1];
+    areaLabels = { fields: {}, names: {} };
+    if (a) {
+      a.areas.forEach(function (g) {
+        areaLabels.names[g.id] = g.label;
+        g.roadmaps.forEach(function (id) { areaOf[id] = g.id; });
+      });
+      a.fields.forEach(function (f) { areaLabels.fields[f.id] = f.areas; });
     }
+    var top = data.rows.filter(function (r) { return !r.retired && !r.parent_id; });
+    if (AREA) {
+      var first = top.find(function (r) { return code(r) === AREA; });
+      var name = first ? first.topic : AREA;
+      document.title = name + " — Roadmaps — Tau Ceti";
+      TC.$$("[data-overview], [data-overview-control]").forEach(function (e) { e.hidden = true; });
+      TC.$("[data-area-head]").hidden = false;
+      TC.$("#area-title").textContent = name;
+      var subs = (areaLabels.fields[AREA] || []).length;
+      TC.$("#area-lede").textContent = AREA + " on arXiv. " + top.filter(function (r) { return code(r) === AREA; }).length +
+        " roadmaps" + (subs > 1 ? ", in the areas the Atlas divides it into." : ".");
+    }
+    TC.$("#q").value = state.q;
+    TC.$("#show").value = state.show;
+    TC.$("#sort").value = state.sort;
+    TC.$("#group").value = state.group;
+    TC.$("#board-meta").textContent = "Roadmaps as of TauCetiRoadmap " + data.roadmap_head.slice(0, 7) + "; activity through " + TC.dayYear(data.cutoff) + ".";
+    areaNav(top);
+    render();
+    [["#q", "q"], ["#show", "show"], ["#sort", "sort"], ["#group", "group"]].forEach(function (c) {
+      TC.$(c[0]).addEventListener("input", function (e) { state[c[1]] = e.target.value; save(); render(); });
+    });
     if ("scrollRestoration" in history) history.scrollRestoration = "manual";
     goToHash();
     window.addEventListener("hashchange", goToHash);

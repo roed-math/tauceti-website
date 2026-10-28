@@ -1,4 +1,4 @@
-<!-- {"title": "Health", "description": "Internal health of the Tau Ceti pipeline: pull-request flow, where pull requests wait, how long the roadmap work will last, and CI.", "scripts": ["health.js"]} -->
+<!-- {"title": "Health", "description": "Internal health of the Tau Ceti pipeline: pull-request flow, where pull requests wait, how long the roadmap work will last, and CI.", "scripts": ["health.js"], "data": ["live:pipeline-health.json", "live:pr-stats.json", "live:roadmap-completion.json", "data/ci-current.json"]} -->
 <p class="eyebrow">Internal health</p>
 <h1>How is the pipeline doing?</h1>
 <p class="lede">For operators and maintainers: the flow of pull requests, where they are waiting, how long until the roadmaps run out of work, and the state of CI.</p>
@@ -62,4 +62,4 @@
   <figure class="img"><img data-ci-asset="ci-build-wait.svg" src="https://taucetiproject.org/static/ci-build-wait.svg" alt="Median and 90th-percentile wait for a runner per day" loading="lazy"><figcaption>Wait for a runner per day.</figcaption></figure>
   <figure class="img"><img data-ci-asset="ci-queue-size.svg" src="https://taucetiproject.org/static/ci-queue-size.svg" alt="Ready-to-merge pull-request backlog over time" loading="lazy"><figcaption>Ready-to-merge backlog over time.</figcaption></figure>
 </div>
-<p class="small muted">CI charts are drawn by <a href="https://taucetiproject.org/ci">taucetiproject.org/ci</a> from <a href="https://github.com/TauCetiProject/TauCetiCI">TauCetiCI</a>, which has the full set and its methodology. Pipeline figures come from <a href="https://taucetiproject.org/static/pipeline-health.json">pipeline-health.json</a> and <a href="https://taucetiproject.org/static/pr-stats.json">pr-stats.json</a>, regenerated every three hours.</p>
+<p class="small muted">CI charts are drawn by <a href="https://taucetiproject.org/ci">taucetiproject.org/ci</a> from <a href="https://github.com/TauCetiProject/TauCetiCI">TauCetiCI</a>, which has the full set and its methodology. Pipeline figures are regenerated every three hours.</p>

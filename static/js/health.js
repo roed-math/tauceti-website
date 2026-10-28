@@ -60,14 +60,14 @@ document.addEventListener("DOMContentLoaded", function () {
     TC.bars("#age", buckets.map(function (b, i) {
       var n = hrs.filter(function (h) { return h >= b[1] && h < b[2]; }).length;
       return { label: b[0], value: n, color: TC.SERIES[0], valueText: TC.fmt(n) + " PRs" };
-    }), { labelHeader: "Age", valueHeader: "Open PRs" });
+    }));
 
     var rc = s.review_cycles, reach = rc.reach.map(function (r) { return r.prs; });
     function exactly(k) { return (reach[k - 1] || 0) - (reach[k] || 0); }
     function range(a, b) { return (reach[a - 1] || 0) - (b == null ? 0 : reach[b] || 0); }
     var items = [1, 2, 3, 4, 5].map(function (k) { return { label: k + (k === 1 ? " round" : " rounds"), value: exactly(k) }; })
       .concat([{ label: "6–10 rounds", value: range(6, 10) }, { label: "more than 10", value: range(11) }]);
-    TC.bars("#cycles", items.map(function (it) { it.color = TC.SERIES[6]; it.valueText = TC.fmt(it.value) + " PRs"; return it; }), { labelHeader: "Review rounds", valueHeader: "PRs" });
+    TC.bars("#cycles", items.map(function (it) { it.color = TC.SERIES[6]; it.valueText = TC.fmt(it.value) + " PRs"; return it; }));
     TC.$("#cycles-note").textContent = TC.fmt(rc.reviewed_prs) + " pull requests, " + TC.fmt1(rc.total_cycles / rc.reviewed_prs) + " rounds on average, since " + TC.dayYear(rc.label_epoch) + ".";
 
     var r = s.rolling_seven_day, dates = r.map(function (x) { return x.date; });

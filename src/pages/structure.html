@@ -1,4 +1,5 @@
-<!-- {"title": "Roadmaps", "description": "How Tau Ceti is organised: the pipeline from roadmap to merged Lean, and every roadmap with the reported state of each of its layers.", "scripts": ["structure.js"]} -->
+<!-- {"title": "Roadmaps", "description": "How Tau Ceti is organised: the pipeline from roadmap to merged Lean, and every roadmap with the reported state of each of its layers.", "scripts": ["structure.js"], "data": ["live:progress.json", "atlas/tauceti/areas.json"]} -->
+<div data-overview>
 <p class="eyebrow">Structure and progress</p>
 <h1>From roadmap to merged Lean</h1>
 <p class="lede">Tau Ceti is four repositories and one loop. Humans decide what to formalize; agents write and review it; Lean decides whether it is correct.</p>
@@ -11,28 +12,54 @@
   <div class="stage machine"><div class="who">Bors</div><h4>Merge</h4><p>Approved pull requests are batched, rebuilt together and land on <code>main</code> of <a href="https://github.com/TauCetiProject/TauCeti">TauCeti</a>.</p></div>
 </div>
 <p class="prose small muted">After every ten or so merges under a roadmap, <a href="https://github.com/TauCetiProject/TauCetiProgress">TauCetiProgress</a> writes a fresh report on it: which layers are done, which are partial, and what remains. Those reports drive the board below.</p>
+</div>
 
-<h2>Every roadmap</h2>
-<p class="prose">Grouped by the arXiv category each roadmap declares. Each segment is one layer of the roadmap’s README, shaded by what its latest report says. Expand a roadmap for its summary, next milestones and layer list.</p>
+<div data-area-head hidden>
+  <p class="eyebrow"><a href="structure.html">All roadmaps</a></p>
+  <h1 id="area-title"></h1>
+  <p class="lede" id="area-lede"></p>
+</div>
+
+<h2 data-overview>Every roadmap</h2>
+<p class="prose" data-overview>Grouped by the arXiv category each roadmap declares; open a category for its own page, divided into the areas the <a href="atlas/tauceti/">Atlas</a> maps it into. Each segment is one layer of the roadmap’s README, shaded by what its latest report says. Expand a roadmap for its summary, next milestones and layer list.</p>
+
+<nav class="area-nav" id="area-nav" aria-label="Areas"></nav>
 
 <div class="board-controls">
-  <input type="search" id="q" placeholder="Filter roadmaps, e.g. modular, Lie, PDE" aria-label="Filter roadmaps">
-  <label>Sort <select id="sort"><option value="layers">by layers done</option><option value="activity">by merged PRs</option><option value="name">by name</option></select></label>
-  <label><input type="checkbox" id="hide-done"> hide archived</label>
+  <input type="search" id="q" placeholder="Filter roadmaps, layers and reports, e.g. modular, Lie, PDE" aria-label="Filter roadmaps">
+  <label>Show <select id="show">
+    <option value="all">all</option>
+    <option value="active">active</option>
+    <option value="completed">declared complete</option>
+    <option value="reported">with a report</option>
+    <option value="unreported">without a report</option>
+    <option value="unassessed">with unassessed layers</option>
+    <option value="due">update due</option>
+  </select></label>
+  <label>Sort <select id="sort">
+    <option value="activity">recent activity</option>
+    <option value="done">layers reported done</option>
+    <option value="due">update due</option>
+    <option value="name">name</option>
+  </select></label>
+  <label data-overview-control>Group <select id="group">
+    <option value="topic">by arXiv category</option>
+    <option value="none">no grouping</option>
+  </select></label>
 </div>
 <div class="legend">
   <span><i style="background:var(--good)"></i>done</span>
   <span><i style="background:var(--warning)"></i>partial</span>
-  <span><i style="background:rgba(255,255,255,0.18)"></i>untouched</span>
-  <span><i style="background:repeating-linear-gradient(135deg,rgba(255,255,255,0.3) 0 3px,transparent 3px 6px)"></i>not yet assessed</span>
-  <span><i style="background:var(--teal)"></i>archived as complete</span>
+  <span><i style="background:var(--seg-untouched)"></i>untouched</span>
+  <span><i style="background:repeating-linear-gradient(135deg,var(--seg-hatch) 0 3px,transparent 3px 6px)"></i>not yet assessed</span>
+  <span><i style="background:var(--link)"></i>archived as complete</span>
 </div>
 <p class="freshness" id="board-meta"></p>
 <div id="board"><p class="muted">Loading the roadmaps…</p></div>
-<details class="as-table" style="margin-top:1.5rem">
+<details class="methods">
   <summary>How to read this board</summary>
   <div class="prose small">
     <p>Layers are the headings of the human-written README. Their states come from the roadmap’s generated <code>STATUS.md</code>: a model’s account of the library at the commit it names, not a certificate that every sentence of the layer is met. Where a report says nothing about a layer, or the README changed its layers since, the layer is shown as not yet assessed.</p>
-    <p>“Archived as complete” is the maintainers’ judgment, recorded by moving a roadmap to <code>Completed/</code>. Merged pull requests count those carrying the roadmap’s <code>roadmap/…</code> label. The full board, with its methodology, is at <a href="https://taucetiproject.org/progress">taucetiproject.org/progress</a>.</p>
+    <p>“Declared complete” is the maintainers’ judgment, recorded by moving a roadmap to <code>Completed/</code>. A report is due an update once ten or more pull requests have merged under the roadmap since it, or its README has changed. Merged pull requests count those carrying the roadmap’s <code>roadmap/…</code> label; sub-roadmaps share their umbrella’s. The areas within Number Theory, Algebraic Geometry and Representation Theory are the Atlas’s, which places a roadmap by the phrases in its title. The full board, with its methodology, is at <a href="https://taucetiproject.org/progress">taucetiproject.org/progress</a>.</p>
   </div>
 </details>

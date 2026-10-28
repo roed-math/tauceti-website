@@ -1,4 +1,4 @@
-<!-- {"title": "What’s inside", "description": "What the Tau Ceti library contains: lines of Lean by area of mathematics, the largest roadmaps, and the tools for finding things in it.", "scripts": ["contents.js"]} -->
+<!-- {"title": "What’s inside", "description": "What the Tau Ceti library contains: lines of Lean by area of mathematics, the largest roadmaps, and the tools for finding things in it.", "scripts": ["contents.js"], "data": ["live:roadmap-completion.json", "live:progress.json", "data/library-loc.json", "data/loc-by-topic.json"]} -->
 <p class="eyebrow">What’s inside</p>
 <h1>A library organised by roadmap</h1>
 <p class="lede">Every pull request to Tau Ceti advances one roadmap, and every roadmap declares the arXiv category it belongs to. That gives the library a map: by area of mathematics, then by roadmap, then by layer.</p>
@@ -40,9 +40,9 @@
   <div class="legend">
     <span><i style="background:var(--good)"></i>done</span>
     <span><i style="background:var(--warning)"></i>partial</span>
-    <span><i style="background:rgba(255,255,255,0.18)"></i>untouched</span>
-    <span><i style="background:repeating-linear-gradient(135deg,rgba(255,255,255,0.3) 0 3px,transparent 3px 6px)"></i>not yet assessed</span>
+    <span><i style="background:var(--seg-untouched)"></i>untouched</span>
+    <span><i style="background:repeating-linear-gradient(135deg,var(--seg-hatch) 0 3px,transparent 3px 6px)"></i>not yet assessed</span>
   </div>
   <div id="by-state"><p class="muted">Loading…</p></div>
 </div>
-<p class="small muted">Line counts sum diffs rather than counting the tree, so a line rewritten later counts under both pull requests; they measure work landed. Pull requests with no roadmap label, or several, are left out of the per-area figures. Data: <a href="data/loc-by-topic.json">loc-by-topic.json</a> (built with this site) and <a href="https://taucetiproject.org/static/progress.json">progress.json</a>.</p>
+<p class="small muted">Line counts sum diffs rather than counting the tree, so a line rewritten later counts under both pull requests; they measure work landed. Pull requests with no roadmap label, or several, are left out of the per-area figures.</p>

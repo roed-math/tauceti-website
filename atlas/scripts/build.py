@@ -407,6 +407,12 @@ def build(output: Path, blueprints: Path | None = None, variant: str | None = No
         report["proposals"]["roadmaps"] = len(atlas["proposals"]["roadmaps"])
     report["variant"] = variant or "atlas"
     (output.parent / "BUILD.json" if variant else ROOT / "BUILD.json").write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
+    if variant == "tauceti":
+        # The areas as the map draws them, for the website's Roadmaps page, which groups by them too.
+        areas = [{"id": g["id"], "label": g["label"], "short": g.get("short"), "arxiv": g.get("arxiv"), "area": g.get("area"),
+                  "roadmaps": [rid.removeprefix("tauceti:") for rid in g["roadmapIds"]]} for g in atlas["groups"]]
+        fields = [{"id": f["id"], "label": f["label"], "areas": f["groupIds"]} for f in atlas.get("fields", [])]
+        (output.parent / "areas.json").write_text(json.dumps({"areas": areas, "fields": fields}, indent=1) + "\n", encoding="utf-8")
     return report
 
 

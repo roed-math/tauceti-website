@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Build the Tau Ceti Atlas into OUT/: the all-roadmaps page (index.html), the Tau Ceti-only page
-# (tauceti/index.html) and the key-definitions listing (definitions.html).
+# (tauceti/index.html), its areas as the map groups them (tauceti/areas.json, which the Roadmaps page reads)
+# and the key-definitions listing (definitions.html).
 #
 # The Atlas's code lives here, in atlas/. Its research data does not: data/ and the parts of
 # research/blueprint/ the build reads (about 530 MB) stay in cbirkbeck/tauceti-explorer, where the
@@ -40,5 +41,5 @@ python3 scripts/build.py --tauceti > /dev/null
 
 mkdir -p "$OUT/tauceti"
 cp index.html definitions.html "$OUT/"
-cp tauceti/index.html "$OUT/tauceti/"
+cp tauceti/index.html tauceti/areas.json "$OUT/tauceti/"
 echo "built the atlas into $OUT"
