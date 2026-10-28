@@ -340,18 +340,37 @@
       ok ? resolve() : reject(new Error("copy failed"));
     });
   }
+  // The usual copy glyph (two overlapping sheets) and a check for the moment after.
+  var ICONS = {
+    copy: '<rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>',
+    done: '<polyline points="20 6 9 17 4 12"></polyline>',
+  };
+  function setButton(b, icon, label) {
+    b.innerHTML = '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" ' +
+      'stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + ICONS[icon] + "</svg>";
+    b.append(label);
+  }
+  /* Wraps pre in a .codeblock holding the button, so the button stays put while a long line scrolls.
+     Returns the wrapper, which a caller building pre off-document inserts in its place. */
   TC.copyable = function (pre) {
-    if (pre.querySelector(".copy")) return;
-    var b = TC.el("button", { class: "copy", type: "button", "aria-label": "Copy to clipboard", text: "Copy" });
+    if (pre.parentNode && pre.parentNode.classList && pre.parentNode.classList.contains("codeblock")) return pre.parentNode;
+    var wrap = TC.el("div", { class: "codeblock" });
+    if (pre.parentNode) pre.parentNode.insertBefore(wrap, pre);
+    wrap.append(pre);
+    var b = TC.el("button", { class: "copy", type: "button", title: "Copy to clipboard", "aria-label": "Copy to clipboard" });
+    setButton(b, "copy", "Copy");
+    var timer;
     b.addEventListener("click", function () {
       var code = pre.querySelector("code") || pre;
       copyText(code.innerText.replace(/\n$/, "")).then(function () {
-        b.textContent = "Copied"; b.classList.add("done");
-      }, function () { b.textContent = "Press ⌘C"; }).then(function () {
-        setTimeout(function () { b.textContent = "Copy"; b.classList.remove("done"); }, 1600);
+        setButton(b, "done", "Copied"); b.classList.add("done");
+      }, function () { setButton(b, "copy", "Press ⌘C"); }).then(function () {
+        clearTimeout(timer);
+        timer = setTimeout(function () { setButton(b, "copy", "Copy"); b.classList.remove("done"); }, 1600);
       });
     });
-    pre.append(b);
+    wrap.append(b);
+    return wrap;
   };
 
   /* ---------- page chrome ---------- */

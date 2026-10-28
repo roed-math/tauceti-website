@@ -34,11 +34,10 @@ document.addEventListener("DOMContentLoaded", function () {
       var code = TC.el("code");
       code.innerHTML = TC.highlightLean(e.code);  // highlightLean escapes its input
       pre.append(code);
-      TC.copyable(pre);
       box.append(TC.el("div", { class: "panel example" }, [
         TC.el("h3", { text: title }),
         rest ? TC.el("p", { text: rest.charAt(0).toUpperCase() + rest.slice(1) }) : null,
-        pre,
+        TC.copyable(pre),
       ]));
     });
   }).catch(function (e) { TC.fail("#examples", e); });
