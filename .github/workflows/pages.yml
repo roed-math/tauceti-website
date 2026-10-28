@@ -1,13 +1,25 @@
 name: Pages
 
-# Regenerate data/ and deploy the site. Runs every three hours, half an hour after
-# taucetiproject.org's own deploy (cron "23 */3"), so the live data the pages read is fresh.
+# Build and deploy the whole site: the main pages at /, the Atlas at /atlas/ and Tau Ceti Review at
+# /review/. The three build in parallel and are assembled into one Pages artifact, since a repository
+# has one Pages site. The deploy waits for all three, so a failed build leaves the last deployment up
+# rather than publishing a site with a section missing.
+#
+# Runs every three hours, half an hour after taucetiproject.org's own deploy (cron "23 */3"), so the
+# live data the pages read is fresh. The review workflows call it after they add records
+# (review-evidence-intake, review-label, review-follow, review-voyager); pushes those make with
+# GITHUB_TOKEN start no workflow by themselves.
 on:
   push:
     branches: [main]
   schedule:
     - cron: "53 */3 * * *"
   workflow_dispatch:
+  workflow_call:
+    inputs:
+      deploy:
+        type: boolean
+        default: true
 
 permissions:
   contents: read
@@ -19,10 +31,12 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  build:
+  site:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref }}
 
       # The previous run's data/, including the pull-request snapshot in data/cache/. A failed
       # source then keeps last run's file, and the walk only fetches what changed since.
@@ -54,13 +68,104 @@ jobs:
       - name: Build the site
         run: python3 scripts/build_site.py --out _site
 
+      - uses: actions/upload-artifact@v4
+        with:
+          name: site
+          path: _site
+          include-hidden-files: true
+          retention-days: 2
+
+  atlas:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref }}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      # The Atlas's data stays in cbirkbeck/tauceti-explorer; scripts/build_atlas.sh checks out the
+      # part the build reads and lays atlas/'s code over it.
+      - name: Build the Atlas
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: scripts/build_atlas.sh "$RUNNER_TEMP/atlas-data" _atlas
+      - uses: actions/upload-artifact@v4
+        with:
+          name: atlas
+          path: _atlas
+          retention-days: 2
+
+  # The build review-pages.yml ran in cbirkbeck/tauceti-reviewed-by-test, inside review/.
+  review:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    defaults:
+      run:
+        working-directory: review
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref }}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: The pinned tools, and Chromium for the browser check
+        run: |
+          pip install -q -r requirements.txt -r requirements-test.txt
+          python -m playwright install --with-deps chromium
+      - name: Unit tests
+        run: python -m unittest discover -s tests
+      - name: The browser check, on the fixture's site
+        run: python tests/validate_site.py
+      - name: The pinned dataset, Tau Ceti's sources at it, and the stores this one imports
+        run: |
+          commit=$(python3 -c "import json; print(json.load(open('data/settings.json'))['tauceti'])")
+          evidence-store dataset --store evidence --commit "$commit" --out "$RUNNER_TEMP/dataset" > /dev/null
+          git init -q "$RUNNER_TEMP/TauCeti"
+          git -C "$RUNNER_TEMP/TauCeti" fetch -q --depth 1 https://github.com/TauCetiProject/TauCeti "$commit"
+          git -C "$RUNNER_TEMP/TauCeti" checkout -q FETCH_HEAD
+          evidence-store fetch-imports --store evidence --out "$RUNNER_TEMP/imports"
+      - name: No signature prints a binder without its type
+        run: python scripts/check_signatures.py --dataset "$RUNNER_TEMP/dataset" --offline
+      - name: Build
+        run: python scripts/build_site.py --dataset "$RUNNER_TEMP/dataset" --source "$RUNNER_TEMP/TauCeti" --imports "$RUNNER_TEMP/imports" --out "$RUNNER_TEMP/review-site"
+      - name: The browser check, on the build
+        run: python tests/validate_site.py --site "$RUNNER_TEMP/review-site" --smoke
+      - uses: actions/upload-artifact@v4
+        with:
+          name: review
+          path: ${{ runner.temp }}/review-site
+          retention-days: 2
+
+  assemble:
+    needs: [site, atlas, review]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: site
+          path: _site
+      - uses: actions/download-artifact@v4
+        with:
+          name: atlas
+          path: _site/atlas
+      - uses: actions/download-artifact@v4
+        with:
+          name: review
+          path: _site/review
+      - run: du -sh _site _site/atlas _site/review
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:
           path: _site
 
   deploy:
-    needs: build
+    needs: assemble
+    if: github.ref == 'refs/heads/main' && format('{0}', inputs.deploy) != 'false'
     runs-on: ubuntu-latest
     environment:
       name: github-pages

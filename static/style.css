@@ -74,7 +74,7 @@ pre .copy.done { color: var(--teal); border-color: rgba(94,234,212,0.5); }
 .nav-links a:hover { color: var(--text); text-decoration: none; }
 .nav-links a[aria-current="page"] { color: var(--text); border-bottom-color: var(--amber-2); }
 .nav-toggle { display: none; background: none; border: 1px solid var(--line); color: var(--text); border-radius: 8px; padding: 0.3rem 0.6rem; font: inherit; font-family: var(--display); cursor: pointer; }
-@media (max-width: 860px) {
+@media (max-width: 1080px) {
   .nav-toggle { display: block; }
   .nav-links { display: none; position: absolute; top: 100%; left: 0; right: 0; flex-direction: column; background: rgba(8, 11, 22, 0.97); border-bottom: 1px solid var(--line); padding: 0.4rem 16px 0.8rem; }
   .nav-links.open { display: flex; }

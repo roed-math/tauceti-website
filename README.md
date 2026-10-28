@@ -3,6 +3,21 @@
 A static site for the [Tau Ceti](https://github.com/TauCetiProject/TauCeti) project, served on
 GitHub Pages. Eight pages: home (what Tau Ceti is, how to use it from Lean), what's inside,
 contribute, growth, roadmaps (structure and progress), people, acknowledgments, and internal health.
+Two apps are served beside them:
+
+- `atlas/` is the Tau Ceti Atlas, imported with its history from
+  [cbirkbeck/tauceti-explorer](https://github.com/cbirkbeck/tauceti-explorer). Only its code is
+  here. Its research data (`data/`, `research/`) stays in that repository, and
+  `scripts/build_atlas.sh` checks out the part the build reads (about 530 MB) at deploy time. Its
+  own workflows sit inert under `atlas/.github/`.
+- `review/` is Tau Ceti Review, imported with its history from
+  [cbirkbeck/tauceti-reviewed-by-test](https://github.com/cbirkbeck/tauceti-reviewed-by-test).
+  Its evidence store, `review/evidence/`, is its data. GitHub reads issue forms and workflows only
+  at the repository root, so its forms are in `.github/ISSUE_TEMPLATE/` and its workflows and intake
+  action are in `.github/` with a `review-` prefix, running inside `review/`.
+
+`.github/workflows/pages.yml` builds all three in parallel and deploys them together, at `/`,
+`/atlas/` and `/review/`.
 
 ## How it works
 
@@ -32,6 +47,15 @@ python3 scripts/build_data.py --tauceti-repo /tmp/TauCeti   # needs an authentic
 python3 scripts/build_site.py
 python3 -m http.server -d _site 8765
 ```
+
+To include the apps, build them and pass their output:
+
+```bash
+scripts/build_atlas.sh /tmp/atlas-data /tmp/atlas-out
+python3 scripts/build_site.py --atlas /tmp/atlas-out --review /path/to/review-build
+```
+
+Tau Ceti Review's build is in `review/README.md` and the `review` job of `pages.yml`.
 
 `build_data.py --skip-prs` skips the pull-request walk; without `--tauceti-repo` it skips the
 line-count history, and the growth page falls back to taucetiproject.org's chart.

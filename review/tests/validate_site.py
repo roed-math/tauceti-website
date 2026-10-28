@@ -419,7 +419,7 @@ def signin(browser, url, errors):
     # The forms as the site writes them are the templates' forms: titles, labels, and fields in order.
     site_forms = page.evaluate("TauRender.FORMS")
     for name, f in site_forms.items():
-        t = yaml.safe_load((HERE.parent / ".github" / "ISSUE_TEMPLATE" / name).read_text(encoding="utf-8"))
+        t = yaml.safe_load((HERE.parents[1] / ".github" / "ISSUE_TEMPLATE" / name).read_text(encoding="utf-8"))
         expect((f["title"], [f["label"]], [tuple(x) for x in f["fields"]])
                == (t["title"], t["labels"], [(b["id"], b["attributes"]["label"]) for b in t["body"] if b["type"] != "markdown"]),
                f"{name}: the site writes an issue as the form does")

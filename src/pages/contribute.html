@@ -86,7 +86,8 @@ tauceti-fleet up         # then the fleet, in pilot mode</code></pre>
 
 <h2 id="review">Review</h2>
 <div class="prose">
-  <p>Reviews use fixed, open rubrics from <a href="https://github.com/TauCetiProject/TauCetiReview">TauCetiReview</a>. You can run the same engine on any pull request with your own Claude or Codex subscription:</p>
+  <p><a href="review/">Tau Ceti Review</a> asks one question of each declaration in the library: is it correctly stated? Open a declaration and answer yes or no from the browser; the answer is recorded against that exact version of the declaration, and nothing in Tau Ceti changes. It leads with the named results announced on the Lean Zulip, the ones people are most likely to care about.</p>
+  <p>Pull requests are reviewed separately, by agents, against fixed, open rubrics from <a href="https://github.com/TauCetiProject/TauCetiReview">TauCetiReview</a>. You can run the same engine on any pull request with your own Claude or Codex subscription:</p>
 <pre><code># print the verdicts for PR #42, posting nothing
 uvx --from git+https://github.com/TauCetiProject/TauCetiReview tauceti-review 42
 # add --post to publish the scoreboard, as you
