@@ -14,13 +14,17 @@ set -euo pipefail
 WORK=${1:?usage: build_atlas.sh WORK OUT}
 OUT=${2:?usage: build_atlas.sh WORK OUT}
 HERE=$(cd "$(dirname "$0")/.." && pwd)
+mkdir -p "$OUT"
+OUT=$(cd "$OUT" && pwd)  # the build runs inside WORK, so a relative OUT would land there
 DATA_REPO=${ATLAS_DATA_REPO:-https://github.com/cbirkbeck/tauceti-explorer.git}
 
 if [ ! -d "$WORK/.git" ]; then
   git clone --quiet --depth 1 --filter=blob:none --sparse "$DATA_REPO" "$WORK"
   git -C "$WORK" sparse-checkout set data research/blueprint/papers research/blueprint/keydefs
 else
-  git -C "$WORK" pull --quiet --depth 1 --rebase=false
+  # A depth-1 checkout cannot merge the next one; take the tip as it is.
+  git -C "$WORK" fetch --quiet --depth 1 origin HEAD
+  git -C "$WORK" reset --quiet --hard FETCH_HEAD
 fi
 
 for d in src scripts vendor; do

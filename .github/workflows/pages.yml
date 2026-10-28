@@ -74,6 +74,7 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
+          if-no-files-found: error
           name: site
           path: _site
           include-hidden-files: true
@@ -97,6 +98,7 @@ jobs:
         run: scripts/build_atlas.sh "$RUNNER_TEMP/atlas-data" _atlas
       - uses: actions/upload-artifact@v4
         with:
+          if-no-files-found: error
           name: atlas
           path: _atlas
           retention-days: 2
