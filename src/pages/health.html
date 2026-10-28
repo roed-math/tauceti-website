@@ -1,0 +1,65 @@
+<!-- {"title": "Health", "description": "Internal health of the Tau Ceti pipeline: pull-request flow, where pull requests wait, how long the roadmap work will last, and CI.", "scripts": ["health.js"]} -->
+<p class="eyebrow">Internal health</p>
+<h1>How is the pipeline doing?</h1>
+<p class="lede">For operators and maintainers: the flow of pull requests, where they are waiting, how long until the roadmaps run out of work, and the state of CI.</p>
+<p class="freshness" id="ph-meta"></p>
+
+<div class="tiles">
+  <div class="tile loading" data-stat="open"><div class="v">…</div><div class="k">open pull requests</div></div>
+  <div class="tile loading" data-stat="opened"><div class="v">…</div><div class="k">opened per hour, last 24 h</div><div class="d"></div></div>
+  <div class="tile loading" data-stat="merged"><div class="v">…</div><div class="k">merged per hour, last 24 h</div><div class="d"></div></div>
+  <div class="tile loading" data-stat="ready"><div class="v">…</div><div class="k">ready to merge, not yet queued</div><div class="d"></div></div>
+  <div class="tile loading" data-stat="runway"><div class="v">…</div><div class="k">days of roadmap work left, if no new roadmaps</div><div class="d"></div></div>
+</div>
+<div id="diagnosis"></div>
+
+<h2>Where pull requests wait</h2>
+<div class="panel">
+  <h3>Open pull requests by lifecycle stage</h3>
+  <p class="sub">Current depth of each stage, with how long its pull requests have been waiting and how fast they move through it compared with the last fourteen days.</p>
+  <div class="table-wrap" id="stages"><p class="muted">Loading…</p></div>
+</div>
+
+<div class="grid-2">
+  <div class="panel">
+    <h3>Age of open pull requests</h3>
+    <p class="sub">Time since each open pull request was created.</p>
+    <div id="age"><p class="muted">Loading…</p></div>
+  </div>
+  <div class="panel">
+    <h3>Review rounds per pull request</h3>
+    <p class="sub">How many times reviewed pull requests have entered review: <span id="cycles-note"></span></p>
+    <div id="cycles"><p class="muted">Loading…</p></div>
+  </div>
+</div>
+
+<div class="grid-2">
+  <div class="panel">
+    <h3>Merges, trailing seven days</h3>
+    <p class="sub">Pull requests merged in each trailing seven-day window.</p>
+    <div id="merges7"><p class="muted">Loading…</p></div>
+  </div>
+  <div class="panel">
+    <h3>Time from opening to merge</h3>
+    <p class="sub">Median and 90th percentile, trailing seven days, in hours.</p>
+    <div id="latency"><p class="muted">Loading…</p></div>
+  </div>
+</div>
+
+<h2 id="runway">When do we run out of work?</h2>
+<div class="prose">
+  <p id="runway-text">Loading…</p>
+  <p class="small muted">Layers not yet recorded done, divided by the recent pace at which layers are completed (layer completions per added line of Lean, times the last seven days’ growth). Layers differ in difficulty and reports lag the code, so read this as a rough order of magnitude.</p>
+</div>
+<iframe src="https://taucetiproject.org/static/roadmap-exhaustion.html" title="How long until we run out of roadmap work?" loading="lazy" style="width:100%;height:430px;border:1px solid var(--line);border-radius:12px;background:var(--surface)"></iframe>
+
+<h2>CI</h2>
+<p class="prose" id="ci-now">Loading the CI snapshot…</p>
+<figure class="img"><img data-ci-asset="ci-fleet-72h.svg" src="https://taucetiproject.org/static/ci-fleet-72h.svg" alt="CI jobs running, queued and waiting over the last 72 hours" loading="lazy"><figcaption>Jobs running, queued and waiting over the last three days, by runner.</figcaption></figure>
+<div>
+  <figure class="img"><img data-ci-asset="ci-failures.svg" src="https://taucetiproject.org/static/ci-failures.svg" alt="Failed PR builds per day by cause, and the failure rate" loading="lazy"><figcaption>Failed pull-request builds by cause; the dashed line is the failure rate.</figcaption></figure>
+  <figure class="img"><img data-ci-asset="ci-build-duration.svg" src="https://taucetiproject.org/static/ci-build-duration.svg" alt="Median and 90th-percentile build time per day" loading="lazy"><figcaption>Build time per day: medians solid, 90th percentiles dashed.</figcaption></figure>
+  <figure class="img"><img data-ci-asset="ci-build-wait.svg" src="https://taucetiproject.org/static/ci-build-wait.svg" alt="Median and 90th-percentile wait for a runner per day" loading="lazy"><figcaption>Wait for a runner per day.</figcaption></figure>
+  <figure class="img"><img data-ci-asset="ci-queue-size.svg" src="https://taucetiproject.org/static/ci-queue-size.svg" alt="Ready-to-merge pull-request backlog over time" loading="lazy"><figcaption>Ready-to-merge backlog over time.</figcaption></figure>
+</div>
+<p class="small muted">CI charts are drawn by <a href="https://taucetiproject.org/ci">taucetiproject.org/ci</a> from <a href="https://github.com/TauCetiProject/TauCetiCI">TauCetiCI</a>, which has the full set and its methodology. Pipeline figures come from <a href="https://taucetiproject.org/static/pipeline-health.json">pipeline-health.json</a> and <a href="https://taucetiproject.org/static/pr-stats.json">pr-stats.json</a>, regenerated every three hours.</p>

@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <title>{{title}}</title>
+  <meta name="description" content="{{description}}">
+  <link rel="icon" href="static/img/favicon.ico" sizes="any">
+  <link rel="icon" type="image/png" sizes="32x32" href="static/img/favicon-32x32.png">
+  <link rel="apple-touch-icon" sizes="180x180" href="static/img/apple-touch-icon.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@400;500;600;700&display=swap">
+  <link rel="stylesheet" href="static/style.css?v={{version}}">
+  <script src="static/js/common.js?v={{version}}" defer></script>
+{{scripts}}
+</head>
+<body data-page="{{page}}">
+  <header class="site-nav">
+    <div class="nav-inner">
+      <a class="brand" href="./"><img src="static/img/header.png" alt="Tau Ceti" width="129" height="32"></a>
+      <button class="nav-toggle" type="button" aria-expanded="false" aria-controls="nav-links">Menu</button>
+      <nav class="nav-links" id="nav-links" aria-label="Site">
+{{nav}}
+      </nav>
+    </div>
+  </header>
+  <main>
+{{content}}
+  </main>
+  <footer class="site-footer">
+    <div class="foot-inner">
+      <div>
+        <p class="foot-tag">Let’s do lots of maths.</p>
+        <p class="small muted">An open library of formal mathematics in Lean, written by AI agents along human-curated roadmaps and checked by the Lean kernel. Everything is Apache-2.0.</p>
+        <p class="small muted">Live figures on this site are read from <a href="https://taucetiproject.org/">taucetiproject.org</a>’s published data; this build’s own data was generated <span data-built-at>{{built_at}}</span>.</p>
+      </div>
+      <div>
+        <h4>Repositories</h4>
+        <ul>
+          <li><a href="https://github.com/TauCetiProject/TauCeti">TauCeti</a> — the library</li>
+          <li><a href="https://github.com/TauCetiProject/TauCetiRoadmap">TauCetiRoadmap</a> — the roadmaps</li>
+          <li><a href="https://github.com/TauCetiProject/TauCetiReview">TauCetiReview</a> — the rubrics</li>
+          <li><a href="https://github.com/TauCetiProject/TauCetiWorker">TauCetiWorker</a> — the worker</li>
+        </ul>
+      </div>
+      <div>
+        <h4>Elsewhere</h4>
+        <ul>
+          <li><a href="https://taucetiproject.org/docs/">API documentation</a></li>
+          <li><a href="https://cbirkbeck.github.io/tauceti-explorer/tauceti/">Tau Ceti Atlas</a></li>
+          <li><a href="https://leanprover.zulipchat.com/">Lean Zulip</a></li>
+          <li><a href="acknowledgments.html">Acknowledgments</a></li>
+        </ul>
+      </div>
+    </div>
+  </footer>
+</body>
+</html>

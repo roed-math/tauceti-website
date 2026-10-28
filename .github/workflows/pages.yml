@@ -1,0 +1,70 @@
+name: Pages
+
+# Regenerate data/ and deploy the site. Runs every three hours, half an hour after
+# taucetiproject.org's own deploy (cron "23 */3"), so the live data the pages read is fresh.
+on:
+  push:
+    branches: [main]
+  schedule:
+    - cron: "53 */3 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # The previous run's data/, including the pull-request snapshot in data/cache/. A failed
+      # source then keeps last run's file, and the walk only fetches what changed since.
+      - name: Restore the previous data
+        uses: actions/cache/restore@v4
+        with:
+          path: data
+          key: site-data-${{ github.run_id }}
+          restore-keys: site-data-
+
+      # Full history: the line-count series sums every first-parent commit's numstat.
+      - name: Clone TauCeti
+        run: git clone --quiet https://github.com/TauCetiProject/TauCeti.git "$RUNNER_TEMP/TauCeti"
+
+      - name: Generate data
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python3 scripts/build_data.py --tauceti-repo "$RUNNER_TEMP/TauCeti" \
+            || echo "::warning::some data sources failed; their previous files are kept"
+
+      - name: Save the data for the next run
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: data
+          key: site-data-${{ github.run_id }}
+
+      - name: Build the site
+        run: python3 scripts/build_site.py --out _site
+
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

@@ -1,0 +1,379 @@
+/* Shared helpers: data loading, number formats, and the two chart forms the site uses
+   (time series with a crosshair tooltip, and labelled horizontal bars). No dependencies. */
+(function () {
+  "use strict";
+
+  // taucetiproject.org publishes its generated data with `Access-Control-Allow-Origin: *`.
+  var LIVE = "https://taucetiproject.org/static/";
+  var cache = {};
+
+  function getJSON(url) {
+    if (!cache[url]) {
+      cache[url] = fetch(url, { cache: "no-cache" }).then(function (r) {
+        if (!r.ok) throw new Error(url + ": HTTP " + r.status);
+        return r.json();
+      });
+    }
+    return cache[url];
+  }
+
+  var TC = (window.TC = {
+    LIVE: LIVE,
+    live: function (name) { return getJSON(LIVE + name); },
+    local: function (name) { return getJSON("data/" + name); },
+    ROADMAP_BLOB: "https://github.com/TauCetiProject/TauCetiRoadmap/blob/main/",
+    GH: "https://github.com/",
+  });
+
+  /* ---------- formats ---------- */
+  var nf = new Intl.NumberFormat("en-US");
+  TC.fmt = function (n) { return n == null || isNaN(n) ? "—" : nf.format(Math.round(n)); };
+  TC.fmt1 = function (n) { return n == null || isNaN(n) ? "—" : n.toLocaleString("en-US", { maximumFractionDigits: 1 }); };
+  TC.compact = function (n) {
+    if (n == null || isNaN(n)) return "—";
+    var a = Math.abs(n);
+    if (a >= 1e6) return (n / 1e6).toFixed(a >= 1e7 ? 1 : 2).replace(/\.?0+$/, "") + "M";
+    if (a >= 1e4) return Math.round(n / 1e3) + "k";
+    if (a >= 1e3) return (n / 1e3).toFixed(1).replace(/\.0$/, "") + "k";
+    return String(Math.round(n));
+  };
+  TC.pct = function (x) { return x == null || isNaN(x) ? "—" : Math.round(x * 100) + "%"; };
+  var MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+  TC.day = function (iso) {
+    var d = new Date(iso.length === 10 ? iso + "T00:00:00Z" : iso);
+    return MONTHS[d.getUTCMonth()] + " " + d.getUTCDate();
+  };
+  TC.dayYear = function (iso) {
+    var d = new Date(iso.length === 10 ? iso + "T00:00:00Z" : iso);
+    return d.getUTCDate() + " " + MONTHS[d.getUTCMonth()] + " " + d.getUTCFullYear();
+  };
+  TC.ago = function (iso) {
+    var s = (Date.now() - new Date(iso).getTime()) / 1000;
+    if (s < 90) return "just now";
+    if (s < 5400) return Math.round(s / 60) + " minutes ago";
+    if (s < 129600) return Math.round(s / 3600) + " hours ago";
+    return Math.round(s / 86400) + " days ago";
+  };
+  TC.hours = function (h) {
+    if (h == null || isNaN(h)) return "—";
+    if (h < 1) return Math.round(h * 60) + " min";
+    if (h < 48) return TC.fmt1(h) + " h";
+    return TC.fmt1(h / 24) + " days";
+  };
+
+  /* ---------- DOM ---------- */
+  TC.el = function (tag, attrs, children) {
+    var e = document.createElement(tag);
+    if (attrs) for (var k in attrs) {
+      if (k === "text") e.textContent = attrs[k];
+      else if (k === "class") e.className = attrs[k];
+      else if (k === "style") e.setAttribute("style", attrs[k]);
+      else if (attrs[k] != null) e.setAttribute(k, attrs[k]);
+    }
+    (children || []).forEach(function (c) { if (c != null) e.append(c); });
+    return e;
+  };
+  TC.$ = function (sel, root) { return (root || document).querySelector(sel); };
+  TC.$$ = function (sel, root) { return Array.prototype.slice.call((root || document).querySelectorAll(sel)); };
+  TC.set = function (key, value, detail) {
+    TC.$$('[data-stat="' + key + '"]').forEach(function (t) {
+      t.classList.remove("loading");
+      var v = t.querySelector(".v");
+      if (v) v.textContent = value; else t.textContent = value;
+      var d = t.querySelector(".d");
+      if (d && detail != null) d.textContent = detail;
+    });
+  };
+  TC.fail = function (target, err) {
+    console.error(err);
+    if (typeof target === "string") target = TC.$(target);
+    if (target) target.replaceChildren(TC.el("p", { class: "error small", text: "Could not load this data (" + (err && err.message || err) + ")." }));
+  };
+
+  TC.SERIES = ["--s1", "--s2", "--s3", "--s4", "--s5", "--s6", "--s7", "--s8"].map(function (v) {
+    return getComputedStyle(document.documentElement).getPropertyValue(v).trim() || "#3987e5";
+  });
+  TC.OTHER = "#6b7394";
+
+  /* ---------- table view ---------- */
+  TC.tableView = function (headers, rows, numeric) {
+    var thead = TC.el("tr", null, headers.map(function (h, i) {
+      return TC.el("th", { class: numeric && numeric[i] ? "n" : null, text: h });
+    }));
+    var body = rows.map(function (r) {
+      return TC.el("tr", null, r.map(function (c, i) {
+        return TC.el("td", { class: numeric && numeric[i] ? "n" : null, text: c });
+      }));
+    });
+    return TC.el("details", { class: "as-table" }, [
+      TC.el("summary", { text: "Show as a table" }),
+      TC.el("div", { class: "scroll" }, [TC.el("table", { class: "data" }, [TC.el("thead", null, [thead]), TC.el("tbody", null, body)])]),
+    ]);
+  };
+
+  /* ---------- time series ---------- */
+  var SVGNS = "http://www.w3.org/2000/svg";
+  function s(tag, attrs) {
+    var e = document.createElementNS(SVGNS, tag);
+    for (var k in attrs) e.setAttribute(k, attrs[k]);
+    return e;
+  }
+  function niceMax(v) {
+    if (v <= 0) return 1;
+    var p = Math.pow(10, Math.floor(Math.log10(v))), m = v / p;
+    var step = m <= 1 ? 1 : m <= 2 ? 2 : m <= 2.5 ? 2.5 : m <= 5 ? 5 : 10;
+    return step * p;
+  }
+
+  /* opts: dates (ISO days), series [{name, values, color, dash, note}], stacked, area,
+     yFormat, tipFormat, height, legend (default: when ≥ 2 series), table (default true),
+     markers [{date, label}] */
+  TC.timeChart = function (container, opts) {
+    if (typeof container === "string") container = TC.$(container);
+    container.replaceChildren();
+    container.classList.add("chart");
+    var series = opts.series, dates = opts.dates, n = dates.length;
+    var yFormat = opts.yFormat || TC.compact, tipFormat = opts.tipFormat || TC.fmt;
+    if (opts.legend !== false && series.length > 1) {
+      container.append(TC.el("div", { class: "legend" }, series.map(function (sr) {
+        return TC.el("span", null, [TC.el("i", { class: opts.area || opts.stacked ? "" : "line", style: "background:" + sr.color }), sr.name]);
+      })));
+    }
+    var host = TC.el("div", { style: "position:relative" });
+    var tip = TC.el("div", { class: "tooltip", role: "status" });
+    host.append(tip);
+    container.append(host);
+    if (opts.table !== false) {
+      var headers = ["Date"].concat(series.map(function (x) { return x.name; }));
+      var rows = [];
+      for (var i = n - 1; i >= 0; i--) rows.push([dates[i]].concat(series.map(function (x) { return TC.fmt(x.values[i]); })));
+      container.append(TC.tableView(headers, rows, headers.map(function (_, i) { return i > 0; })));
+    }
+
+    // Stacked series draw cumulative bands; first series at the bottom.
+    var tops = series.map(function () { return new Array(n); });
+    for (var t = 0; t < n; t++) {
+      var acc = 0;
+      for (var k = 0; k < series.length; k++) {
+        var v = series[k].values[t];
+        acc = opts.stacked ? acc + (v || 0) : v;
+        tops[k][t] = acc;
+      }
+    }
+
+    function draw() {
+      var W = Math.max(280, host.clientWidth || container.clientWidth || 600);
+      var H = opts.height || (W < 520 ? 240 : 300);
+      var m = { l: 46, r: 14, t: 10, b: 26 };
+      var w = W - m.l - m.r, h = H - m.t - m.b;
+      var ymax = opts.yMax;
+      if (ymax == null) {
+        ymax = 0;
+        tops.forEach(function (arr) { arr.forEach(function (v) { if (v > ymax) ymax = v; }); });
+        ymax = niceMax(ymax * 1.04);
+      }
+      var x = function (i) { return m.l + (n <= 1 ? w / 2 : (i / (n - 1)) * w); };
+      var y = function (v) { return m.t + h - (Math.max(0, v) / ymax) * h; };
+      var svg = s("svg", { viewBox: "0 0 " + W + " " + H, width: W, height: H, role: "img", "aria-label": opts.label || "chart" });
+      // grid + y axis
+      var ticks = 4;
+      for (var g = 0; g <= ticks; g++) {
+        var val = (ymax / ticks) * g, yy = y(val);
+        svg.append(s("line", { class: g === 0 ? "baseline" : "gridline", x1: m.l, x2: m.l + w, y1: yy, y2: yy }));
+        var tx = s("text", { class: "axis", x: m.l - 6, y: yy + 3.5, "text-anchor": "end" });
+        tx.textContent = yFormat(val);
+        svg.append(tx);
+      }
+      // x labels
+      var want = Math.max(2, Math.min(7, Math.floor(w / 95)));
+      for (var q = 0; q < want; q++) {
+        var idx = Math.round((q / (want - 1)) * (n - 1));
+        var lx = s("text", { class: "axis", x: x(idx), y: H - 6, "text-anchor": q === 0 ? "start" : q === want - 1 ? "end" : "middle" });
+        lx.textContent = TC.day(dates[idx]);
+        svg.append(lx);
+      }
+      (opts.markers || []).forEach(function (mk) {
+        var i = dates.indexOf(mk.date);
+        if (i < 0) return;
+        svg.append(s("line", { class: "gridline", x1: x(i), x2: x(i), y1: m.t, y2: m.t + h, "stroke-dasharray": "3 3" }));
+      });
+      // bands (stacked) draw top-down so lower bands paint over; areas get a 1.5px surface seam
+      for (var k2 = series.length - 1; k2 >= 0; k2--) {
+        var sr = series[k2], top = tops[k2];
+        var line = "";
+        for (var i2 = 0; i2 < n; i2++) if (top[i2] != null) line += (line ? "L" : "M") + x(i2).toFixed(1) + "," + y(top[i2]).toFixed(1);
+        if (opts.stacked || opts.area) {
+          var below = opts.stacked && k2 > 0 ? tops[k2 - 1] : null, back = "";
+          for (var j = n - 1; j >= 0; j--) back += "L" + x(j).toFixed(1) + "," + y(below ? below[j] : 0).toFixed(1);
+          svg.append(s("path", { d: line + back + "Z", fill: sr.color, "fill-opacity": opts.stacked ? 0.88 : 0.18 }));
+          svg.append(s("path", { d: line, fill: "none", stroke: opts.stacked ? "#0f1633" : sr.color, "stroke-width": opts.stacked ? 1.5 : 2 }));
+        } else {
+          svg.append(s("path", { d: line, fill: "none", stroke: sr.color, "stroke-width": 2, "stroke-dasharray": sr.dash || "", "stroke-linejoin": "round", "stroke-linecap": "round" }));
+        }
+      }
+      // direct label on the last point of a lone, unstacked series
+      if (series.length === 1 && opts.endLabel !== false) {
+        var last = series[0].values[n - 1];
+        var el = s("text", { class: "label", x: x(n - 1) - 4, y: y(last) - 8, "text-anchor": "end" });
+        el.textContent = TC.fmt(last);
+        svg.append(el);
+      }
+      var cross = s("line", { class: "crosshair", x1: 0, x2: 0, y1: m.t, y2: m.t + h, visibility: "hidden" });
+      svg.append(cross);
+      var dots = series.map(function (sr) {
+        var c = s("circle", { r: 4, fill: sr.color, stroke: "#0f1633", "stroke-width": 2, visibility: "hidden" });
+        svg.append(c);
+        return c;
+      });
+      var hit = s("rect", { x: m.l, y: m.t, width: w, height: h, fill: "transparent", tabindex: 0 });
+      svg.append(hit);
+      var old = host.querySelector("svg");
+      if (old) old.remove();
+      host.insertBefore(svg, tip);
+
+      function show(i) {
+        var cx = x(i);
+        cross.setAttribute("x1", cx); cross.setAttribute("x2", cx); cross.setAttribute("visibility", "visible");
+        tip.replaceChildren(TC.el("div", { class: "t", text: TC.dayYear(dates[i]) }));
+        var order = series.map(function (_, k) { return k; });
+        if (opts.stacked) order.reverse();
+        order.forEach(function (k) {
+          var v = series[k].values[i];
+          dots[k].setAttribute("cx", cx); dots[k].setAttribute("cy", y(tops[k][i]));
+          dots[k].setAttribute("visibility", v == null ? "hidden" : "visible");
+          tip.append(TC.el("div", { class: "r" }, [
+            TC.el("i", { class: "key", style: "background:" + series[k].color }),
+            TC.el("b", { text: tipFormat(v) }),
+            TC.el("em", { text: series[k].name }),
+          ]));
+        });
+        if (opts.stacked && opts.total !== false) {
+          tip.append(TC.el("div", { class: "r" }, [TC.el("span"), TC.el("b", { text: tipFormat(tops[series.length - 1][i]) }), TC.el("em", { text: "total" })]));
+        }
+        var scale = host.clientWidth / W;
+        var left = cx * scale + 14, tw = tip.offsetWidth || 180;
+        if (left + tw > host.clientWidth) left = cx * scale - tw - 14;
+        tip.style.left = Math.max(0, left) + "px";
+        tip.style.top = Math.max(0, m.t * scale) + "px";
+        tip.classList.add("on");
+      }
+      function hide() {
+        cross.setAttribute("visibility", "hidden");
+        dots.forEach(function (d) { d.setAttribute("visibility", "hidden"); });
+        tip.classList.remove("on");
+      }
+      var cur = n - 1;
+      hit.addEventListener("pointermove", function (ev) {
+        var r = svg.getBoundingClientRect();
+        var px = ((ev.clientX - r.left) / r.width) * W;
+        cur = Math.max(0, Math.min(n - 1, Math.round(((px - m.l) / w) * (n - 1))));
+        show(cur);
+      });
+      hit.addEventListener("pointerleave", hide);
+      hit.addEventListener("focus", function () { show(cur); });
+      hit.addEventListener("blur", hide);
+      hit.addEventListener("keydown", function (ev) {
+        if (ev.key === "ArrowLeft") { cur = Math.max(0, cur - 1); show(cur); ev.preventDefault(); }
+        if (ev.key === "ArrowRight") { cur = Math.min(n - 1, cur + 1); show(cur); ev.preventDefault(); }
+      });
+    }
+    draw();
+    var lastW = host.clientWidth;
+    if (window.ResizeObserver) new ResizeObserver(function () {
+      if (Math.abs(host.clientWidth - lastW) > 4) { lastW = host.clientWidth; draw(); }
+    }).observe(host);
+  };
+
+  /* ---------- horizontal bars ---------- */
+  /* items: [{label, value, color, href, title, valueText}] */
+  TC.bars = function (container, items, opts) {
+    opts = opts || {};
+    if (typeof container === "string") container = TC.$(container);
+    var max = opts.max || Math.max.apply(null, items.map(function (i) { return i.value; }).concat([1]));
+    var fmt = opts.format || TC.fmt;
+    var wrap = TC.el("div", { class: "bars" });
+    items.forEach(function (it) {
+      var name = it.href ? TC.el("a", { href: it.href, text: it.label }) : document.createTextNode(it.label);
+      // The longest bar stops at 72% so its value label still fits beside it, off the fill.
+      var pct = Math.max(0, it.value) / max * 72;
+      var val = TC.el("span", { class: "val", text: it.valueText || fmt(it.value), style: "left:" + pct + "%" });
+      wrap.append(TC.el("div", { class: "bar", title: it.title || (it.label + ": " + fmt(it.value)) }, [
+        TC.el("div", { class: "name" }, [name]),
+        TC.el("div", { class: "track" }, [TC.el("div", { class: "fill", style: "width:" + pct + "%;background:" + (it.color || TC.SERIES[0]) }), val]),
+      ]));
+    });
+    container.replaceChildren(wrap);
+    if (opts.table !== false) {
+      container.append(TC.tableView([opts.labelHeader || "Item", opts.valueHeader || "Value"],
+        items.map(function (i) { return [i.label, i.valueText || fmt(i.value)]; }), [false, true]));
+    }
+  };
+
+  /* ---------- Lean highlighting (keywords and comments only) ---------- */
+  var KW = /\b(theorem|lemma|def|structure|class|instance|open|in|namespace|end|variable|import|by|fun|let|have|show|from|where|example|noncomputable|abbrev)\b/g;
+  TC.highlightLean = function (code) {
+    var esc = code.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+    var parts = esc.split(/(\/--[\s\S]*?-\/|--[^\n]*)/g);
+    return parts.map(function (p) {
+      if (/^(\/--|--)/.test(p)) return '<span class="cm">' + p + "</span>";
+      return p.replace(KW, '<span class="kw">$1</span>').replace(/(:=|→|↔|∀|∃|≃ₜ|∧)/g, '<span class="sy">$1</span>');
+    }).join("");
+  };
+
+  /* ---------- copy buttons ---------- */
+  function copyText(text) {
+    // The Clipboard API is absent on plain http:// and can refuse an unfocused document;
+    // execCommand still works from the click in both cases.
+    if (navigator.clipboard && window.isSecureContext) {
+      return navigator.clipboard.writeText(text).catch(function () { return legacyCopy(text); });
+    }
+    return legacyCopy(text);
+  }
+  function legacyCopy(text) {
+    return new Promise(function (resolve, reject) {
+      var ta = TC.el("textarea", { style: "position:fixed;top:-1000px;opacity:0", readonly: "" });
+      ta.value = text;
+      document.body.append(ta);
+      ta.select();
+      var ok = document.execCommand("copy");
+      ta.remove();
+      ok ? resolve() : reject(new Error("copy failed"));
+    });
+  }
+  TC.copyable = function (pre) {
+    if (pre.querySelector(".copy")) return;
+    var b = TC.el("button", { class: "copy", type: "button", "aria-label": "Copy to clipboard", text: "Copy" });
+    b.addEventListener("click", function () {
+      var code = pre.querySelector("code") || pre;
+      copyText(code.innerText.replace(/\n$/, "")).then(function () {
+        b.textContent = "Copied"; b.classList.add("done");
+      }, function () { b.textContent = "Press ⌘C"; }).then(function () {
+        setTimeout(function () { b.textContent = "Copy"; b.classList.remove("done"); }, 1600);
+      });
+    });
+    pre.append(b);
+  };
+
+  /* ---------- page chrome ---------- */
+  document.addEventListener("DOMContentLoaded", function () {
+    TC.$$("pre").forEach(TC.copyable);
+    var btn = TC.$(".nav-toggle"), links = TC.$("#nav-links");
+    if (btn && links) btn.addEventListener("click", function () {
+      var open = links.classList.toggle("open");
+      btn.setAttribute("aria-expanded", open ? "true" : "false");
+    });
+    TC.$$("[data-tabs]").forEach(function (group) {
+      var buttons = TC.$$("[role=tab]", group);
+      buttons.forEach(function (b) {
+        b.addEventListener("click", function () {
+          buttons.forEach(function (o) {
+            var on = o === b;
+            o.setAttribute("aria-selected", on ? "true" : "false");
+            var p = document.getElementById(o.getAttribute("aria-controls"));
+            if (p) p.hidden = !on;
+          });
+        });
+      });
+    });
+  });
+})();

@@ -1,0 +1,77 @@
+<!-- {"title": "Tau Ceti", "description": "Tau Ceti is a distributed project building a reusable library of formal mathematics in Lean with frontier AI models, directed by human-curated roadmaps.", "scripts": ["home.js"]} -->
+<section class="hero">
+  <div>
+    <h1>Tau Ceti</h1>
+    <p class="tag">A reusable library of formal mathematics</p>
+    <p class="lede">Tau Ceti is a distributed project building a formal library of mathematics in Lean, using frontier models. Humans curate high-level roadmaps, agents prepare Lean formalizations, other agents review the pull requests, and the Lean kernel and Mathlib’s linters validate the code.</p>
+    <p class="lede">It is more than a collection of autoformalization projects: the roadmaps and the review process classify and organise results into one coherent library that can scale.</p>
+    <div class="cta-row">
+      <a class="cta" href="#use">Use it from Lean</a>
+      <a class="cta ghost" href="contents.html">What’s inside</a>
+      <a class="cta ghost" href="contribute.html">Contribute</a>
+    </div>
+  </div>
+  <img src="static/img/voyager.jpg" width="1400" height="1050" alt="Artist's concept of the Voyager spacecraft in flight, its white dish antenna and long boom against a starfield.">
+
+</section>
+
+<div class="tiles" aria-live="polite">
+  <div class="tile loading" data-stat="loc"><div class="v">…</div><div class="k">lines of Lean</div><div class="d"></div></div>
+  <div class="tile loading" data-stat="growth"><div class="v">…</div><div class="k">lines added per day, last 7 days</div></div>
+  <div class="tile loading" data-stat="roadmaps"><div class="v">…</div><div class="k">roadmaps</div><div class="d"></div></div>
+  <div class="tile loading" data-stat="merged"><div class="v">…</div><div class="k">pull requests merged</div><div class="d"></div></div>
+  <div class="tile loading" data-stat="contributors"><div class="v">…</div><div class="k">contributing accounts</div></div>
+</div>
+
+<h2>How it works</h2>
+<div class="cards four">
+  <div class="card accent"><h3>Humans set the direction</h3><p>Mathematicians write and review the <a href="structure.html">roadmaps</a> in <a href="https://github.com/TauCetiProject/TauCetiRoadmap">TauCetiRoadmap</a>, mostly with AI help. A roadmap lays out an area of mathematics as layers of definitions and theorems.</p></div>
+  <div class="card"><h3>Agents write the Lean</h3><p>Anyone can bring any model and any prompting. Workers pick roadmap milestones, write the formalization and open pull requests against <a href="https://github.com/TauCetiProject/TauCeti">TauCeti</a>.</p></div>
+  <div class="card"><h3>Agents review adversarially</h3><p>Other agents judge every pull request against human-curated <a href="https://github.com/TauCetiProject/TauCetiReview/tree/main/rubrics">rubrics</a>: correctness, reuse, API design, generality, naming, proof quality. They hunt for mis-formalizations and vacuous statements.</p></div>
+  <div class="card"><h3>Lean checks everything</h3><p>CI builds every change: no <code>sorry</code>, no new axioms, and the full Mathlib linter set. A pull request merges only when it builds and every rubric approves.</p></div>
+</div>
+
+<h2>Why it matters</h2>
+<div class="prose">
+  <p>AI can make dramatic progress in mathematics, and formalization is now clearly an essential companion to it: the Lean kernel gives feedback during proof exploration and guarantees that the final result is correct. Yet many AI-driven research projects have had to build things from scratch, doing extensive foundational work (often just to state the problem) before they can make new discoveries.</p>
+  <p>Tau Ceti collects that foundation in one place, solid and well engineered, so that humans and agents can build on it when they explore the research frontier. It depends on Mathlib and defers to Mathlib’s design decisions, and everything in it is free to reuse under the Apache licence.</p>
+</div>
+
+<h2 id="use">Use it from Lean</h2>
+<p class="prose">Tau Ceti is an ordinary Lake package. Your project needs the same Lean toolchain as Tau Ceti, and gets Mathlib through it.</p>
+<ol class="steps">
+  <li>
+    <h3>Match Tau Ceti’s toolchain</h3>
+    <p>Tau Ceti tracks Mathlib <code>master</code> and moves its toolchain with it. Copy its <code>lean-toolchain</code> into your project:</p>
+    <pre><code>curl -fsSL -o lean-toolchain https://raw.githubusercontent.com/TauCetiProject/TauCeti/main/lean-toolchain</code></pre>
+    <p class="small muted">Currently <code data-toolchain>…</code>.</p>
+  </li>
+  <li>
+    <h3>Require it in <code>lakefile.toml</code></h3>
+<pre><code>[[require]]
+name = "TauCeti"
+git = "https://github.com/TauCetiProject/TauCeti"
+rev = "main"   # or a commit hash, for a reproducible build</code></pre>
+    <p class="small muted">Don’t also require Mathlib at a different revision: Tau Ceti’s manifest pins the Mathlib it builds against, and Lake takes it from there. Tau Ceti merges hundreds of pull requests a day, so pin a commit for anything you need to keep building.</p>
+  </li>
+  <li>
+    <h3>Fetch and build</h3>
+<pre><code>lake update TauCeti
+lake exe cache get    # Mathlib’s prebuilt oleans
+lake build</code></pre>
+    <p class="small muted"><code>lake build</code> compiles only the Tau Ceti modules your files import, not the whole library.</p>
+  </li>
+  <li>
+    <h3>Import the modules you need</h3>
+    <p>The root <code>TauCeti.lean</code> is deliberately empty, so import specific modules. Find them in the <a href="https://taucetiproject.org/docs/">API documentation</a> or the <a href="https://cbirkbeck.github.io/tauceti-explorer/tauceti/">Atlas</a>:</p>
+    <pre><code data-imports>import TauCeti.RepresentationTheory.CharacterTable.Solvable</code></pre>
+  </li>
+</ol>
+
+<h2>A taste of the maths</h2>
+<p class="prose muted">These statements are type-checked against the library every time <a href="https://taucetiproject.org/">taucetiproject.org</a> is built (from <a data-examples-source href="https://github.com/TauCetiProject/TauCeti/blob/main/web/examples/Examples.lean">web/examples/Examples.lean</a>).</p>
+<div class="examples" id="examples"><p class="muted">Loading…</p></div>
+
+<div class="callout teal" style="margin-top:2rem">
+  Tau Ceti is incubated by the <a href="https://lean-lang.org/fro/">Lean FRO</a> and the <a href="https://mathlib-initiative.org/">Mathlib Initiative</a>, in partnership with academic and industry groups. See <a href="people.html">people</a> and <a href="acknowledgments.html">acknowledgments</a>.
+</div>

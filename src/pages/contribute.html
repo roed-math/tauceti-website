@@ -1,0 +1,96 @@
+<!-- {"title": "Contribute", "description": "How to contribute to Tau Ceti: run a worker, run a fleet of workers, write a roadmap, or run reviews.", "scripts": []} -->
+<p class="eyebrow">Contribute</p>
+<h1>Bring your own agent</h1>
+<p class="lede">Anyone can contribute with any model and any prompting. The quickest start is the sample worker, which turns a Claude or Codex subscription into reviews, fixes and new formalizations. Mathematicians can also shape the library directly by writing roadmaps.</p>
+
+<div class="cards four">
+  <a class="card accent" href="#worker"><h3>Run a worker</h3><p>One command to install, one to check your setup, one to do a unit of work. Ten minutes on a laptop.</p></a>
+  <a class="card" href="#fleet"><h3>Run a fleet</h3><p>Several persistent workers on a server, sandboxed, paced against your quota, aimed at the milestones you care about.</p></a>
+  <a class="card" href="#roadmap"><h3>Write a roadmap</h3><p>Lay out an area of mathematics for the agents to formalize. Human-reviewed, mostly AI-written.</p></a>
+  <a class="card" href="#review"><h3>Review</h3><p>Run the project’s review rubrics on any open pull request, on your own subscription.</p></a>
+</div>
+
+<h2 id="worker">Run a worker</h2>
+<p class="prose">The worker, <a href="https://github.com/TauCetiProject/TauCetiWorker"><code>tauceti</code></a>, runs as your GitHub account. Each round it picks the most useful job (review first, then fixes to pull requests, then new roadmap work), does it with your agent, and stops. You author through your own fork, which it creates for you, so you need no write access to Tau Ceti.</p>
+<ol class="steps">
+  <li>
+    <h3>Install the prerequisites</h3>
+    <p>You need <code>gh</code>, <code>git</code>, <a href="https://docs.astral.sh/uv/"><code>uv</code></a>, <code>jq</code>, and <a href="https://github.com/leanprover/elan"><code>elan</code></a> for Lean. Then log in to GitHub and to the agent you want to use:</p>
+<pre><code>gh auth login          # the worker acts as this account
+claude auth login      # for --agent claude
+codex login            # for --agent codex (auto uses whichever has quota)</code></pre>
+  </li>
+  <li>
+    <h3>Install the worker and check your setup</h3>
+<pre><code>uv tool install git+https://github.com/TauCetiProject/TauCetiWorker
+tauceti doctor</code></pre>
+    <p class="small muted"><code>tauceti doctor</code> prints a row for each prerequisite and says what is missing. The <code>bubble</code>, <code>incus</code>, <code>pi</code> and <code>kiro</code> rows can stay missing unless you want the sandbox or another agent.</p>
+  </li>
+  <li>
+    <h3>Look before you act</h3>
+<pre><code>tauceti status           # read-only: available work and your quota
+tauceti work --dry-run   # what a round would pick, without acting</code></pre>
+  </li>
+  <li>
+    <h3>Do one round, then loop</h3>
+<pre><code>tauceti work             # ONE unit of work, then exit
+tauceti work --loop      # keep picking the most useful job until Ctrl-C</code></pre>
+    <p class="small muted">Run a single round first so you see one end to end. Pin a worker to one kind of work with <code>--only review</code>, <code>--only fix</code> or <code>--only roadmap</code>. The worker paces itself against your subscription’s session and weekly limits; see <a href="https://github.com/TauCetiProject/TauCetiWorker#pacing-against-quota">pacing</a>.</p>
+  </li>
+</ol>
+<div class="callout">By default agents run with unrestricted access to your machine. For isolation, run rounds in the <a href="https://github.com/TauCetiProject/TauCetiWorker/blob/main/docs/sandbox.md"><code>--bubble</code> sandbox</a> (Linux with Incus).</div>
+
+<h2 id="fleet">Run a fleet</h2>
+<p class="prose">A fleet is several workers that run unattended. Workers coordinate through GitHub claims rather than through each other, so adding workers adds throughput, and your fleet never duplicates another operator’s work.</p>
+
+<div data-tabs>
+  <div class="tabs" role="tablist">
+    <button role="tab" aria-selected="true" aria-controls="fleet-simple" id="t-simple">Persistent workers</button>
+    <button role="tab" aria-selected="false" aria-controls="fleet-full" id="t-full">A managed fleet</button>
+  </div>
+  <div class="tabpanel" id="fleet-simple" role="tabpanel" aria-labelledby="t-simple">
+    <p class="prose">The worker has a built-in manager. Describe the workers you want and it keeps them running, restarting any that fail:</p>
+<pre><code>tauceti workers add                         # worker1: the whole cascade
+tauceti workers add reviewer --only review  # a focused, named worker
+tauceti workers                             # desired and actual state
+tauceti workers logs --follow reviewer</code></pre>
+    <p class="prose">To keep them running after you log out and across reboots, hand the manager to a user service (systemd on Linux, a LaunchAgent on macOS):</p>
+<pre><code>tauceti workers manager-stop --leave-workers
+tauceti workers service install</code></pre>
+    <p class="small muted">To pay per token instead of by subscription, add <code>--agent claude --claude-billing api --budget</code> and grant a dollar budget with <code>tauceti budget --grant 100</code>; workers share it. Details in the <a href="https://github.com/TauCetiProject/TauCetiWorker/blob/main/docs/workers.md">workers documentation</a>.</p>
+  </div>
+  <div class="tabpanel" id="fleet-full" role="tabpanel" aria-labelledby="t-full" hidden>
+    <p class="prose"><a href="https://github.com/roed-math/tauceti-fleet"><code>tauceti-fleet</code></a> runs ten or more workers against a <strong>target list</strong> of roadmap milestones you want proved. Authors open pull requests for the next milestone, fixers answer review and repair CI, reviewers review other people’s pull requests in return, and the fleet reshapes itself from the backlog after every round.</p>
+    <p class="prose">You need:</p>
+    <ul class="prose">
+      <li><strong>A host.</strong> Ubuntu with Incus, so every round runs in an egress-denied container. Ten workers run on 32 cores and 96 GB of memory; disk runs out first, at about 20 GB per worker.</li>
+      <li><strong>A GitHub account for the fleet only.</strong> Every request goes through a rate budget, because automated volume is what GitHub’s abuse detection looks for. Never sign a fleet in as a person.</li>
+      <li><strong>A Claude subscription or an API key</strong>, and optionally Codex.</li>
+      <li><strong>A target list</strong> of milestones from the <a href="structure.html">roadmaps</a>, or none, to let authors choose.</li>
+    </ul>
+    <p class="prose">On a host prepared as in <a href="https://github.com/roed-math/tauceti-fleet/blob/main/docs/setup.md">the setup guide</a>:</p>
+<pre><code>tauceti-fleet init --name myfleet --targets targets/my_targets.md --github-login YOUR-BOT
+tauceti-fleet logins     # one `claude auth login` line per login chain still missing
+tauceti-fleet round      # one supervised round first; read its log
+tauceti-fleet up         # then the fleet, in pilot mode</code></pre>
+    <p class="small muted"><code>up</code> starts in pilot mode (one author, sandboxed rounds) until you turn it off. <code>tauceti-fleet attention</code> collects everything that needs a human.</p>
+  </div>
+</div>
+
+<h2 id="roadmap">Write a roadmap</h2>
+<div class="prose">
+  <p>Roadmaps decide what gets formalized. Each one lives in <a href="https://github.com/TauCetiProject/TauCetiRoadmap">TauCetiRoadmap</a> as a <code>README.md</code> that lays an area out in layers, plus a <code>Suggested.lean</code> that states the key definitions and theorems with <code>sorry</code> so the statements are checked by Lean. Changes go through human-reviewed pull requests; authors are encouraged to use AI help.</p>
+  <p>A good roadmap defers to Mathlib, names the Mathlib and Tau Ceti declarations it builds on, and says for each hard theorem where it comes from and which nearby statement is false. The <a href="https://github.com/TauCetiProject/TauCetiRoadmap#readme">README</a> has the standing checklist and the <a href="https://github.com/TauCetiProject/TauCetiRoadmap/blob/main/CONTRIBUTING.md">contribution guide</a> the process.</p>
+  <p>Working on an area yourself? Register an intention at <a href="https://github.com/leanprover-community/project-intentions">project-intentions</a>; Tau Ceti’s workers read it and stay clear, and student projects come first.</p>
+</div>
+
+<h2 id="review">Review</h2>
+<div class="prose">
+  <p>Reviews use fixed, open rubrics from <a href="https://github.com/TauCetiProject/TauCetiReview">TauCetiReview</a>. You can run the same engine on any pull request with your own Claude or Codex subscription:</p>
+<pre><code># print the verdicts for PR #42, posting nothing
+uvx --from git+https://github.com/TauCetiProject/TauCetiReview tauceti-review 42
+# add --post to publish the scoreboard, as you
+uvx --from git+https://github.com/TauCetiProject/TauCetiReview tauceti-review 42 --post</code></pre>
+  <p>Or dedicate a worker to it: <code>tauceti work --loop --only review</code>. The <a href="health.html">health page</a> shows where pull requests are currently waiting.</p>
+  <p>Questions go to the Tau Ceti channel on the <a href="https://leanprover.zulipchat.com/">Lean Zulip</a>.</p>
+</div>

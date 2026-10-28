@@ -1,0 +1,315 @@
+#!/usr/bin/env python3
+"""Generate the JSON this site draws that taucetiproject.org does not already publish.
+
+Writes into data/ (or --out):
+
+  library-loc.json   lines of Lean under TauCeti/ by day, from the git history of main
+  loc-by-topic.json  net lines per roadmap and per arXiv category, from merged pull requests
+  examples.json      the showcase theorems from TauCeti's web/examples/Examples.lean
+  ci-current.json    the CI fleet's running and queued jobs, copied from the live manifest
+
+Everything else the pages show (progress.json, pr-stats.json, roadmap-completion.json,
+pipeline-health.json and the chart SVGs) is read in the browser from taucetiproject.org,
+which serves it with `Access-Control-Allow-Origin: *`. The CI manifest is the exception: its
+CORS policy admits only taucetiproject.org, so it is copied here at build time.
+
+Usage:
+  python3 scripts/build_data.py --tauceti-repo PATH [--out data] [--cache data/cache]
+
+GH_TOKEN (or an authenticated `gh`) is needed for the pull-request walk: about 210 GraphQL
+requests cold, a handful when --cache holds the previous run's snapshot.
+"""
+from __future__ import annotations
+
+import argparse
+import datetime as dt
+import json
+import os
+import re
+import subprocess
+import sys
+import urllib.request
+from collections import defaultdict
+from pathlib import Path
+
+OWNER, NAME = "TauCetiProject", "TauCeti"
+SITE = "https://taucetiproject.org"
+CI_MANIFEST = "https://ci-data.taucetiproject.org/v1/ci/manifest.json"
+BORS_PREFIX = "[Merged by Bors] - "
+
+PR_QUERY = """
+query($owner: String!, $name: String!, $after: String) {
+  repository(owner: $owner, name: $name) {
+    pullRequests(first: 100, after: $after, states: [MERGED, CLOSED],
+                 orderBy: {field: UPDATED_AT, direction: DESC}) {
+      pageInfo { hasNextPage endCursor }
+      nodes {
+        number title state mergedAt closedAt updatedAt additions deletions
+        labels(first: 20) { nodes { name } }
+      }
+    }
+  }
+}
+"""
+
+
+def log(msg: str) -> None:
+    print(msg, file=sys.stderr, flush=True)
+
+
+def fetch_json(url: str):
+    req = urllib.request.Request(url, headers={"User-Agent": "tauceti-website-build"})
+    with urllib.request.urlopen(req, timeout=60) as r:
+        return json.load(r)
+
+
+def fetch_text(url: str) -> str:
+    req = urllib.request.Request(url, headers={"User-Agent": "tauceti-website-build"})
+    with urllib.request.urlopen(req, timeout=60) as r:
+        return r.read().decode()
+
+
+def graphql(query: str, **variables) -> dict:
+    args = ["gh", "api", "graphql", "-f", f"query={query}"]
+    for k, v in variables.items():
+        if v is not None:
+            args += ["-F" if isinstance(v, int) else "-f", f"{k}={v}"]
+    for attempt in range(3):
+        p = subprocess.run(args, capture_output=True, text=True)
+        if p.returncode == 0:
+            return json.loads(p.stdout)["data"]
+        log(f"graphql attempt {attempt + 1} failed: {p.stderr.strip()[:300]}")
+    raise RuntimeError("GitHub GraphQL request failed three times")
+
+
+def merged_at(pr: dict) -> str | None:
+    """Bors closes the PRs it lands and renames them, so `mergedAt` alone misses most merges."""
+    if pr.get("mergedAt"):
+        return pr["mergedAt"]
+    if pr.get("state") == "CLOSED" and pr.get("title", "").startswith(BORS_PREFIX):
+        return pr.get("closedAt")
+    return None
+
+
+def walk_prs(cache_file: Path | None) -> list[dict]:
+    known: dict[int, dict] = {}
+    newest = None
+    if cache_file and cache_file.exists():
+        known = {pr["number"]: pr for pr in json.loads(cache_file.read_text())}
+        newest = max((pr["updatedAt"] for pr in known.values()), default=None)
+        log(f"cache: {len(known)} pull requests, newest update {newest}")
+    # Ordered by update time, newest first, so a warm run stops at the first page that is
+    # entirely older than what the cache already holds (with a day's overlap for clock skew).
+    stop_before = None
+    if newest:
+        stop_before = (dt.datetime.fromisoformat(newest.replace("Z", "+00:00"))
+                       - dt.timedelta(days=1)).isoformat().replace("+00:00", "Z")
+    after, pages = None, 0
+    while True:
+        data = graphql(PR_QUERY, owner=OWNER, name=NAME, after=after)
+        conn = data["repository"]["pullRequests"]
+        pages += 1
+        for node in conn["nodes"]:
+            node["labels"] = [l["name"] for l in node["labels"]["nodes"]]
+            known[node["number"]] = node
+        if pages % 20 == 0:
+            log(f"  {pages} pages, {len(known)} pull requests")
+        oldest_here = conn["nodes"][-1]["updatedAt"] if conn["nodes"] else None
+        if not conn["pageInfo"]["hasNextPage"]:
+            break
+        if stop_before and oldest_here and oldest_here < stop_before:
+            break
+        after = conn["pageInfo"]["endCursor"]
+    log(f"walked {pages} pages; {len(known)} closed or merged pull requests known")
+    prs = sorted(known.values(), key=lambda p: p["number"])
+    if cache_file:
+        cache_file.parent.mkdir(parents=True, exist_ok=True)
+        cache_file.write_text(json.dumps(prs, separators=(",", ":")))
+    return prs
+
+
+def day_range(first: dt.date, last: dt.date) -> list[str]:
+    return [(first + dt.timedelta(days=i)).isoformat() for i in range((last - first).days + 1)]
+
+
+def last_full_day() -> dt.date:
+    return dt.datetime.now(dt.timezone.utc).date() - dt.timedelta(days=1)
+
+
+def loc_by_topic(prs: list[dict], progress: dict, pr_stats: dict) -> dict:
+    """Net lines (additions minus deletions) per roadmap label, by merge day.
+
+    Same attribution as TauCeti's per-roadmap chart: a merged PR counts toward the one
+    roadmap/<Area> label it carries; none or several leaves it unattributed. Sums diffs, so
+    a line rewritten later counts under both PRs: this measures work landed, not a snapshot.
+    """
+    code_to_name = {}
+    for row in progress.get("rows", []):
+        if row.get("arxiv") and row.get("topic"):
+            code_to_name[row["arxiv"]] = row["topic"]
+    label_to_code = dict(pr_stats.get("by_roadmap_and_contributor", {}).get("roadmap_categories", {}))
+    for row in progress.get("rows", []):
+        label_to_code.setdefault(f"roadmap/{row['name']}", row.get("arxiv"))
+
+    end = last_full_day()
+    per_label_day: dict[str, dict[str, int]] = defaultdict(lambda: defaultdict(int))
+    per_label_prs: dict[str, int] = defaultdict(int)
+    unattributed = {"prs": 0, "net_lines": 0}
+    first = None
+    for pr in prs:
+        when = merged_at(pr)
+        if not when:
+            continue
+        day = when[:10]
+        if day > end.isoformat():
+            continue
+        roadmap = [l for l in pr["labels"] if l.startswith("roadmap/")]
+        net = pr["additions"] - pr["deletions"]
+        # `roadmap/none` and `roadmap/Unknown` are sentinels, not roadmaps: count them with the
+        # unlabelled PRs, as taucetiproject.org's progress.json does.
+        if len(roadmap) != 1 or not label_to_code.get(roadmap[0]):
+            unattributed["prs"] += 1
+            unattributed["net_lines"] += net
+            continue
+        per_label_day[roadmap[0]][day] += net
+        per_label_prs[roadmap[0]] += 1
+        first = min(first, day) if first else day
+
+    dates = day_range(dt.date.fromisoformat(first), end) if first else []
+    topic_series: dict[str, list[int]] = {}
+    roadmaps = []
+    for label, by_day in per_label_day.items():
+        code = label_to_code[label]
+        running, series = 0, []
+        for d in dates:
+            running += by_day.get(d, 0)
+            series.append(running)
+        acc = topic_series.setdefault(code, [0] * len(dates))
+        for i, v in enumerate(series):
+            acc[i] += v
+        roadmaps.append({"label": label, "roadmap": label.removeprefix("roadmap/"),
+                         "arxiv": code, "net_lines": running, "merged_prs": per_label_prs[label]})
+    topics = [{"arxiv": code, "name": code_to_name.get(code, code), "series": series,
+               "net_lines": series[-1] if series else 0,
+               "roadmaps": sum(1 for r in roadmaps if r["arxiv"] == code)}
+              for code, series in topic_series.items()]
+    topics.sort(key=lambda t: -t["net_lines"])
+    roadmaps.sort(key=lambda r: -r["net_lines"])
+    return {"generated_at": now_iso(), "last_full_day": end.isoformat(), "dates": dates,
+            "topics": topics, "roadmaps": roadmaps, "unattributed": unattributed,
+            "merged_prs": sum(per_label_prs.values()) + unattributed["prs"]}
+
+
+def library_loc(repo: Path) -> dict:
+    """Lines under TauCeti/ and TauCeti.lean on main at the end of each UTC day.
+
+    Walks main's first-parent history and sums each commit's numstat against its first
+    parent, which is the same tree TauCeti's own loc_graph.py counts.
+    """
+    out = subprocess.run(
+        ["git", "-C", str(repo), "log", "--first-parent", "--diff-merges=first-parent",
+         "--reverse", "--numstat", "--format=@%cI", "HEAD", "--", "TauCeti", "TauCeti.lean"],
+        capture_output=True, text=True, check=True).stdout
+    by_day: dict[str, int] = defaultdict(int)
+    files_by_day: dict[str, int] = defaultdict(int)
+    day = None
+    for line in out.splitlines():
+        if line.startswith("@"):
+            day = dt.datetime.fromisoformat(line[1:]).astimezone(dt.timezone.utc).date().isoformat()
+        elif line.strip() and day:
+            a, d, path = line.split("\t", 2)
+            if a == "-":
+                continue
+            by_day[day] += int(a) - int(d)
+    end = last_full_day()
+    first = dt.date.fromisoformat(min(by_day))
+    dates = day_range(first, end)
+    lines, running = [], 0
+    for d in dates:
+        running += by_day.get(d, 0)
+        lines.append(running)
+    files = subprocess.run(["git", "-C", str(repo), "ls-files", "TauCeti"], capture_output=True,
+                           text=True, check=True).stdout.split()
+    head = subprocess.run(["git", "-C", str(repo), "rev-parse", "HEAD"], capture_output=True,
+                          text=True, check=True).stdout.strip()
+    return {"generated_at": now_iso(), "commit": head, "last_full_day": end.isoformat(),
+            "dates": dates, "lines": lines,
+            "files_now": sum(1 for f in files if f.endswith(".lean"))}
+
+
+EXAMPLE_RE = re.compile(r"^%example (\S+)\n(.*?)^%end", re.S | re.M)
+
+
+def examples(repo: Path | None) -> dict:
+    path = "web/examples/Examples.lean"
+    if repo and (repo / path).exists():
+        text = (repo / path).read_text()
+    else:
+        text = fetch_text(f"https://raw.githubusercontent.com/{OWNER}/{NAME}/main/{path}")
+    imports = re.findall(r"^import (TauCeti\.\S+)", text, re.M)
+    items = []
+    for name, body in EXAMPLE_RE.findall(text):
+        doc = re.search(r"/--\s*(.*?)\s*-/", body, re.S)
+        items.append({"id": name, "code": body.strip("\n"),
+                      "summary": " ".join(doc.group(1).split()) if doc else ""})
+    return {"source": f"https://github.com/{OWNER}/{NAME}/blob/main/{path}",
+            "imports": imports, "examples": items}
+
+
+def ci_current() -> dict:
+    m = fetch_json(CI_MANIFEST)
+    cur = m.get("current") or {}
+    return {"fetched_at": now_iso(), "generated_at": m.get("generated_at"),
+            "mode": m.get("mode"), "running": cur.get("running", {}),
+            "queued": cur.get("queued", {}), "github": m.get("github", {}),
+            # Content-addressed chart URLs; images need no CORS, so pages can show them directly.
+            "assets": {name: "https://ci-data.taucetiproject.org" + a["url"]
+                       for name, a in (m.get("assets") or {}).items() if a.get("url")}}
+
+
+def now_iso() -> str:
+    return dt.datetime.now(dt.timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+
+
+def write(out: Path, name: str, obj) -> None:
+    out.mkdir(parents=True, exist_ok=True)
+    (out / name).write_text(json.dumps(obj, separators=(",", ":")))
+    log(f"wrote {out / name} ({(out / name).stat().st_size:,} bytes)")
+
+
+def main() -> int:
+    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("--tauceti-repo", type=Path, help="a full (non-shallow) clone of TauCeti at main")
+    ap.add_argument("--out", type=Path, default=Path("data"))
+    ap.add_argument("--cache", type=Path, default=Path("data/cache"))
+    ap.add_argument("--skip-prs", action="store_true", help="leave loc-by-topic.json as it is")
+    args = ap.parse_args()
+
+    failures = []
+
+    def step(name, fn):
+        try:
+            fn()
+        except Exception as e:  # one failed source keeps the previous file, not the whole build
+            log(f"::warning::{name} failed: {e}")
+            failures.append(name)
+
+    if args.tauceti_repo:
+        step("library-loc", lambda: write(args.out, "library-loc.json", library_loc(args.tauceti_repo)))
+    step("examples", lambda: write(args.out, "examples.json", examples(args.tauceti_repo)))
+    step("ci-current", lambda: write(args.out, "ci-current.json", ci_current()))
+    if not args.skip_prs:
+        def topics():
+            progress = fetch_json(f"{SITE}/static/progress.json")
+            pr_stats = fetch_json(f"{SITE}/static/pr-stats.json")
+            prs = walk_prs(args.cache / "prs.json")
+            write(args.out, "loc-by-topic.json", loc_by_topic(prs, progress, pr_stats))
+        step("loc-by-topic", topics)
+    if failures:
+        log(f"failed: {', '.join(failures)}")
+        return 1
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

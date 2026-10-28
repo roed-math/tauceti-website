@@ -1,0 +1,48 @@
+<!-- {"title": "What’s inside", "description": "What the Tau Ceti library contains: lines of Lean by area of mathematics, the largest roadmaps, and the tools for finding things in it.", "scripts": ["contents.js"]} -->
+<p class="eyebrow">What’s inside</p>
+<h1>A library organised by roadmap</h1>
+<p class="lede">Every pull request to Tau Ceti advances one roadmap, and every roadmap declares the arXiv category it belongs to. That gives the library a map: by area of mathematics, then by roadmap, then by layer.</p>
+
+<div class="tiles">
+  <div class="tile loading" data-stat="loc"><div class="v">…</div><div class="k">lines of Lean</div><div class="d"></div></div>
+  <div class="tile loading" data-stat="files"><div class="v">…</div><div class="k">Lean files</div></div>
+  <div class="tile loading" data-stat="areas"><div class="v">…</div><div class="k">areas of mathematics</div></div>
+  <div class="tile loading" data-stat="roadmaps"><div class="v">…</div><div class="k">roadmaps</div><div class="d"></div></div>
+  <div class="tile loading" data-stat="layers"><div class="v">…</div><div class="k">roadmap layers reported done</div><div class="d"></div></div>
+</div>
+
+<h2>Find your way around</h2>
+<div class="cards four">
+  <a class="card accent" href="https://cbirkbeck.github.io/tauceti-explorer/tauceti/"><h3>Tau Ceti Atlas</h3><p>A zoomable map of the library: areas are galaxies, roadmaps constellations, layers stars. Zoom in to read the definitions and theorems, and see which research papers they unlock.</p><span class="arrow">Open the Atlas →</span></a>
+  <a class="card" href="https://taucetiproject.org/docs/"><h3>API documentation</h3><p>Every declaration, hyperlinked into its Mathlib dependencies, regenerated from <code>main</code> every three hours. Search by name.</p><span class="arrow">Open the docs →</span></a>
+  <a class="card" href="structure.html"><h3>Roadmaps and progress</h3><p>Every roadmap, its layers, and what the latest report says about each one.</p><span class="arrow">See the roadmaps →</span></a>
+  <a class="card" href="https://github.com/TauCetiProject/TauCeti/tree/main/TauCeti"><h3>The source</h3><p>The Lean files themselves, under <code>TauCeti/</code> on GitHub. Searching the repository there finds statements by text.</p><span class="arrow">Browse on GitHub →</span></a>
+</div>
+
+<h2>Lines of Lean by area</h2>
+<div class="panel">
+  <h3>Net lines landed, by arXiv category</h3>
+  <p class="sub">Each merged pull request’s additions minus deletions, counted under the category of the roadmap it advances. <span data-topic-note></span></p>
+  <div id="by-topic"><p class="muted">Loading…</p></div>
+</div>
+
+<h2>The largest roadmaps</h2>
+<div class="panel">
+  <h3>Net lines landed, by roadmap</h3>
+  <p class="sub">The twenty roadmaps with the most code so far. Bar colour follows the area chart above.</p>
+  <div id="by-roadmap"><p class="muted">Loading…</p></div>
+</div>
+
+<h2>How far each area has got</h2>
+<div class="panel">
+  <h3>Roadmap layers by reported state</h3>
+  <p class="sub">Each roadmap names its layers in its README; the latest generated report says whether each is done. A count of goals, not of effort: layers differ in size.</p>
+  <div class="legend">
+    <span><i style="background:var(--good)"></i>done</span>
+    <span><i style="background:var(--warning)"></i>partial</span>
+    <span><i style="background:rgba(255,255,255,0.18)"></i>untouched</span>
+    <span><i style="background:repeating-linear-gradient(135deg,rgba(255,255,255,0.3) 0 3px,transparent 3px 6px)"></i>not yet assessed</span>
+  </div>
+  <div id="by-state"><p class="muted">Loading…</p></div>
+</div>
+<p class="small muted">Line counts sum diffs rather than counting the tree, so a line rewritten later counts under both pull requests; they measure work landed. Pull requests with no roadmap label, or several, are left out of the per-area figures. Data: <a href="data/loc-by-topic.json">loc-by-topic.json</a> (built with this site) and <a href="https://taucetiproject.org/static/progress.json">progress.json</a>.</p>

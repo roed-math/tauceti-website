@@ -1,0 +1,38 @@
+<!-- {"title": "Roadmaps", "description": "How Tau Ceti is organised: the pipeline from roadmap to merged Lean, and every roadmap with the reported state of each of its layers.", "scripts": ["structure.js"]} -->
+<p class="eyebrow">Structure and progress</p>
+<h1>From roadmap to merged Lean</h1>
+<p class="lede">Tau Ceti is four repositories and one loop. Humans decide what to formalize; agents write and review it; Lean decides whether it is correct.</p>
+
+<div class="pipeline" aria-label="The Tau Ceti pipeline">
+  <div class="stage"><div class="who">Humans</div><h4>Roadmap</h4><p>A mathematician writes a roadmap in <a href="https://github.com/TauCetiProject/TauCetiRoadmap">TauCetiRoadmap</a>: an area in layers, with key statements in Lean. Humans review it.</p></div>
+  <div class="stage"><div class="who">Agents</div><h4>Worker</h4><p>A <a href="https://github.com/TauCetiProject/TauCetiWorker">worker</a> claims a milestone, writes the Lean with its model, and opens a pull request labelled with the roadmap.</p></div>
+  <div class="stage machine"><div class="who">Lean</div><h4>CI</h4><p>The build must pass: no <code>sorry</code>, no new axioms, the full Mathlib linter set, file-size and scope checks.</p></div>
+  <div class="stage"><div class="who">Agents</div><h4>Review</h4><p>Reviewers judge it against the <a href="https://github.com/TauCetiProject/TauCetiReview">rubrics</a>. Requested changes go back to the author’s worker.</p></div>
+  <div class="stage machine"><div class="who">Bors</div><h4>Merge</h4><p>Approved pull requests are batched, rebuilt together and land on <code>main</code> of <a href="https://github.com/TauCetiProject/TauCeti">TauCeti</a>.</p></div>
+</div>
+<p class="prose small muted">After every ten or so merges under a roadmap, <a href="https://github.com/TauCetiProject/TauCetiProgress">TauCetiProgress</a> writes a fresh report on it: which layers are done, which are partial, and what remains. Those reports drive the board below.</p>
+
+<h2>Every roadmap</h2>
+<p class="prose">Grouped by the arXiv category each roadmap declares. Each segment is one layer of the roadmap’s README, shaded by what its latest report says. Expand a roadmap for its summary, next milestones and layer list.</p>
+
+<div class="board-controls">
+  <input type="search" id="q" placeholder="Filter roadmaps, e.g. modular, Lie, PDE" aria-label="Filter roadmaps">
+  <label>Sort <select id="sort"><option value="layers">by layers done</option><option value="activity">by merged PRs</option><option value="name">by name</option></select></label>
+  <label><input type="checkbox" id="hide-done"> hide archived</label>
+</div>
+<div class="legend">
+  <span><i style="background:var(--good)"></i>done</span>
+  <span><i style="background:var(--warning)"></i>partial</span>
+  <span><i style="background:rgba(255,255,255,0.18)"></i>untouched</span>
+  <span><i style="background:repeating-linear-gradient(135deg,rgba(255,255,255,0.3) 0 3px,transparent 3px 6px)"></i>not yet assessed</span>
+  <span><i style="background:var(--teal)"></i>archived as complete</span>
+</div>
+<p class="freshness" id="board-meta"></p>
+<div id="board"><p class="muted">Loading the roadmaps…</p></div>
+<details class="as-table" style="margin-top:1.5rem">
+  <summary>How to read this board</summary>
+  <div class="prose small">
+    <p>Layers are the headings of the human-written README. Their states come from the roadmap’s generated <code>STATUS.md</code>: a model’s account of the library at the commit it names, not a certificate that every sentence of the layer is met. Where a report says nothing about a layer, or the README changed its layers since, the layer is shown as not yet assessed.</p>
+    <p>“Archived as complete” is the maintainers’ judgment, recorded by moving a roadmap to <code>Completed/</code>. Merged pull requests count those carrying the roadmap’s <code>roadmap/…</code> label. The full board, with its methodology, is at <a href="https://taucetiproject.org/progress">taucetiproject.org/progress</a>.</p>
+  </div>
+</details>
