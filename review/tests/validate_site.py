@@ -20,6 +20,7 @@ import functools
 import hashlib
 import http.server
 import json
+import os
 import re
 import sys
 import tempfile
@@ -30,6 +31,9 @@ from urllib.parse import parse_qs, urlparse
 from playwright.sync_api import sync_playwright
 
 HERE = Path(__file__).resolve().parent
+# label_issue and the issue forms are the review data repository's: TAU_REVIEW_DATA, else a checkout
+# beside the website's.
+DATA_REPO = Path(os.environ.get("TAU_REVIEW_DATA") or HERE.parents[2] / "tauceti-review-data")
 CHECKS = {}
 
 
@@ -196,6 +200,7 @@ def on_github(url: str, kind: str):
     a body only: no form (`template`), which GitHub has opened as an empty issue, dropping what was written
     (#79, #80), and no `labels`, which GitHub refuses to anyone who may not label."""
     sys.path.insert(0, str(HERE.parent / "scripts"))
+    sys.path.append(str(DATA_REPO / "scripts"))
     from evidence_store import forms
     from label_issue import TEMPLATES, label_for, template_forms
     u, q = urlparse(url), parse_qs(urlparse(url).query)
@@ -419,7 +424,7 @@ def signin(browser, url, errors):
     # The forms as the site writes them are the templates' forms: titles, labels, and fields in order.
     site_forms = page.evaluate("TauRender.FORMS")
     for name, f in site_forms.items():
-        t = yaml.safe_load((HERE.parents[1] / ".github" / "ISSUE_TEMPLATE" / name).read_text(encoding="utf-8"))
+        t = yaml.safe_load((DATA_REPO / ".github" / "ISSUE_TEMPLATE" / name).read_text(encoding="utf-8"))
         expect((f["title"], [f["label"]], [tuple(x) for x in f["fields"]])
                == (t["title"], t["labels"], [(b["id"], b["attributes"]["label"]) for b in t["body"] if b["type"] != "markdown"]),
                f"{name}: the site writes an issue as the form does")

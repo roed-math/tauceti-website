@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import shutil
 import sys
 import time
@@ -19,6 +20,10 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from common import ROOT, load_settings  # noqa: E402
 import site_data  # noqa: E402
+
+# The store and the settings are the review data repository's: TAU_REVIEW_DATA, else a checkout beside
+# the website's.
+DATA_REPO = Path(os.environ.get("TAU_REVIEW_DATA") or ROOT.parents[1] / "tauceti-review-data")
 
 
 class SiteTooLarge(RuntimeError):
@@ -69,13 +74,14 @@ def main(argv: list[str]) -> int:
                                 formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("--dataset", required=True, type=Path)
     p.add_argument("--source", type=Path)
-    p.add_argument("--store", type=Path, default=ROOT / "evidence")
+    p.add_argument("--store", type=Path, default=DATA_REPO / "evidence")
+    p.add_argument("--settings", type=Path, default=DATA_REPO / "data" / "settings.json")
     p.add_argument("--imports", type=Path)
     p.add_argument("--out", type=Path, default=ROOT / "_site")
     p.add_argument("--budget-mb", type=int, default=800)
     a = p.parse_args(argv)
     try:
-        result = build(a.dataset, a.store, a.out, load_settings(), a.source, a.imports, budget_mb=a.budget_mb)
+        result = build(a.dataset, a.store, a.out, load_settings(a.settings), a.source, a.imports, budget_mb=a.budget_mb)
     except SiteTooLarge as e:
         print(f"::error::{e}", file=sys.stderr)
         return 1

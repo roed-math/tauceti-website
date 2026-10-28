@@ -10,14 +10,17 @@ Two apps are served beside them:
   here. Its research data (`data/`, `research/`) stays in that repository, and
   `scripts/build_atlas.sh` checks out the part the build reads (about 530 MB) at deploy time. Its
   own workflows sit inert under `atlas/.github/`.
-- `review/` is Tau Ceti Review, imported with its history from
-  [cbirkbeck/tauceti-reviewed-by-test](https://github.com/cbirkbeck/tauceti-reviewed-by-test).
-  Its evidence store, `review/evidence/`, is its data. GitHub reads issue forms and workflows only
-  at the repository root, so its forms are in `.github/ISSUE_TEMPLATE/` and its workflows and intake
-  action are in `.github/` with a `review-` prefix, running inside `review/`.
+- `review/` is Tau Ceti Review's app (`web/`, its build, the sign-in worker and the browser check),
+  imported with its history from
+  [cbirkbeck/tauceti-reviewed-by-test](https://github.com/cbirkbeck/tauceti-reviewed-by-test). Its data
+  and pipeline (the evidence store, the issue forms and intake, following Tau Ceti, Voyager, the
+  datasets, the answerer) are a separate repository, `tauceti-review-data`, because they grow with Tau
+  Ceti. That repository builds the site with this app and publishes it on its own Pages; the app here
+  reads that `data/` (`REVIEW_DATA_URL`). The review's build and tests find the data repository through
+  `TAU_REVIEW_DATA`, or a checkout beside this one.
 
-`.github/workflows/pages.yml` builds all three in parallel and deploys them together, at `/`,
-`/atlas/` and `/review/`.
+`.github/workflows/pages.yml` deploys all three together, at `/`, `/atlas/` and `/review/`, once
+the review app's tests pass against the data repository (`REVIEW_DATA_REPO`).
 
 ## How it works
 
@@ -48,14 +51,13 @@ python3 scripts/build_site.py
 python3 -m http.server -d _site 8765
 ```
 
-To include the apps, build them and pass their output:
+The review app is always included, reading its data from `--review-data` (default
+`$REVIEW_DATA_URL`). To include the Atlas, build it and pass its output:
 
 ```bash
 scripts/build_atlas.sh /tmp/atlas-data /tmp/atlas-out
-python3 scripts/build_site.py --atlas /tmp/atlas-out --review /path/to/review-build
+python3 scripts/build_site.py --atlas /tmp/atlas-out
 ```
-
-Tau Ceti Review's build is in `review/README.md` and the `review` job of `pages.yml`.
 
 `build_data.py --skip-prs` skips the pull-request walk; without `--tauceti-repo` it skips the
 line-count history, and the growth page falls back to taucetiproject.org's chart.

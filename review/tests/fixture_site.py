@@ -17,6 +17,9 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE.parent / "scripts"))
 import build_site  # noqa: E402
+
+# Voyager's records are made by the review data repository's script.
+sys.path.append(str(build_site.DATA_REPO / "scripts"))
 import voyager  # noqa: E402
 
 from evidence_core import records as rec  # noqa: E402

@@ -24,15 +24,6 @@ class SettingsTests(unittest.TestCase):
             self.assertEqual(common.load_settings(p), {"tauceti": "abc", "library": {"name": "Tau Ceti"}})
             self.assertTrue(p.read_text().endswith("\n"))
 
-    def test_the_repository_settings(self):
-        s = common.load_settings()
-        self.assertEqual(s["repo"], "CBirkbeck/tauceti-reviewed-by-test")
-        self.assertEqual(s["library"]["repo"], "TauCetiProject/TauCeti")
-        # The fork carries 0.13.2 (signatures with binders' types) until LeanTrustBuilders/extractor does.
-        self.assertEqual(s["extractor"], {"repo": "CBirkbeck/extractor", "series": "0.13"})
-        self.assertEqual(s["voyager"]["topic"], "new results")
-        self.assertEqual(s["site"]["title"], "Tau Ceti Review")
-
 
 if __name__ == "__main__":
     unittest.main()

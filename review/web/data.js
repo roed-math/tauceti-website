@@ -3,10 +3,13 @@
 (function () {
   'use strict';
   const cache = new Map();
+  /* Where the build's data/ is: beside the page, unless the page names another place. The website serves
+     this app and reads the data/ the review data repository's Pages publish (<meta name="tau-review-data">). */
+  const BASE = (document.querySelector('meta[name="tau-review-data"]') || {}).content || 'data/';
   function json(path) {
     if (!cache.has(path)) {
-      cache.set(path, fetch('data/' + path).then(r => {
-        if (!r.ok) throw new Error(`data/${path}: ${r.status}`);
+      cache.set(path, fetch(BASE + path).then(r => {
+        if (!r.ok) throw new Error(`${BASE}${path}: ${r.status}`);
         return r.json();
       }).catch(e => { cache.delete(path); throw e; }));
     }

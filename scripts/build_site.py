@@ -14,6 +14,7 @@ import argparse
 import datetime as dt
 import html
 import json
+import os
 import re
 import shutil
 from pathlib import Path
@@ -35,7 +36,21 @@ PAGES = [
     ("health.html", "Health"),
 ]
 
+# Tau Ceti Review's data is built and published by the review data repository. Until that repository's
+# Pages are up, the review's existing site serves the same data/.
+REVIEW_DATA = "https://cbirkbeck.github.io/tauceti-reviewed-by-test/data/"
+
 HEADER = re.compile(r"\A\s*<!--\s*(\{.*?\})\s*-->\s*", re.S)
+
+
+def review_app(out: Path, data_url: str) -> None:
+    """The review app from review/web/, reading its data/ from data_url (review/web/data.js)."""
+    shutil.copytree(ROOT / "review" / "web", out)
+    index = out / "index.html"
+    page = index.read_text()
+    meta = f'<meta name="tau-review-data" content="{html.escape(data_url.rstrip("/") + "/")}">'
+    assert "<head>" in page, "review/web/index.html has no <head>"
+    index.write_text(page.replace("<head>", "<head>\n  " + meta, 1))
 
 
 def main() -> None:
@@ -43,7 +58,8 @@ def main() -> None:
     ap.add_argument("--out", type=Path, default=ROOT / "_site")
     ap.add_argument("--data", type=Path, default=ROOT / "data")
     ap.add_argument("--atlas", type=Path, help="the Atlas as scripts/build_atlas.sh built it, copied to atlas/")
-    ap.add_argument("--review", type=Path, help="Tau Ceti Review as review/scripts/build_site.py built it, copied to review/")
+    ap.add_argument("--review-data", default=os.environ.get("REVIEW_DATA_URL") or REVIEW_DATA,
+                    help="where Tau Ceti Review's built data/ is published (default $REVIEW_DATA_URL, else %(default)s)")
     args = ap.parse_args()
 
     layout = (ROOT / "src/layout.html").read_text()
@@ -58,9 +74,9 @@ def main() -> None:
     if args.data.exists():
         shutil.copytree(args.data, args.out / "data", ignore=shutil.ignore_patterns("cache"))
     (args.out / ".nojekyll").write_text("")
-    for app in ("atlas", "review"):
-        if getattr(args, app):
-            shutil.copytree(getattr(args, app), args.out / app)
+    if args.atlas:
+        shutil.copytree(args.atlas, args.out / "atlas")
+    review_app(args.out / "review", args.review_data)
 
     for file, _ in PAGES:
         if file.endswith("/"):
