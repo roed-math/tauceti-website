@@ -838,8 +838,10 @@ with sync_playwright() as p:
  page.locator('#search').fill('')
  page.locator('#source-filter').select_option('tauceti');page.wait_for_timeout(400)
  record('Tau Ceti collection filter',page.evaluate("TauExplorer.getState().origin==='tauceti' && TauExplorer.graph.debugState().counts.constellations===TauExplorer.data.roadmaps.filter(r=>r.origin==='tauceti').length"))
- page.evaluate("TauExplorer.openItem('tauceti:Completed/EffectiveBounds')");page.wait_for_timeout(500)
- record('Maintainer completed area is green',page.evaluate("TauExplorer.progress.roadmap('tauceti:Completed/EffectiveBounds').percent===100"))
+ # Any roadmap the maintainers archived as complete: which ones are changes (EffectiveBounds was reopened on 2026-10-28).
+ done=page.evaluate("(()=>{for(const r of TauExplorer.data.roadmaps){if(!r.id.startsWith('tauceti:Completed/'))continue;try{TauExplorer.progress.roadmap(r.id);return r.id}catch(e){}}return null})()")
+ if done: page.evaluate("id=>TauExplorer.openItem(id)",done);page.wait_for_timeout(500)
+ record('Maintainer completed area is green',bool(done) and page.evaluate("id=>TauExplorer.progress.roadmap(id).percent===100",done))
  # With every collection shown: on the atlas, some of its sub-roadmaps are proposed in pull requests.
  page.evaluate("TauExplorer.navigate({origin:'all'})");page.evaluate("TauExplorer.openItem('tauceti:TauCetiRoadmap/RepresentationTheory')");page.wait_for_timeout(600)
  record('Nested roadmap collection frames all its child constellations',page.evaluate("TauExplorer.getState().view==='collection' && TauExplorer.getUniverse().constellations.filter(c=>c.parentRoadmapId==='tauceti:TauCetiRoadmap/RepresentationTheory').length===TauExplorer.data.roadmaps.filter(r=>r.parentRoadmapId==='tauceti:TauCetiRoadmap/RepresentationTheory').length && TauExplorer.data.roadmaps.filter(r=>r.parentRoadmapId==='tauceti:TauCetiRoadmap/RepresentationTheory').length>=11"))
