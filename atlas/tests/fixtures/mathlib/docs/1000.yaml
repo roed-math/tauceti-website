@@ -1,0 +1,8 @@
+Q180345:
+  title: Rational root theorem
+  decls:
+   - num_dvd_of_is_root
+   - den_dvd_of_is_root
+Q1:
+  title: The Irrationality of the Square Root of 2, again
+  decl: irrational_sqrt_two

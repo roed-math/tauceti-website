@@ -1,0 +1,7 @@
+General algebra:
+  Rings:
+    Dedekind domain: 'IsDedekindDomain'
+    not yet in Mathlib: ''
+Topology:
+  Metric spaces:
+    complete metric space: 'CompleteSpace'

@@ -1,0 +1,187 @@
+{
+ "roadmapId": "ColemanIntegration",
+ "protocol": "blueprint-v1",
+ "part": null,
+ "status": "partial",
+ "scope": [
+  "ColemanIntegration:L0",
+  "ColemanIntegration:L1"
+ ],
+ "summary": "A test fixture for tests/validate_blueprints_browser.py: a small reviewed blueprint of two layers.",
+ "sources": [
+  {
+   "id": "coleman85",
+   "title": "Torsion points on curves and p-adic abelian integrals",
+   "authors": "Robert F. Coleman",
+   "edition": "Annals of Mathematics 121 (1985)",
+   "url": "https://doi.org/10.2307/1971179",
+   "readSections": [
+    "§2"
+   ]
+  }
+ ],
+ "nodes": [
+  {
+   "id": "ColemanIntegration:L0/overconvergent-series",
+   "parentStageId": "ColemanIntegration:L0",
+   "realises": [
+    "ColemanIntegration:L0"
+   ],
+   "title": "Overconvergent power series on a residue disc",
+   "kind": "definition",
+   "statement": "The ring $A^\\dagger$ of power series converging on a disc of radius $r > 1$.",
+   "hypotheses": [
+    "$K$ a complete discretely valued field of characteristic zero"
+   ],
+   "proofSteps": [
+    "Integrate termwise and bound the coefficients on each annulus."
+   ],
+   "acceptance": [
+    "For $f = 1$ the primitive is $x$."
+   ],
+   "prerequisites": [],
+   "sources": [
+    {
+     "sourceId": "coleman85",
+     "locator": "§2",
+     "excerpt": "Test fixture.",
+     "match": "paraphrase"
+    }
+   ],
+   "implementationStatus": "unchecked",
+   "planet": {
+    "name": "Overconvergent power series"
+   },
+   "api": [
+    {
+     "name": "Overconvergent.radius",
+     "role": "structure",
+     "statement": "The radius of convergence."
+    }
+   ],
+   "tests": [
+    {
+     "name": "Overconvergent.one",
+     "kind": "degenerate",
+     "statement": "The constant 1 is overconvergent."
+    }
+   ]
+  },
+  {
+   "id": "ColemanIntegration:L0/termwise-integration",
+   "parentStageId": "ColemanIntegration:L0",
+   "realises": [
+    "ColemanIntegration:L0"
+   ],
+   "title": "Termwise integration preserves overconvergence",
+   "kind": "lemma",
+   "statement": "If $f \\in A^\\dagger$ then the termwise primitive of $f$ lies in $A^\\dagger$.",
+   "hypotheses": [
+    "$K$ a complete discretely valued field of characteristic zero"
+   ],
+   "proofSteps": [
+    "Integrate termwise and bound the coefficients on each annulus."
+   ],
+   "acceptance": [
+    "For $f = 1$ the primitive is $x$."
+   ],
+   "prerequisites": [
+    "ColemanIntegration:L0/overconvergent-series"
+   ],
+   "sources": [
+    {
+     "sourceId": "coleman85",
+     "locator": "§2",
+     "excerpt": "Test fixture.",
+     "match": "paraphrase"
+    }
+   ],
+   "implementationStatus": "unchecked"
+  },
+  {
+   "id": "ColemanIntegration:L0/primitive-on-disc",
+   "parentStageId": "ColemanIntegration:L0",
+   "realises": [
+    "ColemanIntegration:L0"
+   ],
+   "title": "Unique primitive on a residue disc",
+   "kind": "theorem",
+   "statement": "Every $f \\in A^\\dagger$ has a unique primitive with a given value at the centre.",
+   "hypotheses": [
+    "$K$ a complete discretely valued field of characteristic zero"
+   ],
+   "proofSteps": [
+    "Integrate termwise and bound the coefficients on each annulus."
+   ],
+   "acceptance": [
+    "For $f = 1$ the primitive is $x$."
+   ],
+   "prerequisites": [
+    "ColemanIntegration:L0/termwise-integration",
+    "DirichletPadicLFunctions:L0"
+   ],
+   "sources": [
+    {
+     "sourceId": "coleman85",
+     "locator": "§2",
+     "excerpt": "Test fixture.",
+     "match": "paraphrase"
+    }
+   ],
+   "implementationStatus": "unchecked",
+   "planet": {
+    "name": "Primitives on residue discs"
+   }
+  },
+  {
+   "id": "ColemanIntegration:L1/frobenius-continuation",
+   "parentStageId": "ColemanIntegration:L1",
+   "realises": [
+    "ColemanIntegration:L1"
+   ],
+   "title": "Continuation along Frobenius",
+   "kind": "theorem",
+   "statement": "A primitive on residue discs extends uniquely to a Frobenius-equivariant primitive.",
+   "hypotheses": [
+    "$K$ a complete discretely valued field of characteristic zero"
+   ],
+   "proofSteps": [
+    "Integrate termwise and bound the coefficients on each annulus."
+   ],
+   "acceptance": [
+    "For $f = 1$ the primitive is $x$."
+   ],
+   "prerequisites": [
+    "ColemanIntegration:L0/primitive-on-disc"
+   ],
+   "sources": [
+    {
+     "sourceId": "coleman85",
+     "locator": "§2",
+     "excerpt": "Test fixture.",
+     "match": "paraphrase"
+    }
+   ],
+   "implementationStatus": "unchecked",
+   "planet": {
+    "name": "Coleman's principle of analytic continuation"
+   }
+  }
+ ],
+ "coverage": [
+  {
+   "stageId": "ColemanIntegration:L0",
+   "status": "partial",
+   "remaining": [
+    "The logarithm branch."
+   ]
+  }
+ ],
+ "gaps": [],
+ "review": {
+  "status": "accepted",
+  "reviewer": "independent-review-REV-FIXTURE",
+  "date": "2026-09-22",
+  "notes": "A test fixture, not a review."
+ }
+}

@@ -1,0 +1,95 @@
+name: Swarm submission check
+
+# Checks a worker's pull request. Every changed file must be a swarm deliverable
+# with no local paths and, where it is JSON, valid JSON; nothing may be deleted.
+# Blueprint packets and link maps are checked against the pinned Mathlib and
+# Tau Ceti commits in research/blueprint/baseline.json, restructuring proposals
+# against PROTOCOL.md section 15, and planet names by the naming rules. When the
+# check passes, the "Swarm intake" workflow merges the pull request. Paper
+# extractions are checked against PROTOCOL.md section 16.
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+    paths:
+      - 'research/**'
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: List the changed files
+        id: changed
+        # The checkout is the pull request merged into the current base branch, so
+        # its first parent is that base: the diff is the pull request's own changes,
+        # however far the base branch has moved since the pull request was opened.
+        run: |
+          git diff --name-only --no-renames --diff-filter=AM HEAD^1 HEAD > "$RUNNER_TEMP/changed.txt"
+          git diff --name-only --no-renames --diff-filter=D HEAD^1 HEAD > "$RUNNER_TEMP/deleted.txt"
+          cat "$RUNNER_TEMP/changed.txt"
+          if grep -qE '^research/blueprint/(packets|links|keydefs)/[^/]+\.json$' "$RUNNER_TEMP/changed.txt"; then
+            echo "baseline=true" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Fetch the pinned library sources
+        if: steps.changed.outputs.baseline == 'true'
+        run: |
+          TAUCETI=$(python3 -c "import json;print(json.load(open('research/blueprint/baseline.json'))['tauceti'])")
+          MATHLIB=$(python3 -c "import json;print(json.load(open('research/blueprint/baseline.json'))['mathlib'])")
+          mkdir -p "$RUNNER_TEMP/baseline"
+          for pair in "TauCeti https://github.com/TauCetiProject/TauCeti $TAUCETI" "mathlib https://github.com/leanprover-community/mathlib4 $MATHLIB"; do
+            set -- $pair
+            git init -q "$RUNNER_TEMP/baseline/$1"
+            git -C "$RUNNER_TEMP/baseline/$1" remote add origin "$2"
+            git -C "$RUNNER_TEMP/baseline/$1" fetch -q --depth 1 origin "$3"
+            git -C "$RUNNER_TEMP/baseline/$1" checkout -q FETCH_HEAD
+          done
+          python3 research/blueprint/index_declarations.py "$RUNNER_TEMP/baseline"
+      - name: Check the changed files
+        env:
+          TAUCETI_BASELINE: ${{ runner.temp }}/baseline
+        run: |
+          status=0
+          changed() { grep -E "$1" "$RUNNER_TEMP/changed.txt" || true; }
+          if [ -s "$RUNNER_TEMP/deleted.txt" ]; then
+            echo "A submission adds or edits deliverables; it deletes nothing. Deleted:" | tee -a "$GITHUB_STEP_SUMMARY"
+            tee -a "$GITHUB_STEP_SUMMARY" < "$RUNNER_TEMP/deleted.txt"
+            status=1
+          fi
+          python3 research/blueprint/intake.py check-files $(cat "$RUNNER_TEMP/changed.txt") | tee -a "$GITHUB_STEP_SUMMARY" || status=1
+          packets=$(changed '^research/blueprint/packets/[^/]+\.json$')
+          links=$(changed '^research/blueprint/links/[^/]+\.json$')
+          proposals=$(changed '^research/blueprint/restructure/RS-[0-9]+\.result\.json$')
+          names=$(changed '^research/expansion/naming/(NAME|PLANETS)-[0-9]+\.result\.json$')
+          papers=$(changed '^research/blueprint/papers/PAPER-[^/]+\.result\.json$')
+          redteam=$(changed '^research/blueprint/redteam/RT-[^/]+\.(result|review)\.json$')
+          errata=$(changed '^research/blueprint/errata/[^/]+\.json$')
+          keydefs=$(changed '^research/blueprint/keydefs/KEYDEF-[^/]+\.json$')
+          if [ -n "$packets" ]; then python3 scripts/check_blueprint.py $packets | tee -a "$GITHUB_STEP_SUMMARY" || status=1; fi
+          if [ -n "$links" ]; then python3 scripts/check_links.py $links | tee -a "$GITHUB_STEP_SUMMARY" || status=1; fi
+          if [ -n "$proposals" ]; then python3 scripts/check_restructure.py $proposals | tee -a "$GITHUB_STEP_SUMMARY" || status=1; fi
+          for result in $names; do python3 scripts/merge_landmark_names.py "$result" --strict | tee -a "$GITHUB_STEP_SUMMARY" || status=1; done
+          if [ -n "$papers" ]; then python3 scripts/check_paper.py $papers | tee -a "$GITHUB_STEP_SUMMARY" || status=1; fi
+          if [ -n "$redteam" ]; then python3 scripts/check_redteam.py $redteam | tee -a "$GITHUB_STEP_SUMMARY" || status=1; fi
+          if [ -n "$errata" ]; then python3 scripts/check_errata.py $errata | tee -a "$GITHUB_STEP_SUMMARY" || status=1; fi
+          if [ -n "$keydefs" ]; then python3 scripts/check_keydefs.py $keydefs | tee -a "$GITHUB_STEP_SUMMARY" || status=1; fi
+          # A package's Suggested.lean is short by construction (PACKAGE_REVIEW.md, "Shape of a roadmap"):
+          # at most 5,000 lines, and no data definition with a sorry body.
+          for lean in $(changed '^research/blueprint/packages/[^/]+/Suggested\.lean$'); do
+            n=$(wc -l < "$lean")
+            if [ "$n" -gt 5000 ]; then
+              echo "$lean has $n lines; a package Suggested.lean is at most 5,000 lines and states rather than develops (PACKAGE_REVIEW.md, Shape of a roadmap). Move the rest into the README as targets." | tee -a "$GITHUB_STEP_SUMMARY"; status=1
+            fi
+            if python3 scripts/check_sorry_data.py "$lean" | tee -a "$GITHUB_STEP_SUMMARY"; then :; else status=1; fi
+          done
+          exit $status
