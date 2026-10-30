@@ -30,7 +30,7 @@
 :root[data-theme="light"] .site-nav .theme-toggle .icon-moon { display: block; }
 .site-nav .nav-toggle { display: none; padding: 0.3rem 0.65rem; }
 .site-nav a:focus-visible, .site-nav button:focus-visible { outline: 2px solid var(--sb-accent); outline-offset: 2px; }
-@media (max-width: 1080px) {
+@media (max-width: 760px) {
   .site-nav .nav-toggle { display: block; }
   .site-nav .nav-links { display: none; position: absolute; top: 100%; left: 0; right: 0; flex-direction: column; align-items: stretch; background: var(--sb-menu); border-bottom: 1px solid var(--sb-line); padding: 0.4rem 16px 0.8rem; }
   .site-nav .nav-links.open { display: flex; }

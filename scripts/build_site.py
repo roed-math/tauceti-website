@@ -24,20 +24,17 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 
-# (file, nav label). Order is the nav order. A directory (trailing slash) is one of the two apps
-# built separately into the site, the Atlas and Tau Ceti Review, which have no page in src/pages.
-PAGES = [
+# (file, label) of the top bar, in order. Every page in src/pages is built; the rest are reached from
+# these and from the footer.
+NAV = [
     ("index.html", "Home"),
     ("contents.html", "What’s inside"),
-    ("atlas/", "Atlas"),
-    ("review/", "Review"),
     ("contribute.html", "Contribute"),
     ("growth.html", "Growth"),
-    ("structure.html", "Roadmaps"),
-    ("people.html", "People"),
-    ("acknowledgments.html", "Acknowledgments"),
-    ("health.html", "Health"),
+    ("faq.html", "FAQ"),
 ]
+# A page off the top bar marks the one it is reached from.
+SECTION = {"structure.html": "contents.html", "roadmap.html": "contents.html", "review/": "contents.html"}
 
 # Tau Ceti Review's data is built and published by the review data repository. Until that repository's
 # Pages are up, the review's existing site serves the same data/.
@@ -53,12 +50,13 @@ THEME_INIT = ("  <script>try { var t = localStorage.getItem('tauceti:theme'); "
 
 
 def site_header(current: str, root: str = "") -> str:
-    """src/header.html for the page `current` (a PAGES entry), its links relative to `root`."""
+    """src/header.html for the page `current` (a file in src/pages, or review/), its links relative to `root`."""
+    current = SECTION.get(current, current)
     nav = "\n".join(
         f'          <a href="{(root or "./") if f == "index.html" else root + f}"'
         + (' aria-current="page"' if f == current else "")
         + f">{html.escape(label)}</a>"
-        for f, label in PAGES)
+        for f, label in NAV)
     return (ROOT / "src/header.html").read_text().replace("{{nav}}", nav).replace("{{home}}", root or "./").replace("{{root}}", root).rstrip("\n")
 
 
@@ -113,10 +111,12 @@ def main() -> None:
     if args.atlas:
         shutil.copytree(args.atlas, args.out / "atlas")
     review_app(args.out / "review", args.review_data, version)
+    # Files for agents (start.md), served from the site root.
+    for f in sorted((ROOT / "src/agent").glob("*")):
+        shutil.copy(f, args.out / f.name)
 
-    for file, _ in PAGES:
-        if file.endswith("/"):
-            continue
+    pages = sorted(p.name for p in (ROOT / "src/pages").glob("*.html"))
+    for file in pages:
         src = (ROOT / "src/pages" / file).read_text()
         m = HEADER.match(src)
         meta = json.loads(m.group(1)) if m else {}
@@ -135,7 +135,7 @@ def main() -> None:
                 .replace("{{version}}", version)
                 .replace("{{content}}", body))
         (args.out / file).write_text(page)
-    print(f"built {sum(not f.endswith('/') for f, _ in PAGES)} pages into {args.out}")
+    print(f"built {len(pages)} pages into {args.out}")
 
 
 if __name__ == "__main__":
