@@ -117,26 +117,6 @@ def review_app(out: Path, data_url: str, version: str) -> None:
     index.write_text(page)
 
 
-ATLAS_HEADER = '<header class="app-header"><a class="brand"'
-ATLAS_BACK_STYLE = ("<style>.site-back{font-size:13px;color:var(--muted,#8b939b);text-decoration:none;white-space:nowrap;"
-                    "padding-right:10px;margin-right:10px;border-right:1px solid var(--line,#2a3440)}"
-                    ".site-back:hover{color:var(--ink,#e7ebef)}</style>")
-
-
-def atlas_back(atlas: Path) -> None:
-    """A link back to the site at the start of the Atlas's own header: it is a full-screen map with no room
-    for the site's bar."""
-    for page, home in ((atlas / "index.html", "../"), (atlas / "tauceti" / "index.html", "../../")):
-        if not page.exists():
-            continue
-        text = page.read_text(encoding="utf-8")
-        if ATLAS_HEADER not in text:
-            print(f"warning: no Atlas header in {page}; left without a link back")
-            continue
-        text = text.replace(ATLAS_HEADER, f'<header class="app-header"><a class="site-back" href="{home}">← Tau Ceti</a><a class="brand"', 1)
-        page.write_text(text.replace("</head>", ATLAS_BACK_STYLE + "</head>", 1), encoding="utf-8")
-
-
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--out", type=Path, default=ROOT / "_site")
@@ -159,7 +139,6 @@ def main() -> None:
     (args.out / ".nojekyll").write_text("")
     if args.atlas:
         shutil.copytree(args.atlas, args.out / "atlas")
-        atlas_back(args.out / "atlas")
     review_app(args.out / "review", args.review_data, version)
     # Files for agents (start.md), served from the site root.
     for f in sorted((ROOT / "src/agent").glob("*")):
