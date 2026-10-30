@@ -32,6 +32,7 @@ import json
 import re
 import sys
 import urllib.request
+import urllib.error
 from collections import Counter, defaultdict
 from pathlib import Path
 
@@ -422,10 +423,22 @@ def fit_to_arxiv(atlas: dict, progress: dict, categories: dict | None = None) ->
 def fetch_readmes(progress: dict, snapshot: Path = ROOT / "data" / "atlas.json", copy: Path = READMES) -> dict:
     """The READMEs of the roadmaps the board reports and the atlas's snapshot lacks."""
     readmes = {}
+    # The board's paths are those of the roadmap repository at the commit it read (roadmap_head): a
+    # roadmap archived since has moved on main. Read there first; a README neither has is left out.
+    bases = [RAW.replace("/main/", f"/{progress['roadmap_head']}/")] if progress.get("roadmap_head") else []
     for row in unplaced(json.loads(snapshot.read_text(encoding="utf-8")), progress):
-        if isinstance(row.get("readme"), str):
-            with urllib.request.urlopen(RAW + row["readme"], timeout=60) as response:
-                readmes[row["id"]] = response.read().decode("utf-8")
+        if not isinstance(row.get("readme"), str):
+            continue
+        for base in bases + [RAW]:
+            try:
+                with urllib.request.urlopen(base + row["readme"], timeout=60) as response:
+                    readmes[row["id"]] = response.read().decode("utf-8")
+                break
+            except urllib.error.HTTPError as e:
+                if e.code != 404:
+                    raise
+        else:
+            print(f"no README for {row['id']} at {row['readme']}; left out", file=sys.stderr)
     copy.write_text(json.dumps(readmes, ensure_ascii=False, indent=1, sort_keys=True) + "\n", encoding="utf-8")
     return readmes
 
