@@ -24,17 +24,21 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 
-# (file, label) of the top bar, in order. Every page in src/pages is built; the rest are reached from
-# these and from the footer.
+# The top bar: a plain link (label, href), or a group (label, [(label, href), ...]) that opens as a
+# dropdown. Every page in src/pages is built; the footer links the same pages.
 NAV = [
-    ("index.html", "Home"),
-    ("contents.html", "What’s inside"),
-    ("contribute.html", "Contribute"),
-    ("growth.html", "Growth"),
-    ("faq.html", "FAQ"),
+    ("Home", "index.html"),
+    ("Library", [("Overview", "contents.html"), ("Roadmaps", "structure.html"), ("Atlas", "atlas/"),
+                 ("Review", "review/"), ("API docs", "https://taucetiproject.org/docs/")]),
+    ("Contribute", [("Start in one paste", "contribute.html#start"), ("Run a worker", "contribute.html#worker"),
+                    ("Run a fleet", "contribute.html#fleet"), ("Shape the roadmaps", "contribute.html#roadmap"),
+                    ("Review pull requests", "contribute.html#review")]),
+    ("Project", [("Growth", "growth.html"), ("People", "people.html"), ("Health", "health.html"),
+                 ("Acknowledgments", "acknowledgments.html")]),
+    ("FAQ", "faq.html"),
 ]
-# A page off the top bar marks the one it is reached from.
-SECTION = {"structure.html": "contents.html", "roadmap.html": "contents.html", "review/": "contents.html"}
+# A page reached through another one in the bar is shown as that one.
+SECTION = {"roadmap.html": "structure.html"}
 
 # Tau Ceti Review's data is built and published by the review data repository. Until that repository's
 # Pages are up, the review's existing site serves the same data/.
@@ -50,13 +54,38 @@ THEME_INIT = ("  <script>try { var t = localStorage.getItem('tauceti:theme'); "
 
 
 def site_header(current: str, root: str = "") -> str:
-    """src/header.html for the page `current` (a file in src/pages, or review/), its links relative to `root`."""
+    """src/header.html for the page `current` (a file in src/pages, or review/), its links relative to `root`.
+    The group holding the current page is marked current; the page itself is aria-current in its menu."""
     current = SECTION.get(current, current)
-    nav = "\n".join(
-        f'          <a href="{(root or "./") if f == "index.html" else root + f}"'
-        + (' aria-current="page"' if f == current else "")
-        + f">{html.escape(label)}</a>"
-        for f, label in NAV)
+
+    def href(target: str) -> str:
+        if target.startswith("http"):
+            return target
+        return (root or "./") if target == "index.html" else root + target
+
+    def page_of(target: str) -> str:
+        return target.split("#")[0]
+
+    out = []
+    for i, (label, target) in enumerate(NAV):
+        if isinstance(target, str):
+            here = ' aria-current="page"' if page_of(target) == current else ""
+            out.append(f'          <a class="nav-top" href="{href(target)}"{here}>{html.escape(label)}</a>')
+            continue
+        mine = any(page_of(t) == current for _, t in target)
+        items = []
+        for sub, t in target:
+            here = ' aria-current="page"' if page_of(t) == current and "#" not in t else ""
+            ext = ' rel="noopener"' if t.startswith("http") else ""
+            items.append(f'              <li><a href="{href(t)}"{here}{ext}>{html.escape(sub)}'
+                         + (' <span aria-hidden="true">↗</span>' if t.startswith("http") else "") + "</a></li>")
+        out.append(
+            f'          <div class="nav-group{" current" if mine else ""}">\n'
+            f'            <button class="nav-top" type="button" aria-expanded="false" aria-controls="nav-menu-{i}">'
+            f'{html.escape(label)}<svg class="caret" viewBox="0 0 10 6" width="10" height="6" aria-hidden="true">'
+            f'<path d="M1 1l4 4 4-4" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></button>\n'
+            f'            <ul class="nav-menu" id="nav-menu-{i}">\n' + "\n".join(items) + "\n            </ul>\n          </div>")
+    nav = "\n".join(out)
     return (ROOT / "src/header.html").read_text().replace("{{nav}}", nav).replace("{{home}}", root or "./").replace("{{root}}", root).rstrip("\n")
 
 
@@ -88,6 +117,26 @@ def review_app(out: Path, data_url: str, version: str) -> None:
     index.write_text(page)
 
 
+ATLAS_HEADER = '<header class="app-header"><a class="brand"'
+ATLAS_BACK_STYLE = ("<style>.site-back{font-size:13px;color:var(--muted,#8b939b);text-decoration:none;white-space:nowrap;"
+                    "padding-right:10px;margin-right:10px;border-right:1px solid var(--line,#2a3440)}"
+                    ".site-back:hover{color:var(--ink,#e7ebef)}</style>")
+
+
+def atlas_back(atlas: Path) -> None:
+    """A link back to the site at the start of the Atlas's own header: it is a full-screen map with no room
+    for the site's bar."""
+    for page, home in ((atlas / "index.html", "../"), (atlas / "tauceti" / "index.html", "../../")):
+        if not page.exists():
+            continue
+        text = page.read_text(encoding="utf-8")
+        if ATLAS_HEADER not in text:
+            print(f"warning: no Atlas header in {page}; left without a link back")
+            continue
+        text = text.replace(ATLAS_HEADER, f'<header class="app-header"><a class="site-back" href="{home}">← Tau Ceti</a><a class="brand"', 1)
+        page.write_text(text.replace("</head>", ATLAS_BACK_STYLE + "</head>", 1), encoding="utf-8")
+
+
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--out", type=Path, default=ROOT / "_site")
@@ -110,6 +159,7 @@ def main() -> None:
     (args.out / ".nojekyll").write_text("")
     if args.atlas:
         shutil.copytree(args.atlas, args.out / "atlas")
+        atlas_back(args.out / "atlas")
     review_app(args.out / "review", args.review_data, version)
     # Files for agents (start.md), served from the site root.
     for f in sorted((ROOT / "src/agent").glob("*")):

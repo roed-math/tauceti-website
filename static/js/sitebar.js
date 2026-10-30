@@ -1,9 +1,11 @@
-/* The top bar: its menu on narrow screens, and the light or dark theme. The choice is kept under
-   "tauceti:theme", which the review app reads too; the page's <head> applies it before first paint. */
+/* The top bar: its dropdowns, its menu on narrow screens, and the light or dark theme. The theme
+   choice is kept under "tauceti:theme", which the review app reads too; the page's <head> applies it
+   before first paint. A group is a disclosure: its button shows or hides a list of links. */
 (function () {
   "use strict";
   var KEY = "tauceti:theme";
   var root = document.documentElement;
+  var narrow = window.matchMedia("(max-width: 760px)");
 
   function label(btn) {
     var next = root.dataset.theme === "light" ? "dark" : "light";
@@ -14,11 +16,61 @@
   document.addEventListener("DOMContentLoaded", function () {
     var bar = document.querySelector(".site-nav");
     if (!bar) return;
-    var menu = bar.querySelector(".nav-toggle"), links = bar.querySelector(".nav-links");
-    if (menu && links) menu.addEventListener("click", function () {
-      var open = links.classList.toggle("open");
-      menu.setAttribute("aria-expanded", open ? "true" : "false");
+    var groups = Array.prototype.slice.call(bar.querySelectorAll(".nav-group > .nav-top"));
+
+    function close(except) {
+      groups.forEach(function (b) { if (b !== except && !narrow.matches) b.setAttribute("aria-expanded", "false"); });
+    }
+    function open(b, focusFirst) {
+      close(b);
+      b.setAttribute("aria-expanded", "true");
+      if (focusFirst) { var first = b.nextElementSibling.querySelector("a"); if (first) first.focus(); }
+    }
+
+    // On a narrow screen every group is shown under the Menu button, its name a heading, not a control.
+    function layout() {
+      groups.forEach(function (b) {
+        if (narrow.matches) { b.setAttribute("aria-expanded", "true"); b.setAttribute("tabindex", "-1"); }
+        else { b.setAttribute("aria-expanded", "false"); b.removeAttribute("tabindex"); }
+      });
+    }
+    layout();
+    if (narrow.addEventListener) narrow.addEventListener("change", layout);
+
+    groups.forEach(function (b) {
+      var group = b.parentElement, menu = b.nextElementSibling;
+      b.addEventListener("click", function () {
+        if (narrow.matches) return;
+        if (b.getAttribute("aria-expanded") === "true") b.setAttribute("aria-expanded", "false");
+        else open(b, false);
+      });
+      b.addEventListener("keydown", function (e) {
+        if (e.key === "ArrowDown" && !narrow.matches) { e.preventDefault(); open(b, true); }
+      });
+      menu.addEventListener("keydown", function (e) {
+        var links = Array.prototype.slice.call(menu.querySelectorAll("a")), i = links.indexOf(document.activeElement);
+        if (e.key === "ArrowDown" && i >= 0) { e.preventDefault(); links[(i + 1) % links.length].focus(); }
+        if (e.key === "ArrowUp" && i >= 0) { e.preventDefault(); links[(i - 1 + links.length) % links.length].focus(); }
+      });
+      // A link to a section of this page leaves the menu open over it; close it.
+      menu.addEventListener("click", function (e) { if (e.target.closest("a") && !narrow.matches) b.setAttribute("aria-expanded", "false"); });
+      group.addEventListener("focusout", function (e) {
+        if (!narrow.matches && !group.contains(e.relatedTarget)) b.setAttribute("aria-expanded", "false");
+      });
     });
+    document.addEventListener("keydown", function (e) {
+      if (e.key !== "Escape") return;
+      var openBtn = groups.filter(function (b) { return b.getAttribute("aria-expanded") === "true"; })[0];
+      if (openBtn && !narrow.matches) { openBtn.setAttribute("aria-expanded", "false"); openBtn.focus(); }
+    });
+    document.addEventListener("click", function (e) { if (!bar.contains(e.target)) close(null); });
+
+    var menuBtn = bar.querySelector(".nav-toggle"), links = bar.querySelector(".nav-links");
+    if (menuBtn && links) menuBtn.addEventListener("click", function () {
+      var isOpen = links.classList.toggle("open");
+      menuBtn.setAttribute("aria-expanded", isOpen ? "true" : "false");
+    });
+
     var theme = bar.querySelector(".theme-toggle");
     if (!theme) return;
     label(theme);
