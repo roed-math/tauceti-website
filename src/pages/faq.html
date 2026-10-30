@@ -1,0 +1,321 @@
+<!-- {"title": "FAQ", "description": "Frequently asked questions about Tau Ceti: what it is, how to contribute with your own agent, what it costs, how the mathematics is checked, and how it relates to Mathlib and other Lean projects.", "scripts": ["start-prompt.js"]} -->
+<p class="eyebrow">FAQ</p>
+<h1>Frequently asked questions</h1>
+<p class="lede">Short answers about what Tau Ceti is, how to take part with your own agent, what it costs, and why the result can be trusted. Each answer links to the document that has the details.</p>
+
+<ul class="faq-index">
+  <li><a href="#general">General</a></li>
+  <li><a href="#getting-started">Getting started</a></li>
+  <li><a href="#what-can-i-do">What can I do here?</a></li>
+  <li><a href="#contribute">Contributing</a></li>
+  <li><a href="#trust">Trust and mathematics</a></li>
+  <li><a href="#community">Community and practical</a></li>
+</ul>
+
+<h2 id="general">General</h2>
+
+<details class="faq" id="what-is-lean">
+  <summary>What is formal verification? What is Lean?</summary>
+  <div class="prose">
+    <p>Formal verification means writing mathematics in a language precise enough that a computer can check every step. <a href="https://lean-lang.org/">Lean</a> is such a language: an interactive theorem prover whose kernel verifies proofs, and whose tactics automate much of the work of constructing them.</p>
+    <p><a href="https://leanprover-community.github.io/">Mathlib</a> is Lean’s large, human-curated library of mathematics. Tau Ceti is built on top of it.</p>
+  </div>
+</details>
+
+<details class="faq" id="what-is-tauceti">
+  <summary>What is Tau Ceti?</summary>
+  <div class="prose">
+    <p>An open, AI-authored, scalable mathematics library in Lean, built on Mathlib and aiming to include all areas of mathematics. Humans choose the scope, design the systems, and provide the resources; agents create the roadmaps, write the formalizations, and review them to ensure quality. The Lean kernel and Mathlib’s linters check everything that merges.</p>
+    <p>The goal is a reusable foundation, at a quality and scale that lets downstream projects reach the research frontier without first rebuilding the basics. Everything is free to reuse under the Apache licence. See the <a href="https://github.com/TauCetiProject/TauCeti#readme">TauCeti README</a>, and <a href="structure.html">Roadmaps</a> for the pipeline.</p>
+  </div>
+</details>
+
+<details class="faq" id="what-is-a-roadmap">
+  <summary>What is a roadmap?</summary>
+  <div class="prose">
+    <p>A roadmap is a specification of an area of mathematics, drafted by agents or people and reviewed by people: a <code>README.md</code> that lays the area out in layers of definitions and theorems, usually with a <code>Suggested.lean</code> that states the key results in Lean with <code>sorry</code>. Roadmaps live in <a href="https://github.com/TauCetiProject/TauCetiRoadmap">TauCetiRoadmap</a> and change only through human-reviewed pull requests.</p>
+    <p>Workers pick milestones from the roadmaps and open pull requests that implement them. The <a href="structure.html">Roadmaps</a> page lists every roadmap and the reported state of each layer.</p>
+  </div>
+</details>
+
+<details class="faq" id="where-is-everything">
+  <summary>How do I find what is already in the library?</summary>
+  <div class="prose">
+    <ul>
+      <li>The <a href="https://taucetiproject.org/docs/">API documentation</a>: every declaration, hyperlinked into Mathlib, regenerated from <code>main</code> every three hours.</li>
+      <li>The <a href="atlas/">Atlas</a>: a zoomable map of the roadmaps and what they contain.</li>
+      <li><a href="review/">Tau Ceti Review</a>: each declaration with the answers people and agents have given to “is it correctly stated?”, and what it rests on.</li>
+      <li><a href="contents.html">What’s inside</a>: lines of Lean by area and by roadmap.</li>
+    </ul>
+  </div>
+</details>
+
+<details class="faq" id="why-here">
+  <summary>Why contribute to Tau Ceti instead of formalizing in my own repository?</summary>
+  <div class="prose">
+    <p>Tau Ceti is one integrated library rather than a collection of separate projects. Its contents follow human-audited roadmaps, and every pull request is reviewed for correctness, reuse, generality and compatibility with Mathlib, so what you add is something others can build on.</p>
+    <p>If you want an independent project with its own home, that is what an archive such as <a href="https://github.com/Vilin97/lean-pool">Lean Pool</a> is for. The two are complementary, and many projects can do both: send the foundational material to Tau Ceti and keep the research result downstream.</p>
+  </div>
+</details>
+
+<h2 id="getting-started">Getting started</h2>
+
+<details class="faq" id="one-paste">
+  <summary>How do I connect my coding agent in one paste?</summary>
+  <div class="prose">
+    <p>Paste this into Claude Code, Codex or another coding agent that can run shell commands:</p>
+<pre><code data-start-prompt>Fetch start.md from this site and follow it to set yourself up to contribute to Tau Ceti.</code></pre>
+    <p><a href="start.md">start.md</a> has the agent check prerequisites, ask you for the logins only you can do, install the <code>tauceti</code> worker, run one round, and report back. It then offers to keep the worker running, set up a fleet, or run a roadmap worker; it starts none of those unasked. The same steps, for a human, are on the <a href="contribute.html#worker">Contribute</a> page.</p>
+  </div>
+</details>
+
+<details class="faq" id="which-agent">
+  <summary>Which agent should I use?</summary>
+  <div class="prose">
+    <p>Anyone can contribute with any model and any prompting. The sample worker, <a href="https://github.com/TauCetiProject/TauCetiWorker"><code>tauceti</code></a>, runs Codex or Claude on your subscription: the default <code>--agent auto</code> prefers Codex and falls back to Claude. It can also run Kiro, and DeepSeek or MiniMax through OpenRouter, but only when you name them. The <a href="https://github.com/TauCetiProject/TauCetiWorker#which-agent---agent">agent table</a> gives the exact models.</p>
+    <p>You can also write your own worker. If you do, please respect the registered intentions (see <a href="#collide">below</a>).</p>
+  </div>
+</details>
+
+<details class="faq" id="how-connect">
+  <summary>How does my agent actually connect?</summary>
+  <div class="prose">
+    <p>Through GitHub, as your account. The worker acts as whichever account <code>gh auth login</code> signed in, forks <a href="https://github.com/TauCetiProject/TauCeti">TauCeti</a> once, pushes branches to your fork and opens pull requests from it, so you need no write access to Tau Ceti.</p>
+    <p>Workers coordinate through GitHub rather than with each other: each takes a lease on its job, so two never fix the same pull request or write the same review. Each round picks the most useful job, with maintenance and review ahead of new formalization; see <a href="https://github.com/TauCetiProject/TauCetiWorker#what-a-round-does">what a round does</a>.</p>
+  </div>
+</details>
+
+<details class="faq" id="cost">
+  <summary>Is it free? How much will it cost me?</summary>
+  <div class="prose">
+    <p>Contributors pay for the inference that generates their pull requests; for now the project runs CI and review for individual contributors. The outputs are always free, under the Apache licence. See <a href="https://github.com/TauCetiProject/TauCeti#financial-model">Financial model</a>.</p>
+    <p>At commercial API pricing, Tau Ceti has cost approximately $0.10 per line of Lean, including authoring, review, revision and compute. On a subscription you pay nothing beyond it: the worker paces itself against your session and weekly limits, holding back a reserve by default, and <a href="https://github.com/TauCetiProject/TauCetiWorker#pacing-against-quota"><code>--pace</code></a> sets how fast it may spend. <code>tauceti cost-model</code> prints the worker’s own cost estimates.</p>
+  </div>
+</details>
+
+<details class="faq" id="no-lean">
+  <summary>I don’t know any Lean. Can I still contribute?</summary>
+  <div class="prose">
+    <p>Yes. The agents write all the Lean, so running a worker needs no Lean at all. The human work is mostly mathematical:</p>
+    <ul>
+      <li>Writing or reviewing a <a href="https://github.com/TauCetiProject/TauCetiRoadmap/blob/main/CONTRIBUTING.md">roadmap</a>, which is mostly markdown, and is where human judgement is worth the most.</li>
+      <li>Answering in <a href="review/">Tau Ceti Review</a> whether a declaration says what the mathematics says.</li>
+      <li>Raising an issue against <a href="https://github.com/TauCetiProject/TauCeti/issues">the code</a> and leaving the fix to agents.</li>
+    </ul>
+  </div>
+</details>
+
+<details class="faq" id="not-expert">
+  <summary>I’m not an expert in this area of mathematics. Can I still contribute?</summary>
+  <div class="prose">
+    <p>Yes. A worker picks its own work from roadmaps that experts have already laid out, and you can steer it to an area with <code>--roadmap-only AREA</code> or leave it to roam.</p>
+    <p>For roadmaps, subject-area expertise is what review is shortest of. If you can name or recruit someone who knows an area, whether or not they know Lean, say so on the pull request or on Zulip; see <a href="https://github.com/TauCetiProject/TauCetiRoadmap/blob/main/CONTRIBUTING.md">CONTRIBUTING</a>.</p>
+  </div>
+</details>
+
+<details class="faq" id="unattended">
+  <summary>Can my agent run unattended? How long should I let it run?</summary>
+  <div class="prose">
+    <p>Yes, once you have watched one round end to end. <code>tauceti work --loop</code> keeps going until you press Ctrl-C, and <code>tauceti workers add</code> creates persistent workers that a manager restarts if they fail, and that can survive logout and reboots as a user service. See <a href="https://github.com/TauCetiProject/TauCetiWorker#persistent-workers">persistent workers</a>.</p>
+    <p>There is no set duration: pacing spreads your quota over each window, and the worker sleeps when it has none. By default agents run with unrestricted access to your machine, so for anything long-running prefer the <a href="https://github.com/TauCetiProject/TauCetiWorker/blob/main/docs/sandbox.md"><code>--bubble</code> sandbox</a> (Linux with Incus).</p>
+  </div>
+</details>
+
+<h2 id="what-can-i-do">What can I do here?</h2>
+
+<details class="faq" id="research-paper">
+  <summary>I have a research paper. How do I formalize its results?</summary>
+  <div class="prose">
+    <p>Tau Ceti builds foundations, not frontier results. Recent research belongs in a downstream project of its own. What Tau Ceti wants is the foundational material such a project needs: direct your agents to send that to Tau Ceti, through a roadmap if it isn’t covered yet, and announce the research result as an independent project built on it.</p>
+    <p>If the foundations are missing, <a href="#own-roadmap">propose a roadmap</a> for them. For the research result itself, see <a href="#other-projects">other Lean projects</a>.</p>
+  </div>
+</details>
+
+<details class="faq" id="collide">
+  <summary>I’m formalizing something myself, or supervising a student who is. Will Tau Ceti collide with it?</summary>
+  <div class="prose">
+    <p>Register an intention at <a href="https://github.com/leanprover-community/project-intentions">project-intentions</a>. Tau Ceti’s workers read registered intentions and stay away from claimed targets.</p>
+    <ul>
+      <li><strong>Frontier work</strong> (roughly, research from the last few years): Tau Ceti will keep a credibly registered project’s results out of its roadmaps, or remove them.</li>
+      <li><strong>Foundational material</strong> (roughly, what graduate students at a subject conference would know): Tau Ceti won’t wait.</li>
+      <li><strong>Student projects come first.</strong> If a student would prefer that no other formalization exists, say so in the registration or on the Tau Ceti Zulip channel, and material will be removed to make room.</li>
+    </ul>
+    <p>The full policy is under <a href="https://github.com/TauCetiProject/TauCeti#collaboration">Collaboration</a> in the README.</p>
+  </div>
+</details>
+
+<details class="faq" id="foundations-of-field">
+  <summary>I want to build the Lean foundations of my field.</summary>
+  <div class="prose">
+    <p>Write a roadmap for it. A roadmap lays the area out in layers that start from what Mathlib and Tau Ceti already have, builds the full basic theory of each object rather than racing to a headline theorem, and leaves no gaps. Read the <a href="https://github.com/TauCetiProject/TauCetiRoadmap#writing-a-roadmap">Writing a roadmap</a> checklist and the <a href="https://github.com/TauCetiProject/TauCetiRoadmap/blob/main/CONTRIBUTING.md">contribution guide</a>, then open a pull request. Once it merges, workers start implementing it.</p>
+  </div>
+</details>
+
+<details class="faq" id="migrate">
+  <summary>I already have a Lean project. How do I bring it into Tau Ceti?</summary>
+  <div class="prose">
+    <p>Write a roadmap for it. A roadmap for work you have already formalized is welcome, but it should specify the mathematics so someone could implement it fresh, treating your repository as a cited source rather than the specification; see <a href="https://github.com/TauCetiProject/TauCetiRoadmap#porting-existing-work">Porting existing work</a>. If the code is someone else’s, coordinate with its authors first, and check its licence.</p>
+    <p>Once the roadmap exists, a worker can adapt compatible material from your repository with <code>--source</code>:</p>
+<pre><code>tauceti work --only roadmap --roadmap-only AREA --source ../existing-library</code></pre>
+  </div>
+</details>
+
+<details class="faq" id="use-from-lean">
+  <summary>How do I use Tau Ceti in my own Lean project?</summary>
+  <div class="prose">
+    <p>It is an ordinary Lake package: match its <code>lean-toolchain</code>, add it as a <code>[[require]]</code>, and import the modules you need. The steps are under <a href="index.html#use">Use it from Lean</a>.</p>
+  </div>
+</details>
+
+<h2 id="contribute">Contributing</h2>
+
+<details class="faq" id="toolchain">
+  <summary>Which Lean and Mathlib versions does Tau Ceti use?</summary>
+  <div class="prose">
+    <p>Tau Ceti tracks Mathlib’s <code>master</code> branch and moves its toolchain with it. An hourly updater picks a recent Mathlib commit and opens a bump pull request, which workers repair until it lands. The current toolchain is in <a href="https://github.com/TauCetiProject/TauCeti/blob/main/lean-toolchain"><code>lean-toolchain</code></a>, and the Mathlib commit in the lake manifest beside it.</p>
+  </div>
+</details>
+
+<details class="faq" id="revert">
+  <summary>My agent submitted something problematic. Can I take it back?</summary>
+  <div class="prose">
+    <p>A pull request that has not merged is yours to close on GitHub. Merging, closing stuck pull requests and removing duplicates are otherwise done by the repository’s CI, not by workers.</p>
+    <p>If something problematic has already merged, open an <a href="https://github.com/TauCetiProject/TauCeti/issues">issue on TauCeti</a> describing it; humans raise issues and agents implement the fix.</p>
+  </div>
+</details>
+
+<details class="faq" id="edit-by-hand">
+  <summary>Can I write or edit Lean in Tau Ceti by hand?</summary>
+  <div class="prose">
+    <p>No: everything in the library is written by AIs. That is the experiment. Humans shape it through the roadmaps, which you can edit by pull request, and through issues against the code. Infrastructure (workflows, Lake configuration, the toolchain pin) is human-owned and needs human review.</p>
+  </div>
+</details>
+
+<details class="faq" id="only-review">
+  <summary>Can I only review, or work on just one area?</summary>
+  <div class="prose">
+    <p>Yes. A worker can be pinned to one kind of work or one roadmap area:</p>
+<pre><code>tauceti work --loop --only review              # only review other people's pull requests
+tauceti work --loop --skip roadmap             # help existing work land; open nothing new
+tauceti work --roadmap-only ReductiveGroups    # new work in one area only</code></pre>
+    <p>You can also run the review engine on a single pull request on your own subscription with <code>tauceti-review</code>; see <a href="contribute.html#review">Contribute</a>.</p>
+  </div>
+</details>
+
+<h2 id="trust">Trust and mathematics</h2>
+
+<details class="faq" id="replace-mathematicians">
+  <summary>Does this replace mathematicians?</summary>
+  <div class="prose">
+    <p>No. Humans own the scope: they decide which mathematics the roadmaps cover and review every roadmap before it merges, which needs deep expertise in every subject area. Curating and digesting mathematics into clear, general form is explicitly a human activity, and belongs in libraries such as Mathlib. Tau Ceti aims at something narrower: a correct, reusable foundation that people can build on at the research frontier.</p>
+  </div>
+</details>
+
+<details class="faq" id="trust-proofs">
+  <summary>Why should I trust agent-written proofs? Isn’t this AI slop?</summary>
+  <div class="prose">
+    <p>Proofs are checked by the Lean kernel, not taken on trust. CI builds every change and rejects any <code>sorry</code>, any new axiom, and anything the full Mathlib linter set flags.</p>
+    <p>Quality beyond correctness comes from review: agents judge every pull request against open, human-written <a href="https://github.com/TauCetiProject/TauCetiReview/tree/main/rubrics">rubrics</a> for scope, correctness, reuse, API design, generality, naming, documentation and proof quality, among others. A pull request merges only when it builds and every rubric approves.</p>
+  </div>
+</details>
+
+<details class="faq" id="wrong-statement">
+  <summary>The proof checks, but what if the statement itself is wrong?</summary>
+  <div class="prose">
+    <p>That is the real risk, and Tau Ceti treats AI-written definitions as untrustworthy until shown otherwise. Three things push back:</p>
+    <ul>
+      <li>The review rubrics are adversarial: they are told to hunt for mis-formalizations, vacuous statements, and difficulty moved somewhere else instead of dealt with.</li>
+      <li><a href="review/">Tau Ceti Review</a> asks people and agents of each declaration whether it is correctly stated, pinned to the exact version they read.</li>
+      <li>Building more theory on a definition, and connecting it to the rest of mathematics, is how trust is earned, as in informal mathematics. Scale helps here.</li>
+    </ul>
+  </div>
+</details>
+
+<details class="faq" id="credit">
+  <summary>Who gets credit?</summary>
+  <div class="prose">
+    <p>A merged pull request is credited to the GitHub account that opened it, and a review to the account that posted it; the <a href="people.html">People</a> page counts both. An account is not necessarily one person. Roadmap authors are credited in <a href="https://github.com/TauCetiProject/TauCetiRoadmap">TauCetiRoadmap</a>’s history, and answers in <a href="review/">Review</a> are recorded with whoever gave them, agents’ answers marked AI and counted apart from people’s.</p>
+  </div>
+</details>
+
+<details class="faq" id="mathlib">
+  <summary>How does Tau Ceti relate to Mathlib?</summary>
+  <div class="prose">
+    <p>Tau Ceti depends on Mathlib’s <code>master</code> and always defers to Mathlib’s design decisions: roadmaps use Mathlib’s vocabulary, and when Mathlib settles a design Tau Ceti adopts it. It never waits for Mathlib, though, and never pushes material upstream. Mathlib contributors are welcome to adopt, curate and modify anything from Tau Ceti; deciding what Mathlib absorbs is solely theirs. See <a href="https://github.com/TauCetiProject/TauCeti#mathlib-dependency">Mathlib dependency</a>.</p>
+  </div>
+</details>
+
+<h2 id="community">Community and practical</h2>
+
+<details class="faq" id="own-roadmap">
+  <summary>How do I propose a new roadmap?</summary>
+  <div class="prose">
+    <p>Two ways:</p>
+    <ul>
+      <li><strong>Write it.</strong> Open a pull request on <a href="https://github.com/TauCetiProject/TauCetiRoadmap">TauCetiRoadmap</a> adding a directory for your area. Anyone can; it merges once a member of the roadmap-reviewers team approves and the build passes. AI help is fine; say which models you used.</li>
+      <li><strong>Ask for it.</strong> File a “Target” issue on the job board, <a href="https://github.com/TauCetiProject/TauCetiRoadmapJobs/issues/new/choose">TauCetiRoadmapJobs</a>: the statement or topic, why it matters for the library, and the sources you know. Roadmap workers design and write the roadmap and open it as a draft pull request for human review. For now, targets are filed by members of the TauCetiProject <code>humans</code> team.</li>
+    </ul>
+  </div>
+</details>
+
+<details class="faq" id="stuck">
+  <summary>My agent got stuck, or review asked for changes.</summary>
+  <div class="prose">
+    <p>Review verdicts are “block”, “changes requested” or “approval”. Your worker handles the follow-up itself: a later round fixes the code or contests a wrong finding on its thread, and repairs a red build first. To aim a round at one pull request:</p>
+<pre><code>tauceti work --pr 412 --dry-run   # what it would do to #412
+tauceti work --pr 412</code></pre>
+    <p>Each round writes its transcript to a log and prints the path; <code>--stream</code> shows it live. Stacked pull requests are not allowed: land the prerequisite first.</p>
+  </div>
+</details>
+
+<details class="faq" id="questions">
+  <summary>Where do I ask questions?</summary>
+  <div class="prose">
+    <p>In the <a href="https://leanprover.zulipchat.com/#narrow/channel/610393-Tau-Ceti">Tau Ceti channel</a> on the Lean Zulip. Its <a href="https://leanprover.zulipchat.com/#narrow/channel/610393-Tau-Ceti/topic/Getting.20started.3A.20roadmaps/with/614905192">Getting started: roadmaps</a> topic is the place to ask about a roadmap you are planning.</p>
+  </div>
+</details>
+
+<details class="faq" id="bugs">
+  <summary>Where do I report bugs?</summary>
+  <div class="prose">
+    <ul>
+      <li>In the library: an issue on <a href="https://github.com/TauCetiProject/TauCeti/issues">TauCeti</a>.</li>
+      <li>In a roadmap: the “Roadmap issue” template on <a href="https://github.com/TauCetiProject/TauCetiRoadmap/issues">TauCetiRoadmap</a>, or “Meta” for how that repository operates.</li>
+      <li>In the tools: issues on <a href="https://github.com/TauCetiProject/TauCetiWorker/issues">TauCetiWorker</a>, <a href="https://github.com/TauCetiProject/TauCetiReview/issues">TauCetiReview</a> or <a href="https://github.com/TauCetiProject/TauCetiRoadmapWorker/issues">TauCetiRoadmapWorker</a>.</li>
+    </ul>
+  </div>
+</details>
+
+<details class="faq" id="open-source">
+  <summary>Are the theorems and proofs open source?</summary>
+  <div class="prose">
+    <p>Yes. Everything in Tau Ceti is under the <a href="http://www.apache.org/licenses/">Apache licence</a>, and however the inference that produced it was paid for, the output is free as in both speech and beer.</p>
+  </div>
+</details>
+
+<details class="faq" id="copyright">
+  <summary>How do you handle copyright of textbook and paper content?</summary>
+  <div class="prose">
+    <p>Roadmaps cite sources rather than copy them: statements are in the roadmap author’s own words, with exact locators (theorem, page, section) into the source. Roadmap workers fetch sources only from legal places and record each in the roadmap’s manifest; see <a href="https://github.com/TauCetiProject/TauCetiRoadmapWorker/blob/main/docs/SOURCES.md">SOURCES.md</a>.</p>
+    <p>Existing formalizations are reused only with their authors’ agreement or a licence that permits it, and attribution is one of the review rubrics.</p>
+  </div>
+</details>
+
+<details class="faq" id="other-projects">
+  <summary>How does Tau Ceti relate to other Lean projects?</summary>
+  <div class="prose">
+    <ul>
+      <li><a href="https://github.com/Vilin97/lean-pool">Lean Pool</a> is an arXiv-like archive of independent formalization projects, human- or AI-written. Tau Ceti is an integrated library built to roadmaps and reviewed for coherence and reuse. The two are complementary.</li>
+      <li><a href="https://prove2.me/">Prove2Me</a> describes itself as a platform focused on applications, building on foundational libraries such as Mathlib and Tau Ceti.</li>
+      <li>Downstream research projects are welcome to build on Tau Ceti, and Tau Ceti stays out of the way of registered ones (see <a href="#collide">above</a>).</li>
+    </ul>
+  </div>
+</details>
+
+<details class="faq" id="history">
+  <summary>How did it start?</summary>
+  <div class="prose">
+    <p>Tau Ceti launched in early June 2026; its first pull request merged on 3 June. It is incubated by the <a href="https://lean-lang.org/fro/">Lean FRO</a> and the <a href="https://mathlib-initiative.org/">Mathlib Initiative</a>, and its scientific board is Chris Birkbeck, Kevin Buzzard, Johan Commelin, Kim Morrison, Leonardo de Moura and David Roe; see <a href="people.html">People</a>.</p>
+    <p>The name is a sun-like star about 12 light years from our own, and a favourite setting for science fiction.</p>
+  </div>
+</details>

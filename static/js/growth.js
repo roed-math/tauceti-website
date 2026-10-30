@@ -3,8 +3,18 @@ document.addEventListener("DOMContentLoaded", function () {
   var TC = window.TC;
   var S = TC.SERIES;
 
+  TC.local("library-counts.json").then(function (c) {
+    TC.timeChart("#decls", {
+      dates: c.dates, label: "Theorems and definitions by day", updated: c.generated_at,
+      series: [
+        { name: "Theorems", values: c.theorems, color: S[0] },
+        { name: "Definitions", values: c.definitions, color: S[2] },
+      ],
+    });
+  }).catch(function (e) { TC.fail("#decls", e); });
+
   TC.local("library-loc.json").then(function (l) {
-    TC.timeChart("#loc", { dates: l.dates, series: [{ name: "Lines of Lean", values: l.lines, color: S[1] }], area: true, label: "Lines of Lean by day" });
+    TC.timeChart("#loc", { dates: l.dates, updated: l.generated_at, series: [{ name: "Lines of Lean", values: l.lines, color: S[1] }], area: true, label: "Lines of Lean by day" });
   }).catch(function () {
     // Without the git-derived series, fall back to the chart taucetiproject.org renders.
     TC.$("#loc").replaceChildren(TC.el("figure", { class: "img" }, [TC.el("img", { src: TC.LIVE + "loc-tauceti.svg", alt: "Tau Ceti: lines of Lean by date" })]));
@@ -32,7 +42,7 @@ document.addEventListener("DOMContentLoaded", function () {
       var other = d.dates.map(function (_, i) { return rest.reduce(function (a, t) { return a + t.series[i]; }, 0); });
       series.push({ name: "Other areas (" + rest.length + ")", values: other, color: TC.OTHER });
     }
-    TC.timeChart("#topics", { dates: d.dates, series: series, stacked: true, label: "Net lines of Lean by area" });
+    TC.timeChart("#topics", { dates: d.dates, updated: d.generated_at, series: series, stacked: true, label: "Net lines of Lean by area" });
   }).catch(function (e) { TC.fail("#topics", e); });
 
   TC.live("pr-stats.json").then(function (s) {
@@ -40,7 +50,7 @@ document.addEventListener("DOMContentLoaded", function () {
     TC.set("merges7", TC.fmt(last.merges));
     TC.set("authors7", TC.fmt(last.active_authors));
     TC.set("latency", TC.hours(last.median_merge_hours));
-    TC.timeChart("#authors", { dates: r.map(function (x) { return x.date; }), label: "Active authors", series: [{ name: "Active authors", values: r.map(function (x) { return x.active_authors; }), color: S[4] }] });
+    TC.timeChart("#authors", { dates: r.map(function (x) { return x.date; }), updated: s.snapshot, label: "Active authors", series: [{ name: "Active authors", values: r.map(function (x) { return x.active_authors; }), color: S[4] }] });
   }).catch(function (e) { TC.fail("#authors", e); });
 
   TC.live("progress.json").then(function (p) {
@@ -49,7 +59,7 @@ document.addEventListener("DOMContentLoaded", function () {
     var cutoff = new Date(p.cutoff).getTime(), weeks = p.weeks.slice(), counts = p.global.weekly.slice();
     while (weeks.length && new Date(weeks[weeks.length - 1] + "T00:00:00Z").getTime() + 7 * 864e5 > cutoff) { weeks.pop(); counts.pop(); }
     TC.timeChart("#weekly", {
-      dates: weeks, label: "Merged pull requests per week",
+      dates: weeks, label: "Merged pull requests per week", updated: p.exported_at,
       series: [{ name: "Merged in the week starting", values: counts, color: S[0] }],
     });
   }).catch(function (e) { TC.fail("#weekly", e); });

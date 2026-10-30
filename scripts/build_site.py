@@ -133,7 +133,8 @@ def main() -> None:
                 .replace("{{data_links}}", data_links(meta.get("data", [])))
                 .replace("{{page}}", file.removesuffix(".html"))
                 .replace("{{version}}", version)
-                .replace("{{content}}", body))
+                .replace("{{content}}", body)
+                .replace("{{review_data}}", html.escape(args.review_data.rstrip("/") + "/")))
         (args.out / file).write_text(page)
     print(f"built {len(pages)} pages into {args.out}")
 

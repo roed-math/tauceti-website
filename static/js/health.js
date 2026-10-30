@@ -71,9 +71,9 @@ document.addEventListener("DOMContentLoaded", function () {
     TC.$("#cycles-note").textContent = TC.fmt(rc.reviewed_prs) + " pull requests, " + TC.fmt1(rc.total_cycles / rc.reviewed_prs) + " rounds on average, since " + TC.dayYear(rc.label_epoch) + ".";
 
     var r = s.rolling_seven_day, dates = r.map(function (x) { return x.date; });
-    TC.timeChart("#merges7", { dates: dates, label: "Merges in trailing seven days", series: [{ name: "Merges, trailing 7 days", values: r.map(function (x) { return x.merges; }), color: TC.SERIES[2] }] });
+    TC.timeChart("#merges7", { dates: dates, updated: s.snapshot, label: "Merges in trailing seven days", series: [{ name: "Merges, trailing 7 days", values: r.map(function (x) { return x.merges; }), color: TC.SERIES[2] }] });
     TC.timeChart("#latency", {
-      dates: dates, label: "Hours from opening to merge", yFormat: function (v) { return TC.fmt(v) + "h"; }, tipFormat: TC.hours,
+      dates: dates, updated: s.snapshot, label: "Hours from opening to merge", yFormat: function (v) { return TC.fmt(v) + "h"; }, tipFormat: TC.hours,
       series: [
         { name: "Median", values: r.map(function (x) { return x.median_merge_hours; }), color: TC.SERIES[0] },
         { name: "90th percentile", values: r.map(function (x) { return x.p90_merge_hours; }), color: TC.SERIES[1], dash: "5 4" },

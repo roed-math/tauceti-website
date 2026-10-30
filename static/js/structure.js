@@ -50,6 +50,8 @@ document.addEventListener("DOMContentLoaded", function () {
   }
 
   /* ---------- one roadmap ---------- */
+  function pageHref(id) { return "roadmap.html?id=" + encodeURIComponent(id); }
+
   function segments(r) {
     var segs = TC.el("div", { class: "segs", "aria-hidden": "true" });
     if (r.completed && !r.states.length) {
@@ -74,7 +76,8 @@ document.addEventListener("DOMContentLoaded", function () {
 
   function row(r, child) {
     var done = count(r, "done"), n = r.states.length;
-    var name = TC.el("div", { class: "rm-name" }, [document.createTextNode(r.name)]);
+    // A link inside <summary> navigates without toggling; the rest of the summary still toggles.
+    var name = TC.el("div", { class: "rm-name" }, [TC.el("a", { href: pageHref(r.id), text: r.name })]);
     if (r.completed) name.append(TC.el("span", { class: "badge", text: "complete" }));
     name.append(TC.el("small", { text: r.title || "" }));
     var meta = TC.el("div", { class: "rm-meta" }, [
@@ -89,7 +92,7 @@ document.addEventListener("DOMContentLoaded", function () {
     if (st.frontier && st.frontier.length) {
       body.append(TC.el("p", { class: "small muted", text: "Next milestones" }));
       body.append(TC.el("ul", null, st.frontier.slice(0, 4).map(function (f) {
-        return TC.el("li", null, [TC.el("b", { text: f.name + " " }), richText((f.text || "").replace(/^—\s*/, "— "))]);
+        return TC.el("li", null, [TC.el("b", null, [richText(f.name)]), document.createTextNode(" "), richText((f.text || "").replace(/^—\s*/, "— "))]);
       })));
     }
     if (n) {
@@ -104,8 +107,9 @@ document.addEventListener("DOMContentLoaded", function () {
     }
     var dir = r.readme.replace(/\/README\.md$/, "");
     var links = TC.el("p", { class: "small" }, [
-      TC.el("a", { href: TC.ROADMAP_BLOB + r.readme, text: "README" }), document.createTextNode(" · "),
-      TC.el("a", { href: TC.ROADMAP_BLOB + dir + "/STATUS.md", text: "latest report" }), document.createTextNode(" · "),
+      TC.el("a", { href: pageHref(r.id), text: "Roadmap page" }), document.createTextNode(" · "),
+      TC.el("a", { href: blob() + r.readme, text: "README" }), document.createTextNode(" · "),
+      TC.el("a", { href: blob() + dir + "/STATUS.md", text: "latest report" }), document.createTextNode(" · "),
       TC.el("a", { href: "https://github.com/TauCetiProject/TauCeti/pulls?q=" + encodeURIComponent("label:roadmap/" + (r.parent || r.name)), text: "pull requests" }),
     ]);
     if (st.ts) links.append(TC.el("span", { class: "muted", text: " · report " + TC.ago(st.ts) }));
@@ -117,6 +121,9 @@ document.addEventListener("DOMContentLoaded", function () {
       TC.el("summary", null, [name, segments(r), meta]), body,
     ]);
   }
+
+  // At the roadmap repository's commit the data describes: a roadmap archived since has moved on main.
+  function blob() { return "https://github.com/TauCetiProject/TauCetiRoadmap/blob/" + (data.roadmap_head || "main") + "/"; }
 
   /* ---------- the board ---------- */
   function areaHref(c) { return "structure.html?area=" + encodeURIComponent(c); }

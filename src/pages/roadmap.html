@@ -1,0 +1,58 @@
+<!-- {"title": "Roadmap", "description": "One Tau Ceti roadmap: its latest report, the state of each layer, its merged pull requests and the opening of its README.", "scripts": ["roadmap.js"], "data": ["live:progress.json", "atlas/tauceti/areas.json", "data/roadmap-prs.json"]} -->
+<p class="eyebrow" id="crumbs"><a href="structure.html">Roadmaps</a></p>
+<h1 id="rm-title">Roadmap</h1>
+<p class="lede" id="rm-lede"></p>
+<div id="rm-missing"><p class="muted">Loading the roadmap…</p></div>
+
+<div id="rm-page" hidden>
+  <div class="prose rm-glance" id="rm-glance"></div>
+
+  <div class="tiles" id="rm-tiles"></div>
+
+  <div class="panel">
+    <h3>Layers</h3>
+    <p class="sub" id="layers-sub"></p>
+    <div id="rm-strip"></div>
+    <div class="legend rm-legend">
+      <span><i style="background:var(--good)"></i>done</span>
+      <span><i style="background:var(--warning)"></i>partial</span>
+      <span><i style="background:var(--seg-untouched)"></i>untouched</span>
+      <span><i style="background:repeating-linear-gradient(135deg,var(--seg-hatch) 0 3px,transparent 3px 6px)"></i>not yet assessed</span>
+      <span><i style="background:var(--link)"></i>archived as complete</span>
+    </div>
+    <ul class="layers rm-layers" id="rm-layers"></ul>
+  </div>
+
+  <div class="panel" id="frontier-panel" hidden>
+    <h3>Next milestones</h3>
+    <p class="sub">From the latest report.</p>
+    <ul class="rm-frontier" id="rm-frontier"></ul>
+  </div>
+
+  <div class="grid-2">
+    <div class="panel">
+      <h3>Pull requests merged per week</h3>
+      <p class="sub" id="weekly-sub">Complete weeks, Monday to Sunday.</p>
+      <div id="rm-weekly"><p class="muted">Loading…</p></div>
+    </div>
+    <div class="panel">
+      <h3>Recently merged</h3>
+      <p class="sub" id="recent-sub"></p>
+      <div id="rm-recent"><p class="muted">Loading…</p></div>
+      <p class="small" id="rm-pr-links"></p>
+    </div>
+  </div>
+
+  <div class="panel">
+    <h3>From the README</h3>
+    <p class="sub">The README’s opening, before its first layer, as written by the roadmap’s authors.</p>
+    <div class="readme-md" id="rm-readme"><p class="muted">Loading the README…</p></div>
+    <p class="small" id="rm-readme-links"></p>
+  </div>
+
+  <div class="panel" id="subs-panel" hidden>
+    <h3>Sub-roadmaps</h3>
+    <p class="sub">Each has its own README, layers and report; their pull requests carry this roadmap’s label.</p>
+    <div class="rm-subs" id="rm-subs"></div>
+  </div>
+</div>

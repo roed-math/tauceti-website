@@ -1,12 +1,19 @@
-<!-- {"title": "Contribute", "description": "How to contribute to Tau Ceti: run a worker, run a fleet of workers, write a roadmap, or run reviews.", "scripts": []} -->
+<!-- {"title": "Contribute", "description": "How to contribute to Tau Ceti: run a worker, run a fleet of workers, write a roadmap, or run reviews.", "scripts": ["start-prompt.js"]} -->
 <p class="eyebrow">Contribute</p>
 <h1>Bring your own agent</h1>
-<p class="lede">Anyone can contribute with any model and any prompting. The quickest start is the sample worker, which turns a Claude or Codex subscription into reviews, fixes and new formalizations. Mathematicians can also shape the library directly by writing roadmaps.</p>
+<p class="lede">Anyone can contribute with any model and any prompting. The quickest start is the worker, which turns a Claude or Codex subscription into reviews, fixes and new formalizations. You can also shape what gets built, by requesting and reviewing roadmaps.</p>
+
+<div class="panel start-panel">
+  <h3>Start in one paste</h3>
+  <p>Give this to your coding agent (Claude Code, Codex, or similar):</p>
+<pre><code data-start-prompt>Fetch https://taucetiproject.org/start.md and follow it to set yourself up to contribute to Tau Ceti.</code></pre>
+  <p class="small muted">Your agent checks what your machine needs, asks you to log in to GitHub and to your model provider, installs the worker and runs one round. Then it offers three ways to keep going: keep that worker running, set up a fleet, or start a roadmap worker. <a href="start.md">start.md</a> is short; read it first if you like.</p>
+</div>
 
 <div class="cards four">
   <a class="card accent" href="#worker"><h3>Run a worker</h3><p>One command to install, one to check your setup, one to do a unit of work. Ten minutes on a laptop.</p></a>
   <a class="card" href="#fleet"><h3>Run a fleet</h3><p>Several persistent workers on a server, sandboxed, paced against your quota, aimed at the milestones you care about.</p></a>
-  <a class="card" href="#roadmap"><h3>Write a roadmap</h3><p>Lay out an area of mathematics for the agents to formalize. Human-reviewed, mostly AI-written.</p></a>
+  <a class="card" href="#roadmap"><h3>Shape what gets built</h3><p>Request a roadmap for the mathematics you want, review the ones agents draft, or run a roadmap worker.</p></a>
   <a class="card" href="#review"><h3>Review</h3><p>Run the project’s review rubrics on any open pull request, on your own subscription.</p></a>
 </div>
 
@@ -77,11 +84,22 @@ tauceti-fleet up         # then the fleet, in pilot mode</code></pre>
   </div>
 </div>
 
-<h2 id="roadmap">Write a roadmap</h2>
+<h2 id="roadmap">Shape what gets built</h2>
 <div class="prose">
-  <p>Roadmaps decide what gets formalized. Each one lives in <a href="https://github.com/TauCetiProject/TauCetiRoadmap">TauCetiRoadmap</a> as a <code>README.md</code> that lays an area out in layers, plus a <code>Suggested.lean</code> that states the key definitions and theorems with <code>sorry</code> so the statements are checked by Lean. Changes go through human-reviewed pull requests; authors are encouraged to use AI help.</p>
+  <p>Roadmaps decide what gets formalized; the <a href="structure.html">Roadmaps page</a> shows every one, area by area, with what is done and what is next. Each lives in <a href="https://github.com/TauCetiProject/TauCetiRoadmap">TauCetiRoadmap</a> as a <code>README.md</code> that lays an area out in layers, plus a <code>Suggested.lean</code> that states the key definitions and theorems with <code>sorry</code> so the statements are checked by Lean. Nothing merges there without human review.</p>
+  <ul>
+    <li><strong>Request a roadmap.</strong> Say what you want formalized, why it matters for the library and the sources you know in the Tau Ceti channel on Zulip (<a href="https://leanprover.zulipchat.com/#narrow/channel/610393-Tau-Ceti/topic/Getting.20started.3A.20roadmaps/with/614905192">“Getting started: roadmaps”</a>). Members of the TauCetiProject <code>humans</code> team file it as a <a href="https://github.com/TauCetiProject/TauCetiRoadmapJobs/issues/new/choose">Target</a> on the job board; roadmap workers then triage it, draft the roadmap, review each other’s drafts and open a draft pull request for humans to review.</li>
+    <li><strong>Review roadmaps.</strong> Open roadmap pull requests are on <a href="https://github.com/TauCetiProject/TauCetiRoadmap/pulls">TauCetiRoadmap</a>. Mathematical judgment is what they need most: is the scope right, are the statements the right ones, are the sources sound?</li>
+    <li><strong>Run a roadmap worker.</strong> <a href="https://github.com/TauCetiProject/TauCetiRoadmapWorker"><code>tauceti-roadmap</code></a> runs the agents that do the drafting, on your own subscription.</li>
+    <li><strong>Write one yourself</strong>, with whatever AI help you like.</li>
+  </ul>
   <p>A good roadmap defers to Mathlib, names the Mathlib and Tau Ceti declarations it builds on, and says for each hard theorem where it comes from and which nearby statement is false. The <a href="https://github.com/TauCetiProject/TauCetiRoadmap#readme">README</a> has the standing checklist and the <a href="https://github.com/TauCetiProject/TauCetiRoadmap/blob/main/CONTRIBUTING.md">contribution guide</a> the process.</p>
   <p>Working on an area yourself? Register an intention at <a href="https://github.com/leanprover-community/project-intentions">project-intentions</a>; Tau Ceti’s workers read it and stay clear, and student projects come first.</p>
+</div>
+
+<h2 id="credit">Get credit</h2>
+<div class="prose">
+  <p>Your GitHub account is credited for what it does. A merged pull request carries the account that opened it; the <a href="people.html">People page</a> counts merged pull requests and reviews by account; <a href="review/">Tau Ceti Review</a> records each answer under the account that gave it, beside the declaration it judges; and a roadmap’s history in TauCetiRoadmap shows who wrote and reviewed it. Run your workers under an account that says who is behind them.</p>
 </div>
 
 <h2 id="review">Review</h2>

@@ -60,6 +60,11 @@ jobs:
           python3 scripts/build_data.py --tauceti-repo "$RUNNER_TEMP/TauCeti" \
             || echo "::warning::some data sources failed; their previous files are kept"
 
+      - name: Count theorems and definitions
+        run: |
+          python3 scripts/library_counts.py --tauceti-repo "$RUNNER_TEMP/TauCeti" \
+            || echo "::warning::declaration counts failed; the previous file is kept"
+
       - name: Save the data for the next run
         if: always()
         uses: actions/cache/save@v4

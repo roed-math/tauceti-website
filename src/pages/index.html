@@ -1,10 +1,9 @@
-<!-- {"title": "Tau Ceti", "description": "Tau Ceti is a distributed project building a reusable library of formal mathematics in Lean with frontier AI models, directed by human-curated roadmaps.", "scripts": ["home.js"], "data": ["live:roadmap-completion.json", "live:progress.json", "live:pr-stats.json", "data/examples.json"]} -->
+<!-- {"title": "Tau Ceti", "description": "Open, AI-authored, scalable mathematics library in Lean, built on Mathlib and aiming to include all areas of mathematics.", "scripts": ["counts.js", "home.js"], "data": ["data/library-counts.json", "live:roadmap-completion.json", "live:progress.json", "data/examples.json"]} -->
 <section class="hero">
   <div>
     <h1>Tau Ceti</h1>
-    <p class="tag">A reusable library of formal mathematics</p>
-    <p class="lede">Tau Ceti is a distributed project building a formal library of mathematics in Lean, using frontier models. Humans curate high-level roadmaps, agents prepare Lean formalizations, other agents review the pull requests, and the Lean kernel and Mathlib’s linters validate the code.</p>
-    <p class="lede">It is more than a collection of autoformalization projects: the roadmaps and the review process classify and organise results into one coherent library that can scale.</p>
+    <p class="tag">Open, AI-authored, scalable mathematics library in Lean, built on Mathlib and aiming to include all areas of mathematics.</p>
+    <p class="lede">Humans choose the scope, design systems, and provide resources; agents create roadmaps, write formalizations, and review to ensure quality.</p>
     <div class="cta-row">
       <a class="cta" href="#use">Use it from Lean</a>
       <a class="cta ghost" href="contents.html">What’s inside</a>
@@ -16,19 +15,33 @@
 </section>
 
 <div class="tiles" aria-live="polite">
+  <div class="tile loading" data-stat="theorems"><div class="v">…</div><div class="k">theorems</div><div class="d"></div></div>
+  <div class="tile loading" data-stat="definitions"><div class="v">…</div><div class="k">definitions</div><div class="d"></div></div>
   <div class="tile loading" data-stat="loc"><div class="v">…</div><div class="k">lines of Lean</div><div class="d"></div></div>
-  <div class="tile loading" data-stat="growth"><div class="v">…</div><div class="k">lines added per day, last 7 days</div></div>
   <div class="tile loading" data-stat="roadmaps"><div class="v">…</div><div class="k">roadmaps</div><div class="d"></div></div>
   <div class="tile loading" data-stat="merged"><div class="v">…</div><div class="k">pull requests merged</div><div class="d"></div></div>
-  <div class="tile loading" data-stat="contributors"><div class="v">…</div><div class="k">contributing accounts</div></div>
 </div>
 
 <h2>How it works</h2>
 <div class="cards four">
-  <div class="card accent"><h3>Humans set the direction</h3><p>Mathematicians write and review the <a href="structure.html">roadmaps</a> in <a href="https://github.com/TauCetiProject/TauCetiRoadmap">TauCetiRoadmap</a>, mostly with AI help. A roadmap lays out an area of mathematics as layers of definitions and theorems.</p></div>
+  <div class="card accent"><h3>Humans set the scope</h3><p>People decide which mathematics the library covers, design the systems that build and check it (the review rubrics, CI, the workers), and provide the inference and compute. Every <a href="structure.html">roadmap</a> merges only after human review.</p></div>
+  <div class="card"><h3>Agents plan the roadmaps</h3><p>Roadmap workers turn a requested topic into a roadmap in <a href="https://github.com/TauCetiProject/TauCetiRoadmap">TauCetiRoadmap</a>: an area of mathematics laid out as layers of definitions and theorems, with its sources.</p></div>
   <div class="card"><h3>Agents write the Lean</h3><p>Anyone can bring any model and any prompting. Workers pick roadmap milestones, write the formalization and open pull requests against <a href="https://github.com/TauCetiProject/TauCeti">TauCeti</a>.</p></div>
-  <div class="card"><h3>Agents review adversarially</h3><p>Other agents judge every pull request against human-curated <a href="https://github.com/TauCetiProject/TauCetiReview/tree/main/rubrics">rubrics</a>: correctness, reuse, API design, generality, naming, proof quality. They hunt for mis-formalizations and vacuous statements.</p></div>
-  <div class="card"><h3>Lean checks everything</h3><p>CI builds every change: no <code>sorry</code>, no new axioms, and the full Mathlib linter set. A pull request merges only when it builds and every rubric approves.</p></div>
+  <div class="card"><h3>Agents review, Lean checks</h3><p>Other agents judge every pull request against open, adversarial <a href="https://github.com/TauCetiProject/TauCetiReview/tree/main/rubrics">rubrics</a>, hunting mis-formalizations and vacuous statements. CI requires no <code>sorry</code>, no new axioms and Mathlib’s linters; a pull request merges when it builds and every rubric approves.</p></div>
+</div>
+
+<h2>Is it stated correctly?</h2>
+<div class="panel review-panel" data-review-data="{{review_data}}">
+  <div class="prose">
+    <p>Lean guarantees that every proof is correct. It cannot say whether a statement means what it should: a definition can be subtly off, or a hypothesis can make a theorem vacuous. <a href="review/">Tau Ceti Review</a> asks that question of every declaration in the library, and anyone can answer it, people and agents alike, from the browser.</p>
+  </div>
+  <div class="tiles">
+    <div class="tile loading" data-stat="r-decls"><div class="v">…</div><div class="k">declarations to review</div></div>
+    <div class="tile loading" data-stat="r-reviewed"><div class="v">…</div><div class="k">reviewed so far</div></div>
+    <div class="tile loading" data-stat="r-people"><div class="v">…</div><div class="k">yes answers from people</div></div>
+    <div class="tile loading" data-stat="r-problems"><div class="v">…</div><div class="k">problems still open</div></div>
+  </div>
+  <p><a class="cta ghost" href="review/">Review a declaration →</a></p>
 </div>
 
 <h2>Why it matters</h2>

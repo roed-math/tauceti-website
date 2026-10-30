@@ -130,6 +130,7 @@ a.card:hover { text-decoration: none; border-color: var(--link-line); background
 .card h3 { margin: 0 0 0.35rem; font-size: 1.05rem; }
 .card p { margin: 0; color: var(--text-2); font-size: 0.93rem; }
 .cards.four { grid-template-columns: repeat(4, 1fr); }
+.cards.five { grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); }
 @media (max-width: 980px) { .cards.four { grid-template-columns: repeat(2, 1fr); } }
 @media (max-width: 560px) { .cards.four { grid-template-columns: 1fr; } }
 .card .arrow { color: var(--link); font-family: var(--display); font-size: 0.9rem; margin-top: 0.6rem; display: inline-block; }
@@ -172,6 +173,10 @@ figcaption { color: var(--muted); font-size: 0.86rem; margin-top: 0.45rem; }
 .bar .fill { position: absolute; left: 0; top: 2px; bottom: 2px; border-radius: 0 4px 4px 0; min-width: 2px; }
 .bar .val { position: absolute; top: 0; font-size: 0.8rem; color: var(--text-2); font-variant-numeric: tabular-nums; white-space: nowrap; line-height: 20px; padding-left: 0.45rem; }
 .bar:hover .fill { filter: brightness(1.2); }
+/* The longest bar takes 72% of the track (50% on a phone), leaving room for its value label. */
+.bar .fill { width: calc(var(--w) * 0.72%); }
+.bar .val { left: calc(var(--w) * 0.72%); }
+@media (max-width: 560px) { .bar .fill { width: calc(var(--w) * 0.5%); } .bar .val { left: calc(var(--w) * 0.5%); } }
 @media (max-width: 560px) { .bar { grid-template-columns: 1fr; gap: 0.1rem; } }
 
 /* ---- tables ---- */
@@ -283,3 +288,78 @@ details.methods summary:hover { color: var(--text); }
 
 /* The hidden attribute wins over any display a rule above gives the element. */
 [hidden] { display: none !important; }
+
+/* ---- time-chart controls ---- */
+.chart .range, .range { display: flex; justify-content: flex-end; gap: 0.3rem; margin: -0.2rem 0 0.4rem; }
+.range button { font: inherit; font-size: 0.78rem; color: var(--text-2); background: transparent; border: 1px solid var(--line-strong); border-radius: 999px; padding: 0.1rem 0.6rem; cursor: pointer; }
+.range button:hover { color: var(--text); border-color: var(--muted); }
+.range button[aria-pressed="true"] { color: var(--text); border-color: var(--accent); background: var(--accent-soft); }
+.range button:focus-visible { outline: 2px solid var(--link); outline-offset: 2px; }
+.chart-foot { color: var(--muted); font-size: 0.78rem; margin: 0.4rem 0 0; }
+
+/* ---- roadmap pages (roadmap.html) ---- */
+.rm .rm-name > a { color: var(--text); }
+.rm .rm-name > a:hover { color: var(--link); }
+h1 .badge { font-size: 0.9rem; vertical-align: 0.5em; }
+.rm-glance { font-size: 1.02rem; color: var(--text-2); overflow-wrap: anywhere; }
+.tile .v.word { font-size: 1.05rem; line-height: 1.4; padding: 0.35rem 0 0.25rem; overflow-wrap: anywhere; }
+.tile .d .due { color: var(--warning-text); font-weight: 600; }
+#rm-strip .segs { height: 18px; margin: 0.4rem 0 0.7rem; }
+.rm-layers, .rm-frontier, .pr-list { margin: 0.5rem 0 0; padding-left: 0; list-style: none; overflow-wrap: anywhere; }
+.rm-layers li { margin: 0.25rem 0; color: var(--text-2); }
+.rm-layers .state { min-width: 5.6rem; text-align: center; }
+.rm-layers .rem { margin: 0.05rem 0 0.35rem 6rem; }
+.rm-frontier li { margin: 0.45rem 0; color: var(--text-2); }
+.rm-frontier li b { color: var(--text); }
+.pr-list li { display: grid; grid-template-columns: auto 1fr; column-gap: 0.5rem; padding: 0.35rem 0; border-top: 1px solid var(--line); font-size: 0.9rem; }
+.pr-list li:first-child { border-top: 0; }
+.pr-list li > a { font-variant-numeric: tabular-nums; }
+.pr-list .t { color: var(--text); min-width: 0; }
+.pr-list .m { grid-column: 2; font-size: 0.8rem; }
+.rm-subs { display: grid; gap: 0.1rem; }
+.rm-sub { display: grid; grid-template-columns: minmax(9rem, 18rem) 1fr 7rem; gap: 0.8rem; align-items: center; padding: 0.4rem 0; border-top: 1px solid var(--line); }
+.rm-sub:first-child { border-top: 0; }
+.rm-sub > * { min-width: 0; }
+.rm-sub-name { font-weight: 600; font-size: 0.92rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rm-sub-name small { display: block; font-weight: 400; color: var(--muted); font-size: 0.78rem; overflow: hidden; text-overflow: ellipsis; }
+.rm-sub-meta { font-size: 0.8rem; color: var(--muted); text-align: right; font-variant-numeric: tabular-nums; }
+@media (max-width: 640px) {
+  .rm-sub { grid-template-columns: 1fr; gap: 0.25rem; }
+  .rm-sub-meta { text-align: left; }
+  .rm-layers .state { min-width: 0; }
+  .rm-layers .rem { margin-left: 0; }
+}
+.readme-md { color: var(--text-2); max-width: 50rem; overflow-wrap: anywhere; }
+.readme-md h1, .readme-md h2, .readme-md h3, .readme-md h4, .readme-md h5, .readme-md h6 { color: var(--text); margin: 1.4rem 0 0.4rem; }
+.readme-md h1, .readme-md h2 { font-size: 1.2rem; }
+.readme-md h3 { font-size: 1.05rem; }
+.readme-md h4, .readme-md h5, .readme-md h6 { font-size: 0.95rem; }
+.readme-md > :first-child { margin-top: 0.4rem; }
+.readme-md ul, .readme-md ol { padding-left: 1.4rem; }
+.readme-md li { margin: 0.2rem 0; }
+.readme-md blockquote { margin: 0.7rem 0; padding: 0.1rem 0 0.1rem 0.9rem; border-left: 3px solid var(--line-strong); color: var(--muted); }
+.readme-md table { border-collapse: collapse; display: block; overflow-x: auto; margin: 0.7rem 0; font-size: 0.9rem; }
+.readme-md th, .readme-md td { border: 1px solid var(--line); padding: 0.3rem 0.6rem; text-align: left; vertical-align: top; }
+.readme-md math[display="block"] { display: block; overflow-x: auto; margin: 0.6rem 0; }
+.readme-md hr { border: 0; border-top: 1px solid var(--line); margin: 1.2rem 0; }
+
+/* ---- contribute: the one-paste start ---- */
+.start-panel { border-color: var(--accent-line); }
+.start-panel h3 { margin-top: 0.1rem; }
+.start-panel p { margin: 0.4rem 0; }
+
+/* ---- roadmaps: how to shape them ---- */
+.shape-panel { border-color: var(--accent-line); }
+.shape-panel .cards { margin: 0.4rem 0 0.2rem; }
+.shape-panel .card { background: var(--surface-2); }
+
+/* ---- FAQ ---- */
+.faq-index { display: flex; flex-wrap: wrap; gap: 0.4rem 1.2rem; list-style: none; padding: 0; margin: 1.2rem 0 0; }
+.faq-index a { font-family: var(--display); font-size: 0.95rem; }
+details.faq { max-width: 46rem; border-bottom: 1px solid var(--line); }
+details.faq > summary { cursor: pointer; font-weight: 600; padding: 0.6rem 0.3rem; border-radius: 6px; }
+details.faq > summary:hover { background: var(--hover); }
+details.faq > summary:focus-visible { outline: 2px solid var(--link); outline-offset: -2px; }
+details.faq > .prose { padding: 0 0.3rem 0.6rem 1.2rem; color: var(--text-2); }
+#rm-title { overflow-wrap: anywhere; }
+#recent-sub, #weekly-sub { overflow-wrap: anywhere; }

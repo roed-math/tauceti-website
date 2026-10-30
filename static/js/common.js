@@ -114,8 +114,41 @@
 
   /* opts: dates (ISO days), series [{name, values, color, dash, note}], stacked, area,
      yFormat, tipFormat, height, legend (default: when ≥ 2 series), markers [{date, label}] */
+  /* A time chart with a range control (30 days, 90 days, all, when the series is long enough for them
+     to differ) and a footnote saying how fresh it is and how to read it by keyboard. opts as plot()'s,
+     plus updated (an ISO time; else the last date is given) and ranges: false. */
   TC.timeChart = function (container, opts) {
     if (typeof container === "string") container = TC.$(container);
+    container.replaceChildren();
+    var n = opts.dates.length;
+    var body = TC.el("div");
+    var choices = [["30 days", 30], ["90 days", 90], ["All", 0]].filter(function (c) { return !c[1] || c[1] < n - 10; });
+    if (opts.ranges !== false && choices.length > 1) {
+      var group = TC.el("div", { class: "range", role: "group", "aria-label": "Time range" });
+      choices.forEach(function (c) {
+        var b = TC.el("button", { type: "button", "aria-pressed": c[1] ? "false" : "true", text: c[0] });
+        b.addEventListener("click", function () {
+          TC.$$("button", group).forEach(function (o) { o.setAttribute("aria-pressed", o === b ? "true" : "false"); });
+          show(c[1]);
+        });
+        group.append(b);
+      });
+      container.append(group);
+    }
+    container.append(body);
+    var when = opts.updated ? "Updated " + TC.dayYear(opts.updated) + ", " + opts.updated.slice(11, 16) + " UTC" : "Through " + TC.dayYear(opts.dates[n - 1]);
+    container.append(TC.el("p", { class: "chart-foot", text: when + " · Hover for values, or focus the chart and use ← → to step through it." }));
+    function show(days) {
+      var lo = days ? Math.max(0, n - days) : 0;
+      plot(body, Object.assign({}, opts, {
+        dates: opts.dates.slice(lo),
+        series: opts.series.map(function (sr) { return Object.assign({}, sr, { values: sr.values.slice(lo) }); }),
+      }));
+    }
+    show(0);
+  };
+
+  function plot(container, opts) {
     container.replaceChildren();
     container.classList.add("chart");
     var series = opts.series, dates = opts.dates, n = dates.length;
@@ -262,7 +295,7 @@
     if (window.ResizeObserver) new ResizeObserver(function () {
       if (Math.abs(host.clientWidth - lastW) > 4) { lastW = host.clientWidth; draw(); }
     }).observe(host);
-  };
+  }
 
   /* ---------- horizontal bars ---------- */
   /* items: [{label, value, color, href, title, valueText}] */
@@ -274,12 +307,12 @@
     var wrap = TC.el("div", { class: "bars" });
     items.forEach(function (it) {
       var name = it.href ? TC.el("a", { href: it.href, text: it.label }) : document.createTextNode(it.label);
-      // The longest bar stops at 72% so its value label still fits beside it, off the fill.
-      var pct = Math.max(0, it.value) / max * 72;
-      var val = TC.el("span", { class: "val", text: it.valueText || fmt(it.value), style: "left:" + pct + "%" });
+      // --w is the share of the longest bar; the stylesheet scales it so the value label fits beside it.
+      var w = "--w:" + (Math.max(0, it.value) / max * 100).toFixed(2);
+      var val = TC.el("span", { class: "val", text: it.valueText || fmt(it.value), style: w });
       wrap.append(TC.el("div", { class: "bar", title: it.title || (it.label + ": " + fmt(it.value)) }, [
         TC.el("div", { class: "name" }, [name]),
-        TC.el("div", { class: "track" }, [TC.el("div", { class: "fill", style: "width:" + pct + "%;background:" + (it.color || TC.SERIES[0]) }), val]),
+        TC.el("div", { class: "track" }, [TC.el("div", { class: "fill", style: w + ";background:" + (it.color || TC.SERIES[0]) }), val]),
       ]));
     });
     container.replaceChildren(wrap);

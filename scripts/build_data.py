@@ -5,6 +5,7 @@ Writes into data/ (or --out):
 
   library-loc.json   lines of Lean under TauCeti/ by day, from the git history of main
   loc-by-topic.json  net lines per roadmap and per arXiv category, from merged pull requests
+  roadmap-prs.json   per roadmap label: merged PRs, net lines and the twelve latest merges
   examples.json      the showcase theorems from TauCeti's web/examples/Examples.lean
   ci-current.json    the CI fleet's running and queued jobs, copied from the live manifest
 
@@ -200,6 +201,36 @@ def loc_by_topic(prs: list[dict], progress: dict, pr_stats: dict) -> dict:
             "merged_prs": sum(per_label_prs.values()) + unattributed["prs"]}
 
 
+ROADMAP_SENTINELS = {"roadmap/none", "roadmap/Unknown"}
+
+
+def roadmap_prs(prs: list[dict], recent: int = 12) -> dict:
+    """Per roadmap label: merged PRs, their net lines, and the most recent merges, for the roadmap pages.
+
+    A PR counts only when it carries exactly one roadmap/ label and that label is not a sentinel.
+    """
+    out: dict[str, dict] = {}
+    merged: dict[str, list[tuple[str, dict]]] = defaultdict(list)
+    for pr in prs:
+        when = merged_at(pr)
+        if not when:
+            continue
+        labels = [l for l in pr["labels"] if l.startswith("roadmap/")]
+        if len(labels) != 1 or labels[0] in ROADMAP_SENTINELS:
+            continue
+        merged[labels[0]].append((when, pr))
+    for label, items in sorted(merged.items()):
+        items.sort(key=lambda x: x[0], reverse=True)
+        out[label] = {
+            "merged": len(items),
+            "net_lines": sum(pr["additions"] - pr["deletions"] for _, pr in items),
+            "recent": [{"number": pr["number"], "title": pr["title"].removeprefix(BORS_PREFIX),
+                        "merged": when[:10], "net": pr["additions"] - pr["deletions"]}
+                       for when, pr in items[:recent]],
+        }
+    return {"generated_at": now_iso(), "roadmaps": out}
+
+
 def library_loc(repo: Path) -> dict:
     """Lines under TauCeti/ and TauCeti.lean on main at the end of each UTC day.
 
@@ -282,7 +313,7 @@ def main() -> int:
     ap.add_argument("--tauceti-repo", type=Path, help="a full (non-shallow) clone of TauCeti at main")
     ap.add_argument("--out", type=Path, default=Path("data"))
     ap.add_argument("--cache", type=Path, default=Path("data/cache"))
-    ap.add_argument("--skip-prs", action="store_true", help="leave loc-by-topic.json as it is")
+    ap.add_argument("--skip-prs", action="store_true", help="leave loc-by-topic.json and roadmap-prs.json as they are")
     args = ap.parse_args()
 
     failures = []
@@ -304,6 +335,7 @@ def main() -> int:
             pr_stats = fetch_json(f"{SITE}/static/pr-stats.json")
             prs = walk_prs(args.cache / "prs.json")
             write(args.out, "loc-by-topic.json", loc_by_topic(prs, progress, pr_stats))
+            write(args.out, "roadmap-prs.json", roadmap_prs(prs))
         step("loc-by-topic", topics)
     if failures:
         log(f"failed: {', '.join(failures)}")

@@ -2,7 +2,7 @@ document.addEventListener("DOMContentLoaded", function () {
   "use strict";
   var TC = window.TC;
 
-  function cumulative(sel, dates, plotted, label) {
+  function cumulative(sel, dates, plotted, label, updated) {
     var names = Object.keys(plotted);
     var others = names.filter(function (n) { return /^Other/.test(n); });
     var named = names.filter(function (n) { return !/^Other/.test(n); })
@@ -14,7 +14,7 @@ document.addEventListener("DOMContentLoaded", function () {
       name: "Everyone else (" + restCount + ")", color: TC.OTHER,
       values: dates.map(function (_, i) { return rest.reduce(function (a, n) { return a + plotted[n][i]; }, 0); }),
     });
-    TC.timeChart(sel, { dates: dates, series: series, stacked: true, label: label });
+    TC.timeChart(sel, { dates: dates, series: series, stacked: true, label: label, updated: updated });
   }
 
   TC.live("pr-stats.json").then(function (s) {
@@ -23,8 +23,8 @@ document.addEventListener("DOMContentLoaded", function () {
     TC.set("reviewers", TC.fmt(Object.keys(reviews).length));
     TC.set("reviews", TC.fmt(Object.values(reviews).reduce(function (a, b) { return a + b; }, 0)));
     TC.set("active", TC.fmt(s.rolling_seven_day[s.rolling_seven_day.length - 1].active_authors));
-    cumulative("#cum-merges", s.cumulative_dates, s.cumulative_merges_plotted, "Cumulative merged pull requests by contributor");
-    cumulative("#cum-reviews", s.cumulative_dates, s.cumulative_reviews_plotted, "Cumulative reviews by contributor");
+    cumulative("#cum-merges", s.cumulative_dates, s.cumulative_merges_plotted, "Cumulative merged pull requests by contributor", s.snapshot);
+    cumulative("#cum-reviews", s.cumulative_dates, s.cumulative_reviews_plotted, "Cumulative reviews by contributor", s.snapshot);
 
     var logins = Object.keys(merges);
     Object.keys(reviews).forEach(function (l) { if (!(l in merges)) logins.push(l); });

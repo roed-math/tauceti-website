@@ -1,0 +1,8 @@
+Files vendored here, unchanged, for the roadmap pages (static/js/roadmap.js loads them on demand):
+
+- markdown.js, markdown-LICENSE.txt: the Tau Ceti Atlas's Markdown renderer (CBirkbeck/tauceti-explorer
+  at 701724066b7e, src/markdown.js, Apache-2.0; the same file as atlas/src/markdown.js and
+  review/web/vendor/markdown.js). Source HTML stays text, links are filtered to http(s) and relative
+  paths, and mathematics becomes vetted MathML through KaTeX.
+- katex.v0.16.28.min.js, KaTeX-LICENSE.txt: KaTeX 0.16.28 (MIT), as the Tau Ceti Atlas vendors it
+  (vendor/). Used only for its MathML output, so no KaTeX stylesheet or fonts are needed.
